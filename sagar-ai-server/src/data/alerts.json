@@ -1,0 +1,37 @@
+{
+  "alerts": [
+    {
+      "id": "alert-palk-squall",
+      "title": "Squall Line Warning",
+      "type": "Squall",
+      "severity": "Severe",
+      "region": "Palk Strait & Rameswaram Coast",
+      "latitude": 9.4200,
+      "longitude": 79.2800,
+      "message": "Gusty squalls exceeding 45 km/h detected along the IMBL corridor. High seas expected.",
+      "issuedAt": "2026-09-14T06:00:00Z"
+    },
+    {
+      "id": "alert-kanyakumari-swell",
+      "title": "High Wave / Swell Alert",
+      "type": "Rough Sea",
+      "severity": "Warning",
+      "region": "Kanyakumari Offing",
+      "latitude": 7.9500,
+      "longitude": 77.6200,
+      "message": "Swell surge waves between 2.5m and 3.1m forecast during high tide cycles.",
+      "issuedAt": "2026-09-14T07:30:00Z"
+    },
+    {
+      "id": "alert-chennai-lightning",
+      "title": "Convective Cloud Activity",
+      "type": "Lightning",
+      "severity": "Moderate",
+      "region": "Ennore & North Chennai Coast",
+      "latitude": 13.2800,
+      "longitude": 80.3500,
+      "message": "Isolated thunderstorm activity with lightning risks within 15 nautical miles of the coast.",
+      "issuedAt": "2026-09-14T08:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "zones": [
+    {
+      "id": "pfz-tuticorin-deep",
+      "name": "Gulf of Mannar South PFZ",
+      "region": "Thoothukudi",
+      "suitability": "High",
+      "chlorophyll": 1.48,
+      "sst": 28.1,
+      "fishSpecies": ["Tuna", "Mackerel", "Seer Fish"],
+      "depthMeters": 45,
+      "coordinates": [
+        [8.4500, 78.3200],
+        [8.5800, 78.4400],
+        [8.4200, 78.5800],
+        [8.3100, 78.4200]
+      ]
+    },
+    {
+      "id": "pfz-mandapam-east",
+      "name": "Mandapam Ocean Front PFZ",
+      "region": "Rameswaram",
+      "suitability": "Moderate",
+      "chlorophyll": 0.85,
+      "sst": 29.4,
+      "fishSpecies": ["Squid", "Sardinella", "Crabs"],
+      "depthMeters": 28,
+      "coordinates": [
+        [9.1500, 79.1500],
+        [9.2500, 79.2500],
+        [9.1800, 79.3800],
+        [9.0800, 79.2600]
+      ]
+    },
+    {
+      "id": "pfz-nagapattinam-shelf",
+      "name": "Cauvery Delta Shelf PFZ",
+      "region": "Nagapattinam",
+      "suitability": "High",
+      "chlorophyll": 1.82,
+      "sst": 27.8,
+      "fishSpecies": ["Snapper", "Ribbonfish", "Pomfret"],
+      "depthMeters": 60,
+      "coordinates": [
+        [10.6500, 80.0500],
+        [10.8200, 80.0800],
+        [10.8500, 80.2400],
+        [10.6200, 80.2000]
+      ]
+    },
+    {
+      "id": "pfz-chennai-pulicat",
+      "name": "Coromandel Offshore PFZ",
+      "region": "Chennai",
+      "suitability": "High",
+      "chlorophyll": 1.62,
+      "sst": 28.4,
+      "fishSpecies": ["Barracuda", "Trevally", "Indian Mackerel"],
+      "depthMeters": 55,
+      "coordinates": [
+        [13.2500, 80.4000],
+        [13.4800, 80.4600],
+        [13.4400, 80.6000],
+        [13.2000, 80.5200]
+      ]
+    },
+    {
+      "id": "pfz-wadge-bank",
+      "name": "Wadge Bank Continental Ledge",
+      "region": "Kanyakumari",
+      "suitability": "Moderate",
+      "chlorophyll": 1.12,
+      "sst": 27.2,
+      "fishSpecies": ["Skipjack Tuna", "Reef Cod", "Perch"],
+      "depthMeters": 75,
+      "coordinates": [
+        [7.6500, 77.4500],
+        [7.8500, 77.5800],
+        [7.7500, 77.8200],
+        [7.5500, 77.6500]
+      ]
+    }
+  ]
+}

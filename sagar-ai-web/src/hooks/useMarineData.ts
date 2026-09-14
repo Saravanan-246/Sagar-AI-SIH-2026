@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { fetchMarineAreas } from "../services/api/sagarApiClient";
+
 import {
-  getMarineAreas,
-  getMarineArea,
-  getDefaultMarineArea,
+  getMarineAreas as getLocalMarineAreas,
 } from "../services/marine/marineData";
 
 import type { MarineArea } from "../types/marine";
@@ -11,6 +11,25 @@ import type { MarineArea } from "../types/marine";
 type UseMarineDataOptions = {
   areaId?: string;
 };
+
+async function resolveMarineAreas(): Promise<MarineArea[]> {
+  try {
+    const areas = await fetchMarineAreas();
+
+    if (areas.length > 0) {
+      return areas;
+    }
+
+    return getLocalMarineAreas();
+  } catch (err) {
+    console.warn(
+      "Sagar backend is unavailable, using the local marine dataset:",
+      err
+    );
+
+    return getLocalMarineAreas();
+  }
+}
 
 export function useMarineData(
   options: UseMarineDataOptions = {},
@@ -22,18 +41,20 @@ export function useMarineData(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadMarineData = useCallback(() => {
+  const loadMarineData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const allAreas = getMarineAreas();
+      const allAreas = await resolveMarineAreas();
       setAreas(allAreas);
 
       if (areaId) {
-        setArea(getMarineArea(areaId) ?? null);
+        setArea(
+          allAreas.find((item) => item.id === areaId) ?? null
+        );
       } else {
-        setArea(getDefaultMarineArea());
+        setArea(allAreas[0] ?? null);
       }
     } catch (err) {
       console.error("Failed to load marine data:", err);

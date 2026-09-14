@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
-  getScenarios,
-  runScenario,
+  fetchScenarios,
+  runScenarioRemote,
+} from "../services/api/sagarApiClient";
+
+import {
+  getScenarios as getScenariosLocal,
+  runScenario as runScenarioLocal,
 } from "../services/scenarios/scenarioEngine";
 
 import type {
@@ -48,11 +53,17 @@ export default function useScenario(): UseScenarioReturn {
   const [error, setError] =
     useState<string | null>(null);
 
-  const loadScenarios = useCallback(() => {
+  const loadScenarios = useCallback(async () => {
     setError(null);
 
     try {
-      const data = getScenarios();
+      const data = await fetchScenarios().catch((err) => {
+        console.warn(
+          "Sagar backend is unavailable, using local scenario data:",
+          err
+        );
+        return getScenariosLocal();
+      });
 
       setScenarios(data);
 
@@ -104,10 +115,16 @@ export default function useScenario(): UseScenarioReturn {
       setError(null);
 
       try {
-        const scenarioResult =
-          await Promise.resolve(
-            runScenario(scenario, inputs)
+        const scenarioResult = await runScenarioRemote(
+          scenario.id,
+          inputs
+        ).catch((err) => {
+          console.warn(
+            "Sagar backend is unavailable, running the scenario locally:",
+            err
           );
+          return runScenarioLocal(scenario, inputs);
+        });
 
         setSelectedScenario(scenario);
         setResult(scenarioResult);

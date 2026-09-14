@@ -1,0 +1,263 @@
+{
+  "routes": [
+    {
+      "id": "tn-route-thoothukudi-south",
+      "name": "Thoothukudi Deep Sea Corridor",
+      "status": "recommended",
+      "origin": {
+        "name": "Thoothukudi New Port Outer",
+        "latitude": 8.7450,
+        "longitude": 78.1950
+      },
+      "destination": {
+        "name": "Manapad High Yield Grounds",
+        "latitude": 8.3200,
+        "longitude": 78.2800
+      },
+      "distanceKm": 48.5,
+      "estimatedDurationHours": 3.6,
+      "recommendedSpeedKnots": 7.5,
+      "risk": {
+        "level": "low",
+        "score": 18
+      },
+      "conditions": {
+        "wind": "12 kts SW",
+        "waves": "0.8m - 1.1m",
+        "visibility": "12 km (Clear)"
+      },
+      "routeDecision": "preferred",
+      "reason": "Clear passage south through deep water. Favourable wind conditions and zero hazard proximity.",
+      "avoidedHazards": ["Vaan Island Reef Buffer", "Coastal Gillnet Zones"],
+      "waypoints": [
+        [8.7450, 78.1950],
+        [8.6500, 78.2300],
+        [8.5200, 78.2550],
+        [8.4100, 78.2750],
+        [8.3200, 78.2800]
+      ]
+    },
+    {
+      "id": "tn-route-thoothukudi-north",
+      "name": "Vembar Inshore Track",
+      "status": "review",
+      "origin": {
+        "name": "Thoothukudi New Port Outer",
+        "latitude": 8.7450,
+        "longitude": 78.1950
+      },
+      "destination": {
+        "name": "Vembar Coastal Shoals",
+        "latitude": 9.0600,
+        "longitude": 78.4400
+      },
+      "distanceKm": 44.2,
+      "estimatedDurationHours": 3.4,
+      "recommendedSpeedKnots": 7.0,
+      "risk": {
+        "level": "moderate",
+        "score": 42
+      },
+      "conditions": {
+        "wind": "16 kts SSW",
+        "waves": "1.3m - 1.6m",
+        "visibility": "8 km"
+      },
+      "routeDecision": "caution",
+      "reason": "Moderate sea chop. Navigating within 3 nautical miles of mainland shallows requires active depth monitoring.",
+      "avoidedHazards": ["Hare Island Submerged Sandbar"],
+      "waypoints": [
+        [8.7450, 78.1950],
+        [8.8400, 78.2700],
+        [8.9300, 78.3450],
+        [9.0100, 78.4050],
+        [9.0600, 78.4400]
+      ]
+    },
+    {
+      "id": "tn-route-rameswaram-palk",
+      "name": "Rameswaram to Palk Bay Center",
+      "status": "warning",
+      "origin": {
+        "name": "Rameswaram Jetty Outer",
+        "latitude": 9.2950,
+        "longitude": 79.3250
+      },
+      "destination": {
+        "name": "Palk Bay Central Grounds",
+        "latitude": 9.5800,
+        "longitude": 79.2700
+      },
+      "distanceKm": 34.1,
+      "estimatedDurationHours": 2.7,
+      "recommendedSpeedKnots": 6.5,
+      "risk": {
+        "level": "high",
+        "score": 78
+      },
+      "conditions": {
+        "wind": "24 kts ENE (Squall)",
+        "waves": "1.8m - 2.4m",
+        "visibility": "4 km (Rain)"
+      },
+      "routeDecision": "avoid",
+      "reason": "High risk of squall activity and close proximity to the International Maritime Boundary Line (IMBL). Rough localized sea state.",
+      "avoidedHazards": ["IMBL Restricted Perimeter", "Pamban Northern Shallows"],
+      "waypoints": [
+        [9.2950, 79.3250],
+        [9.3600, 79.3100],
+        [9.4400, 79.2950],
+        [9.5100, 79.2800],
+        [9.5800, 79.2700]
+      ]
+    },
+    {
+      "id": "tn-route-nagapattinam-offshore",
+      "name": "Cauvery Delta Deep Shelf",
+      "status": "recommended",
+      "origin": {
+        "name": "Nagapattinam Anchorage",
+        "latitude": 10.7600,
+        "longitude": 79.8550
+      },
+      "destination": {
+        "name": "Eastern Trench Margin",
+        "latitude": 10.7400,
+        "longitude": 80.2000
+      },
+      "distanceKm": 41.5,
+      "estimatedDurationHours": 3.1,
+      "recommendedSpeedKnots": 7.0,
+      "risk": {
+        "level": "low",
+        "score": 24
+      },
+      "conditions": {
+        "wind": "11 kts SE",
+        "waves": "0.9m",
+        "visibility": "14 km"
+      },
+      "routeDecision": "preferred",
+      "reason": "Stable offshore depth profile with excellent visibility and calm swell.",
+      "avoidedHazards": ["Kodiakkarai Coastline Currents"],
+      "waypoints": [
+        [10.7600, 79.8550],
+        [10.7550, 79.9400],
+        [10.7500, 80.0300],
+        [10.7450, 80.1200],
+        [10.7400, 80.2000]
+      ]
+    },
+    {
+      "id": "tn-route-chennai-outer",
+      "name": "Kasimedu Northern Offshore",
+      "status": "recommended",
+      "origin": {
+        "name": "Kasimedu Harbor Exit",
+        "latitude": 13.1300,
+        "longitude": 80.3150
+      },
+      "destination": {
+        "name": "Pulicat Outer Shelf",
+        "latitude": 13.4500,
+        "longitude": 80.4500
+      },
+      "distanceKm": 39.8,
+      "estimatedDurationHours": 2.9,
+      "recommendedSpeedKnots": 7.5,
+      "risk": {
+        "level": "low",
+        "score": 27
+      },
+      "conditions": {
+        "wind": "14 kts S",
+        "waves": "1.1m",
+        "visibility": "10 km"
+      },
+      "routeDecision": "preferred",
+      "reason": "Successfully routes outside commercial container shipping lanes into highly productive fishing waters.",
+      "avoidedHazards": ["Chennai Port Anchorage Zone", "Ennore Outfall Buffer"],
+      "waypoints": [
+        [13.1300, 80.3150],
+        [13.2200, 80.3550],
+        [13.3000, 80.3900],
+        [13.3800, 80.4250],
+        [13.4500, 80.4500]
+      ]
+    },
+    {
+      "id": "tn-route-kanyakumari-ledge",
+      "name": "Wadge Bank Tri-Sea Junction",
+      "status": "warning",
+      "origin": {
+        "name": "Chinnamuttom Harbor Mouth",
+        "latitude": 8.0850,
+        "longitude": 77.5850
+      },
+      "destination": {
+        "name": "Wadge Bank Sector 2",
+        "latitude": 7.7200,
+        "longitude": 77.7400
+      },
+      "distanceKm": 43.8,
+      "estimatedDurationHours": 3.4,
+      "recommendedSpeedKnots": 6.8,
+      "risk": {
+        "level": "high",
+        "score": 72
+      },
+      "conditions": {
+        "wind": "22 kts WSW",
+        "waves": "2.4m - 2.9m",
+        "visibility": "6 km"
+      },
+      "routeDecision": "avoid",
+      "reason": "Cross-sea conditions with elevated swell where the Arabian Sea and Bay of Bengal converge. High fatigue risk.",
+      "avoidedHazards": ["Cape Comorin Submerged Reef System"],
+      "waypoints": [
+        [8.0850, 77.5850],
+        [7.9900, 77.6250],
+        [7.8900, 77.6650],
+        [7.8000, 77.7050],
+        [7.7200, 77.7400]
+      ]
+    },
+    {
+      "id": "tn-route-pamban-pass",
+      "name": "Pamban Channel Transit",
+      "status": "critical",
+      "origin": {
+        "name": "Mandapam South",
+        "latitude": 9.2550,
+        "longitude": 79.1450
+      },
+      "destination": {
+        "name": "Palk Bay Entry",
+        "latitude": 9.3200,
+        "longitude": 79.1650
+      },
+      "distanceKm": 9.2,
+      "estimatedDurationHours": 1.2,
+      "recommendedSpeedKnots": 4.0,
+      "risk": {
+        "level": "critical",
+        "score": 92
+      },
+      "conditions": {
+        "wind": "18 kts NE",
+        "waves": "1.6m (Tidal Race)",
+        "visibility": "7 km"
+      },
+      "routeDecision": "blocked",
+      "reason": "Channel currently blocked due to bridge structural maintenance and extreme localized tidal currents. Do not proceed.",
+      "avoidedHazards": ["Bridge Infrastructure Zone", "High Current Funnel"],
+      "waypoints": [
+        [9.2550, 79.1450],
+        [9.2700, 79.1550],
+        [9.2850, 79.1600],
+        [9.3000, 79.1620],
+        [9.3200, 79.1650]
+      ]
+    }
+  ]
+}

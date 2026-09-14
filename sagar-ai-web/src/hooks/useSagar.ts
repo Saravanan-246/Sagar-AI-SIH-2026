@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 
-import { askSagar } from "../services/ai/localSagar";
+import { askSagarBackend } from "../services/api/sagarApiClient";
+import { askSagar as askSagarLocal } from "../services/ai/localSagar";
 
 type SagarChatMessage = {
   id: string;
@@ -24,6 +25,44 @@ type UseSagarReturn = {
   ) => Promise<SagarChatMessage | null>;
   clearConversation: () => void;
 };
+
+async function resolveAssistantText(
+  text: string,
+  options: SagarOptions
+): Promise<string> {
+  try {
+    const result = await askSagarBackend(text, {
+      language: options.language,
+      areaId: options.areaId,
+    });
+
+    if (result.finalResponse) {
+      return result.finalResponse;
+    }
+
+    if (result.finalRecommendation) {
+      return result.finalRecommendation;
+    }
+
+    if (result.warnings && result.warnings.length > 0) {
+      return result.warnings.join(" ");
+    }
+
+    return "Sagar could not generate a response for this request.";
+  } catch (backendError) {
+    console.warn(
+      "Sagar backend is unavailable, using the offline responder:",
+      backendError
+    );
+
+    const local = await askSagarLocal(text, {
+      language: options.language,
+      areaId: options.areaId,
+    });
+
+    return local.text;
+  }
+}
 
 export default function useSagar(): UseSagarReturn {
   const [messages, setMessages] = useState<SagarChatMessage[]>([]);
@@ -58,15 +97,10 @@ export default function useSagar(): UseSagarReturn {
       setLoading(true);
 
       try {
-        const result = await askSagar(text, {
-          language: options.language,
-          areaId: options.areaId,
-        });
-
-        const assistantText =
-          typeof result === "string"
-            ? result
-            : result.text;
+        const assistantText = await resolveAssistantText(
+          text,
+          options
+        );
 
         const assistantMessage: SagarChatMessage = {
           id: `assistant-${Date.now()}`,

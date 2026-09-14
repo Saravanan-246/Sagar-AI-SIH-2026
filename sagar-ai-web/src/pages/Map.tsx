@@ -233,7 +233,7 @@ export default function Map() {
                   <strong>
                     {typeof wind ===
                     "number"
-                      ? `${wind} km/h`
+                      ? `${wind} kn`
                       : "—"}
                   </strong>
                 </div>
@@ -320,7 +320,7 @@ export default function Map() {
                   <strong>
                     {typeof wind ===
                     "number"
-                      ? `${wind} km/h`
+                      ? `${wind} kn`
                       : "—"}
                   </strong>
                 </div>

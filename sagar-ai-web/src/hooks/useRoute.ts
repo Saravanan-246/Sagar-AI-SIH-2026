@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
-  calculateRoute,
-  getRoutes,
+  calculateRouteRemote,
+  fetchRoutes,
+} from "../services/api/sagarApiClient";
+
+import {
+  calculateRoute as calculateRouteLocal,
+  getRoutes as getRoutesLocal,
 } from "../services/routes/routeService";
 
 import type {
@@ -27,23 +32,23 @@ export default function useRoute() {
   const [error, setError] =
     useState<string | null>(null);
 
-  const loadRoutes = useCallback(() => {
+  const loadRoutes = useCallback(async () => {
     try {
       setError(null);
 
-      const availableRoutes =
-        getRoutes();
+      const availableRoutes = await fetchRoutes().catch((err) => {
+        console.warn(
+          "Sagar backend is unavailable, using local route data:",
+          err
+        );
+        return getRoutesLocal();
+      });
 
       setRoutes(availableRoutes);
 
-      if (
-        !selectedRoute &&
-        availableRoutes.length > 0
-      ) {
-        setSelectedRoute(
-          availableRoutes[0]
-        );
-      }
+      setSelectedRoute((current) =>
+        current ?? availableRoutes[0] ?? null
+      );
     } catch (err) {
       setError(
         err instanceof Error
@@ -51,7 +56,7 @@ export default function useRoute() {
           : "Unable to load routes."
       );
     }
-  }, [selectedRoute]);
+  }, []);
 
   useEffect(() => {
     loadRoutes();
@@ -66,11 +71,16 @@ export default function useRoute() {
       setError(null);
 
       try {
-        const calculated =
-          calculateRoute(
-            origin,
-            destination,
+        const calculated = await calculateRouteRemote(
+          origin,
+          destination,
+        ).catch((err) => {
+          console.warn(
+            "Sagar backend is unavailable, calculating the route locally:",
+            err
           );
+          return calculateRouteLocal(origin, destination);
+        });
 
         setResult(calculated);
 

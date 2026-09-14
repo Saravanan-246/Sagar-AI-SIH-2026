@@ -1,0 +1,87 @@
+[
+  {
+    "id": "boundary-protected-sector-001",
+    "name": "Gulf of Mannar Protected Marine Sector",
+    "type": "restricted",
+    "status": "active",
+    "description": "Protected marine sector that should be excluded from unrestricted route planning.",
+    "restriction": "no_entry",
+    "polygon": [
+      [8.86, 78.28],
+      [8.88, 78.45],
+      [8.76, 78.58],
+      [8.62, 78.52],
+      [8.58, 78.36],
+      [8.68, 78.25]
+    ],
+    "source": "Sagar Boundary Repository"
+  },
+  {
+    "id": "boundary-fishing-restricted-001",
+    "name": "Nearshore Restricted Fishing Sector",
+    "type": "restricted",
+    "status": "active",
+    "description": "Nearshore sector marked as restricted for the current operating workflow.",
+    "restriction": "no_fishing",
+    "polygon": [
+      [8.74, 78.08],
+      [8.79, 78.18],
+      [8.72, 78.27],
+      [8.63, 78.21],
+      [8.62, 78.10],
+      [8.68, 78.04]
+    ],
+    "source": "Sagar Boundary Repository"
+  },
+  {
+    "id": "boundary-navigation-corridor-001",
+    "name": "Designated Navigation Corridor",
+    "type": "navigation",
+    "status": "active",
+    "description": "Preferred navigation corridor for safer route planning through the identified sector.",
+    "restriction": "navigation_corridor",
+    "polygon": [
+      [8.92, 78.10],
+      [8.94, 78.25],
+      [8.78, 78.48],
+      [8.68, 78.42],
+      [8.82, 78.20]
+    ],
+    "source": "Sagar Boundary Repository"
+  },
+  {
+    "id": "boundary-conservation-001",
+    "name": "Marine Conservation Zone",
+    "type": "conservation",
+    "status": "active",
+    "description": "Conservation area where fishing activity should be avoided unless authorized.",
+    "restriction": "no_fishing",
+    "polygon": [
+      [9.00, 78.42],
+      [8.96, 78.58],
+      [8.82, 78.68],
+      [8.73, 78.57],
+      [8.80, 78.44],
+      [8.90, 78.38]
+    ],
+    "source": "Sagar Boundary Repository"
+  },
+  {
+    "id": "boundary-temporary-001",
+    "name": "Temporary Operational Exclusion Zone",
+    "type": "temporary_restriction",
+    "status": "active",
+    "description": "Temporary exclusion area that should be avoided during the active restriction period.",
+    "restriction": "no_entry",
+    "validFrom": "2026-09-14T00:00:00+05:30",
+    "validUntil": "2026-09-16T23:59:59+05:30",
+    "polygon": [
+      [8.58, 78.58],
+      [8.66, 78.70],
+      [8.56, 78.82],
+      [8.47, 78.73],
+      [8.48, 78.60]
+    ],
+    "source": "Sagar Boundary Repository"
+  }
+]
