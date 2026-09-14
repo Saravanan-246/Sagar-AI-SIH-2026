@@ -116,9 +116,19 @@ function findRiskFinding(pipeline: AgentPipelineResult) {
 
 function resolveAffectedArea(
   pipeline: AgentPipelineResult,
-  options: { areaId?: string; areaName?: string }
+  options: {
+    areaId?: string;
+    areaName?: string;
+    latitude?: number;
+    longitude?: number;
+  }
 ): MarineArea | undefined {
-  if (options.areaId || options.areaName) {
+  if (
+    options.areaId ||
+    options.areaName ||
+    (typeof options.latitude === "number" &&
+      typeof options.longitude === "number")
+  ) {
     return resolveArea(options);
   }
 
@@ -132,11 +142,26 @@ function resolveAffectedArea(
   return undefined;
 }
 
+export interface ShapeChatResponseExtras {
+  whatIf?: WhatIfComparison;
+  /** Additional intents mentioned in the same message (multi-intent support). */
+  secondaryIntents?: string[];
+  /** A route already resolved deterministically (e.g. an explicit "from X to Y" request). */
+  resolvedRoute?: RoutePlan | null;
+}
+
 export function shapeChatResponse(
   pipeline: AgentPipelineResult,
-  options: { areaId?: string; areaName?: string },
-  whatIf?: WhatIfComparison
+  options: {
+    areaId?: string;
+    areaName?: string;
+    latitude?: number;
+    longitude?: number;
+  },
+  extras: ShapeChatResponseExtras = {}
 ): StructuredSagarResponse {
+  const { whatIf, secondaryIntents = [], resolvedRoute } = extras;
+
   const riskFinding = findRiskFinding(pipeline);
   const riskData = riskFinding?.data as
     | { riskScore: number; riskLevel: string; keyFactors: string[] }
@@ -195,28 +220,45 @@ export function shapeChatResponse(
     response.visualizations = pipeline.visualizations;
   }
 
-  switch (pipeline.intent) {
-    case "route": {
-      const routes = getRecommendedRoutes();
-      response.route = routes[0] ?? null;
-      break;
-    }
+  const applyIntentEnrichment = (intent: string) => {
+    switch (intent) {
+      case "route": {
+        if (!response.route) {
+          response.route = getRecommendedRoutes()[0] ?? null;
+        }
+        break;
+      }
 
-    case "pfz": {
-      response.zones = rankFishingZones({
-        query: area?.name ?? area?.region,
-      }).slice(0, 6);
-      break;
-    }
+      case "pfz": {
+        if (!response.zones) {
+          response.zones = rankFishingZones({
+            query: area?.name ?? area?.region,
+          }).slice(0, 6);
+        }
+        break;
+      }
 
-    case "alerts":
-    case "safety": {
-      response.alerts = getAlerts();
-      break;
-    }
+      case "alerts":
+      case "safety": {
+        if (!response.alerts) {
+          response.alerts = getAlerts();
+        }
+        break;
+      }
 
-    default:
-      break;
+      default:
+        break;
+    }
+  };
+
+  applyIntentEnrichment(pipeline.intent);
+
+  for (const intent of secondaryIntents) {
+    applyIntentEnrichment(intent);
+  }
+
+  if (resolvedRoute !== undefined) {
+    response.route = resolvedRoute;
   }
 
   if (whatIf) {

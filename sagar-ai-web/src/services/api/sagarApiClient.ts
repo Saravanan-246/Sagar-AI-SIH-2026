@@ -24,10 +24,18 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
+export interface ChatHistoryTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
 export interface ChatRequestOptions {
   language?: string;
   areaId?: string;
   areaName?: string;
+  latitude?: number;
+  longitude?: number;
+  history?: ChatHistoryTurn[];
 }
 
 export interface RankedFishingZone {
@@ -110,6 +118,9 @@ export async function askSagarBackend(
     language: options.language,
     areaId: options.areaId,
     areaName: options.areaName,
+    latitude: options.latitude,
+    longitude: options.longitude,
+    history: options.history,
   });
 
   return data;

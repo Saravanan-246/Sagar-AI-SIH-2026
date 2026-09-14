@@ -1,15 +1,23 @@
 import type { ReactNode } from "react";
 
+import ChatStructuredPanel, {
+  type ChatStructuredData,
+} from "./ChatStructuredPanel";
+
 type ChatMessageProps = {
   role: "user" | "assistant";
   children: ReactNode;
   timestamp?: string;
+  structured?: ChatStructuredData;
+  voiceControl?: ReactNode;
 };
 
 export default function ChatMessage({
   role,
   children,
   timestamp,
+  structured,
+  voiceControl,
 }: ChatMessageProps) {
   const isUser = role === "user";
 
@@ -38,19 +46,33 @@ export default function ChatMessage({
           }`}
         >
           <div className="chat-bubble-text">{children}</div>
+
+          {!isUser && structured && (
+            <ChatStructuredPanel data={structured} />
+          )}
         </div>
 
-        {timestamp && (
-          <span
-            className={`chat-message-time ${
-              isUser
-                ? "chat-message-time-user"
-                : "chat-message-time-assistant"
-            }`}
-          >
-            {timestamp}
-          </span>
-        )}
+        <div
+          className={`chat-message-footer ${
+            isUser
+              ? "chat-message-footer-user"
+              : "chat-message-footer-assistant"
+          }`}
+        >
+          {timestamp && (
+            <span
+              className={`chat-message-time ${
+                isUser
+                  ? "chat-message-time-user"
+                  : "chat-message-time-assistant"
+              }`}
+            >
+              {timestamp}
+            </span>
+          )}
+
+          {!isUser && voiceControl}
+        </div>
       </div>
     </div>
   );

@@ -1,9 +1,15 @@
 import { useCallback, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { askSagarBackend } from "../services/api/sagarApiClient";
+import {
+  askSagarBackend,
+  type SagarChatResponse,
+} from "../services/api/sagarApiClient";
 import { askSagar as askSagarLocal } from "../services/ai/localSagar";
 import { useAppStore } from "../store/appStore";
+import { ROUTES } from "../constants/routes";
 
+import type { ChatStructuredData } from "../components/chat/ChatStructuredPanel";
 import type { RoutePlan } from "../types/route";
 
 type SagarChatMessage = {
@@ -12,6 +18,7 @@ type SagarChatMessage = {
   text: string;
   timestamp: string;
   route?: RoutePlan | null;
+  structured?: ChatStructuredData;
 };
 
 type SagarOptions = {
@@ -33,49 +40,41 @@ type UseSagarReturn = {
 interface AssistantReply {
   text: string;
   route: RoutePlan | null;
+  structured?: ChatStructuredData;
 }
 
-async function resolveAssistantReply(
-  text: string,
-  options: SagarOptions
-): Promise<AssistantReply> {
-  try {
-    const result = await askSagarBackend(text, {
-      language: options.language,
-      areaId: options.areaId,
-    });
+function buildStructuredData(
+  result: SagarChatResponse,
+  onViewMap: () => void
+): ChatStructuredData | undefined {
+  const hasMapTarget = Boolean(
+    result.route ||
+      (result.zones && result.zones.length > 0) ||
+      (result.alerts && result.alerts.length > 0) ||
+      result.affectedArea
+  );
 
-    const base =
-      result.answer ||
-      result.recommendation ||
-      (result.warnings && result.warnings.length > 0
-        ? result.warnings.join(" ")
-        : "Sagar could not generate a response for this request.");
+  const structured: ChatStructuredData = {
+    riskLevel: result.riskLevel,
+    riskScore: result.riskScore,
+    keyFactors: result.keyFactors,
+    evidenceTitles: result.evidence?.map((item) => item.title),
+    whatIfSummary: result.whatIf
+      ? `What if ${result.whatIf.question}? ${result.whatIf.impact}`
+      : undefined,
+    mapAction: hasMapTarget
+      ? {
+          label: result.route ? "View route on map" : "View on map",
+          onClick: onViewMap,
+        }
+      : undefined,
+  };
 
-    const replyText = result.whatIf
-      ? [
-          base,
-          "",
-          `What if ${result.whatIf.question}?`,
-          result.whatIf.impact,
-          `Recommendation: ${result.whatIf.recommendation}`,
-        ].join("\n")
-      : base;
+  const hasAnyField = Object.values(structured).some(
+    (value) => value !== undefined && !(Array.isArray(value) && value.length === 0)
+  );
 
-    return { text: replyText, route: result.route ?? null };
-  } catch (backendError) {
-    console.warn(
-      "Sagar backend is unavailable, using the offline responder:",
-      backendError
-    );
-
-    const local = await askSagarLocal(text, {
-      language: options.language,
-      areaId: options.areaId,
-    });
-
-    return { text: local.text, route: null };
-  }
+  return hasAnyField ? structured : undefined;
 }
 
 export default function useSagar(): UseSagarReturn {
@@ -83,8 +82,97 @@ export default function useSagar(): UseSagarReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const navigate = useNavigate();
+
   const setPendingRoute = useAppStore(
     (state) => state.setPendingRoute
+  );
+
+  const setPendingMapFocus = useAppStore(
+    (state) => state.setPendingMapFocus
+  );
+
+  const currentLocation = useAppStore(
+    (state) => state.currentLocation
+  );
+
+  const selectedAreaId = useAppStore(
+    (state) => state.selectedAreaId
+  );
+
+  const resolveAssistantReply = useCallback(
+    async (
+      text: string,
+      options: SagarOptions,
+      history: SagarChatMessage[]
+    ): Promise<AssistantReply> => {
+      const handleViewOnMap = (result: SagarChatResponse) => () => {
+        if (result.route) {
+          setPendingRoute(result.route);
+          navigate(ROUTES.ROUTE);
+          return;
+        }
+
+        setPendingMapFocus({
+          areaId: result.affectedArea?.id,
+          label: result.affectedArea?.name,
+        });
+        navigate(ROUTES.MAP);
+      };
+
+      try {
+        const result = await askSagarBackend(text, {
+          language: options.language,
+          areaId: options.areaId ?? selectedAreaId ?? undefined,
+          latitude: options.areaId
+            ? undefined
+            : currentLocation?.latitude,
+          longitude: options.areaId
+            ? undefined
+            : currentLocation?.longitude,
+          history: history.slice(-6).map((message) => ({
+            role: message.role,
+            text: message.text,
+          })),
+        });
+
+        const base =
+          result.answer ||
+          result.recommendation ||
+          (result.warnings && result.warnings.length > 0
+            ? result.warnings.join(" ")
+            : "Sagar could not generate a response for this request.");
+
+        return {
+          text: base,
+          route: result.route ?? null,
+          structured: buildStructuredData(
+            result,
+            handleViewOnMap(result)
+          ),
+        };
+      } catch (backendError) {
+        console.warn(
+          "Sagar backend is unavailable, using the offline responder:",
+          backendError
+        );
+
+        const local = await askSagarLocal(text, {
+          language: options.language,
+          areaId: options.areaId,
+        });
+
+        return { text: local.text, route: null };
+      }
+    },
+    [
+      currentLocation?.latitude,
+      currentLocation?.longitude,
+      navigate,
+      selectedAreaId,
+      setPendingMapFocus,
+      setPendingRoute,
+    ]
   );
 
   const sendMessage = useCallback(
@@ -107,6 +195,8 @@ export default function useSagar(): UseSagarReturn {
         timestamp: new Date().toISOString(),
       };
 
+      const historySnapshot = [...messages, userMessage];
+
       setMessages((current) => [
         ...current,
         userMessage,
@@ -117,12 +207,9 @@ export default function useSagar(): UseSagarReturn {
       try {
         const reply = await resolveAssistantReply(
           text,
-          options
+          options,
+          historySnapshot
         );
-
-        if (reply.route) {
-          setPendingRoute(reply.route);
-        }
 
         const assistantMessage: SagarChatMessage = {
           id: `assistant-${Date.now()}`,
@@ -130,6 +217,7 @@ export default function useSagar(): UseSagarReturn {
           text: reply.text,
           timestamp: new Date().toISOString(),
           route: reply.route,
+          structured: reply.structured,
         };
 
         setMessages((current) => [
@@ -153,7 +241,7 @@ export default function useSagar(): UseSagarReturn {
         setLoading(false);
       }
     },
-    [loading, setPendingRoute]
+    [loading, messages, resolveAssistantReply]
   );
 
   const clearConversation = useCallback(() => {

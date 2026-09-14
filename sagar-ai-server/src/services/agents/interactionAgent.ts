@@ -13,6 +13,18 @@ import type {
   InteractionAgentData,
 } from "./agentTypes";
 
+const VALID_INTENTS: InteractionAgentData["detectedIntent"][] = [
+  "marine_conditions",
+  "safety",
+  "alerts",
+  "pfz",
+  "route",
+  "productivity",
+  "geofence",
+  "tide",
+  "general",
+];
+
 function normalizeQuery(
   message: string
 ): string {
@@ -206,6 +218,27 @@ export async function runInteractionAgent(
        * The direct detectors above are still
        * valid fallbacks.
        */
+    }
+
+    /*
+     * When the caller (chat.routes.ts) already ran an AI-assisted
+     * classification for a fuzzy/short/multi-intent question, prefer
+     * it over the keyword-based detection above. Validated against the
+     * same intent set, so an absent or invalid hint changes nothing -
+     * the deterministic detection above remains the only path when AI
+     * classification is unavailable.
+     */
+    const aiIntentHint =
+      request.parameters?.aiIntentHint;
+
+    if (
+      typeof aiIntentHint === "string" &&
+      VALID_INTENTS.includes(
+        aiIntentHint as InteractionAgentData["detectedIntent"]
+      )
+    ) {
+      analysisIntent =
+        aiIntentHint as InteractionAgentData["detectedIntent"];
     }
 
     const context =

@@ -44,6 +44,47 @@ interface AppState {
   pendingRoute: RoutePlan | null;
   setPendingRoute: (route: RoutePlan) => void;
   clearPendingRoute: () => void;
+
+  /**
+   * The user's working location for chat/marine/route queries - either a
+   * device-geolocation coordinate or a manually selected marine area.
+   * Shared across Chat, Map and Route so "use my location" / "select
+   * area" set once and apply everywhere.
+   */
+  currentLocation: {
+    latitude: number;
+    longitude: number;
+  } | null;
+  selectedAreaId: string | null;
+  locationLabel: string | null;
+  locationPermission: "unknown" | "granted" | "denied" | "unavailable";
+
+  setDeviceLocation: (
+    coords: { latitude: number; longitude: number },
+    label?: string
+  ) => void;
+  setSelectedArea: (areaId: string, label: string) => void;
+  setLocationPermission: (
+    status: "unknown" | "granted" | "denied" | "unavailable"
+  ) => void;
+  clearLocation: () => void;
+
+  /** A map focus request (area/coordinates) pending pickup by the Map page. */
+  pendingMapFocus: {
+    latitude?: number;
+    longitude?: number;
+    areaId?: string;
+    label?: string;
+  } | null;
+  setPendingMapFocus: (
+    focus: {
+      latitude?: number;
+      longitude?: number;
+      areaId?: string;
+      label?: string;
+    }
+  ) => void;
+  clearPendingMapFocus: () => void;
 }
 
 const STORAGE_KEY = "sagar-ai-preferences";
@@ -194,5 +235,49 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearPendingRoute: () => {
     set({ pendingRoute: null });
+  },
+
+  currentLocation: null,
+  selectedAreaId: null,
+  locationLabel: null,
+  locationPermission: "unknown",
+
+  setDeviceLocation: (coords, label) => {
+    set({
+      currentLocation: coords,
+      selectedAreaId: null,
+      locationLabel: label ?? "Current location",
+      locationPermission: "granted",
+    });
+  },
+
+  setSelectedArea: (areaId, label) => {
+    set({
+      selectedAreaId: areaId,
+      currentLocation: null,
+      locationLabel: label,
+    });
+  },
+
+  setLocationPermission: (status) => {
+    set({ locationPermission: status });
+  },
+
+  clearLocation: () => {
+    set({
+      currentLocation: null,
+      selectedAreaId: null,
+      locationLabel: null,
+    });
+  },
+
+  pendingMapFocus: null,
+
+  setPendingMapFocus: (focus) => {
+    set({ pendingMapFocus: focus });
+  },
+
+  clearPendingMapFocus: () => {
+    set({ pendingMapFocus: null });
   },
 }));

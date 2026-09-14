@@ -11,7 +11,7 @@ import {
   Waves,
   Wind,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
@@ -22,6 +22,7 @@ import Button from "../components/ui/Button";
 import { ROUTES } from "../constants/routes";
 import { useActiveAlerts } from "../hooks/useAlerts";
 import { useMarineData } from "../hooks/useMarineData";
+import { useAppStore } from "../store/appStore";
 
 import "./Map.css";
 
@@ -78,10 +79,28 @@ function alertIcon(type: string) {
 export default function Map() {
   const navigate = useNavigate();
 
+  const clearPendingMapFocus = useAppStore(
+    (state) => state.clearPendingMapFocus
+  );
+
+  // Captured once on arrival so clearing the store's pending focus
+  // afterwards doesn't bounce the selected area back to the default.
+  const [focusedAreaId] = useState(
+    () => useAppStore.getState().pendingMapFocus?.areaId
+  );
+
   const {
     area,
     loading: marineLoading,
-  } = useMarineData();
+  } = useMarineData({
+    areaId: focusedAreaId,
+  });
+
+  useEffect(() => {
+    clearPendingMapFocus();
+    // Clear once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const {
     alerts,

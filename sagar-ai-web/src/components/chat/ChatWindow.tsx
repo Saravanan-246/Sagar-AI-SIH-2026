@@ -1,26 +1,30 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import ChatMessage from "./ChatMessage";
 import ChatWelcome from "./ChatWelcome";
 import ThinkingState from "./ThinkingState";
+import type { ChatStructuredData } from "./ChatStructuredPanel";
 
 export type ChatItem = {
   id: string;
   role: "user" | "assistant";
   text: string;
   timestamp?: string;
+  structured?: ChatStructuredData;
 };
 
 type ChatWindowProps = {
   messages: ChatItem[];
   loading?: boolean;
   onSuggestion?: (value: string) => void;
+  renderVoiceControl?: (message: ChatItem) => ReactNode;
 };
 
 export default function ChatWindow({
   messages,
   loading = false,
   onSuggestion,
+  renderVoiceControl,
 }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -48,6 +52,8 @@ export default function ChatWindow({
                   key={message.id}
                   role={message.role}
                   timestamp={message.timestamp}
+                  structured={message.structured}
+                  voiceControl={renderVoiceControl?.(message)}
                 >
                   {message.text}
                 </ChatMessage>
