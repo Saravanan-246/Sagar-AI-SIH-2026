@@ -277,6 +277,10 @@ export interface AgentPipelineResult {
 
   finalResponse?: string;
 
+  situation?: string;
+
+  reportTitle?: string;
+
   context?: ChatContext;
 
   warnings?: string[];

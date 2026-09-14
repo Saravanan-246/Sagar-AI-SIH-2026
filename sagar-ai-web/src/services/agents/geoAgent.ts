@@ -170,13 +170,17 @@ function normalizePoint(
     typeof value[1] === "number"
   ) {
     /*
-     * GeoJSON-style coordinate arrays are
-     * normally [longitude, latitude].
+     * This dataset stores coordinate pairs as [latitude, longitude].
+     * Auto-correct only if the pair is clearly [longitude, latitude]
+     * instead, using the same heuristic used elsewhere for this
+     * coastal region (latitude ~5-25, longitude ~50-100).
      */
-    const point = {
-      latitude: value[1],
-      longitude: value[0],
-    };
+    const [first, second] = value;
+
+    const point =
+      first > 50 && second < 30
+        ? { latitude: second, longitude: first }
+        : { latitude: first, longitude: second };
 
     return isValidPoint(point)
       ? point

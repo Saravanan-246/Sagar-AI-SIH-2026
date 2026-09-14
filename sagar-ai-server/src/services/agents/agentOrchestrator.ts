@@ -1160,6 +1160,14 @@ export async function runAgentOrchestrator(
     | string
     | undefined;
 
+  let situationSummary:
+    | string
+    | undefined;
+
+  let reportTitle:
+    | string
+    | undefined;
+
   if (
     reportingTask &&
     !failedTasks.has(
@@ -1253,6 +1261,22 @@ export async function runAgentOrchestrator(
         ) {
           finalRecommendation =
             data.recommendation;
+        }
+
+        if (
+          typeof data.summary ===
+          "string"
+        ) {
+          situationSummary =
+            data.summary;
+        }
+
+        if (
+          typeof data.title ===
+          "string"
+        ) {
+          reportTitle =
+            data.title;
         }
       }
 
@@ -1409,6 +1433,11 @@ export async function runAgentOrchestrator(
     finalRecommendation,
 
     finalResponse,
+
+    situation:
+      situationSummary,
+
+    reportTitle,
 
     context:
       request.context,

@@ -195,12 +195,18 @@ function normalizePoint(
     typeof value[1] === "number"
   ) {
     /*
-     * GeoJSON uses [longitude, latitude].
+     * This dataset stores polygon vertices as [latitude, longitude].
+     * Auto-correct only if the pair is clearly [longitude, latitude]
+     * instead (GeoJSON order), using the same heuristic already used
+     * by routeService.ts and MarineMap.tsx for this coastal region
+     * (latitude ~5-25, longitude ~50-100).
      */
-    const point = {
-      latitude: value[1],
-      longitude: value[0],
-    };
+    const [first, second] = value;
+
+    const point =
+      first > 50 && second < 30
+        ? { latitude: second, longitude: first }
+        : { latitude: first, longitude: second };
 
     return isValidPoint(point)
       ? point

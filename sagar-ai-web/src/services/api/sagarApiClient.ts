@@ -1,12 +1,13 @@
 import axios from "axios";
 
 import type {
-  AgentPipelineResult,
+  AgentEvidence,
   AgentResponse,
   MarineDataAgentData,
   WeatherAgentData,
   OceanAgentData,
   RiskAgentData,
+  VisualizationSpec,
 } from "../agents/agentTypes";
 
 import type { Alert } from "../../types/alert";
@@ -29,11 +30,82 @@ export interface ChatRequestOptions {
   areaName?: string;
 }
 
+export interface RankedFishingZone {
+  id: string;
+  name: string;
+  region?: string;
+  suitability?: string;
+  chlorophyllMgM3?: number;
+  seaSurfaceTemperatureC?: number;
+  fishSpecies?: string[];
+  score: number;
+  recommendation: "PREFER" | "MONITOR" | "AVOID";
+  reasons: string[];
+  nearestRestriction?: {
+    boundaryName: string;
+    distanceKm: number;
+    inside: boolean;
+  };
+}
+
+export interface WhatIfComparison {
+  question: string;
+  before: { riskScore: number; riskLevel: string };
+  after: {
+    riskScore: number;
+    riskLevel: string;
+    operability: string;
+  };
+  impact: string;
+  recommendation: string;
+}
+
+export interface DataStatus {
+  mode: "prototype";
+  note: string;
+  localSources: string[];
+  plannedLiveSources: Array<{ name: string; provider: string }>;
+}
+
+/** Structured response shape returned by POST/GET /api/chat. */
+export interface SagarChatResponse {
+  requestId: string;
+  status: string;
+  intent: string;
+  language: string;
+
+  answer: string;
+  situation?: string;
+  recommendation?: string;
+
+  riskLevel?: string;
+  riskScore?: number;
+  keyFactors?: string[];
+
+  evidence?: AgentEvidence[];
+  dataSources?: string[];
+
+  affectedArea?: { id: string; name: string; region?: string } | null;
+
+  route?: RoutePlan | null;
+  zones?: RankedFishingZone[];
+  alerts?: Alert[];
+
+  visualizations?: VisualizationSpec[];
+
+  whatIf?: WhatIfComparison;
+
+  timestamp: string;
+  dataStatus: DataStatus;
+
+  warnings?: string[];
+}
+
 export async function askSagarBackend(
   message: string,
   options: ChatRequestOptions = {}
-): Promise<AgentPipelineResult> {
-  const { data } = await apiClient.post<AgentPipelineResult>("/api/chat", {
+): Promise<SagarChatResponse> {
+  const { data } = await apiClient.post<SagarChatResponse>("/api/chat", {
     message,
     language: options.language,
     areaId: options.areaId,

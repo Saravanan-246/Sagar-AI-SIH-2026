@@ -36,19 +36,26 @@ async function resolveAssistantText(
       areaId: options.areaId,
     });
 
-    if (result.finalResponse) {
-      return result.finalResponse;
+    const base =
+      result.answer ||
+      result.recommendation ||
+      (result.warnings && result.warnings.length > 0
+        ? result.warnings.join(" ")
+        : "Sagar could not generate a response for this request.");
+
+    if (result.whatIf) {
+      const whatIf = result.whatIf;
+
+      return [
+        base,
+        "",
+        `What if ${whatIf.question}?`,
+        whatIf.impact,
+        `Recommendation: ${whatIf.recommendation}`,
+      ].join("\n");
     }
 
-    if (result.finalRecommendation) {
-      return result.finalRecommendation;
-    }
-
-    if (result.warnings && result.warnings.length > 0) {
-      return result.warnings.join(" ");
-    }
-
-    return "Sagar could not generate a response for this request.";
+    return base;
   } catch (backendError) {
     console.warn(
       "Sagar backend is unavailable, using the offline responder:",

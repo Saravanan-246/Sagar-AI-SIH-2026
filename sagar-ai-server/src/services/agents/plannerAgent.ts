@@ -76,9 +76,16 @@ export function planAgents(
           ["marine-data"]
         ),
         createTask(
+          "ocean",
+          "ocean",
+          "Check SST, chlorophyll and productivity signal alongside safety conditions.",
+          false,
+          ["marine-data"]
+        ),
+        createTask(
           "risk",
           "risk",
-          "Combine hazards and geospatial restrictions into a safety assessment.",
+          "Combine hazards, geospatial restrictions and ocean conditions into a safety assessment.",
           true,
           ["marine-data", "weather", "geo"]
         )

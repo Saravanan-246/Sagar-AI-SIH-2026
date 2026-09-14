@@ -195,6 +195,49 @@ function getDataValue(
   )[key];
 }
 
+/*
+ * Some intents (productivity, tide, geofence) have no dedicated "risk"
+ * task in the planner. Without this, an incidentally severe finding
+ * from an unrelated agent (e.g. a weather alert) could hijack the
+ * situation summary / recommendation for a question that was never
+ * about weather - answering "why has productivity decreased" with a
+ * wind-speed reading. This resolves the finding that actually answers
+ * the user's question, so it is preferred ahead of the generic
+ * severity scan whenever no risk assessment exists for this request.
+ */
+function findPrimaryFinding(
+  request: AgentRequest,
+  findings: AgentFinding[]
+): AgentFinding | undefined {
+  switch (request.intent) {
+    case "productivity":
+    case "pfz":
+      return findings.find(
+        (finding) => finding.agent === "ocean"
+      );
+
+    case "tide":
+      return (
+        findings.find(
+          (finding) =>
+            finding.agent === "marine-data" &&
+            finding.id.includes("tide")
+        ) ??
+        findings.find(
+          (finding) => finding.agent === "marine-data"
+        )
+      );
+
+    case "geofence":
+      return findings.find(
+        (finding) => finding.agent === "geo"
+      );
+
+    default:
+      return undefined;
+  }
+}
+
 function buildSituationSummary(
   request: AgentRequest,
   findings: AgentFinding[]
@@ -217,6 +260,10 @@ function buildSituationSummary(
         )
     );
 
+  const primaryFinding = !riskFinding
+    ? findPrimaryFinding(request, findings)
+    : undefined;
+
   const hazardFinding =
     findings.find(
       (finding) =>
@@ -231,6 +278,10 @@ function buildSituationSummary(
 
   if (riskFinding) {
     return `${riskFinding.summary}${location}.`;
+  }
+
+  if (primaryFinding) {
+    return `${primaryFinding.summary}${location}.`;
   }
 
   if (hazardFinding) {
@@ -275,23 +326,29 @@ function buildRecommendation(
     }
   }
 
-  const critical =
-    findings.find(
-      (finding) =>
-        finding.severity ===
-        "critical"
-    );
+  const hasPrimaryFinding = Boolean(
+    findPrimaryFinding(request, findings)
+  );
+
+  const critical = hasPrimaryFinding
+    ? undefined
+    : findings.find(
+        (finding) =>
+          finding.severity ===
+          "critical"
+      );
 
   if (critical) {
     return critical.summary;
   }
 
-  const highRisk =
-    findings.find(
-      (finding) =>
-        finding.severity ===
-        "high"
-    );
+  const highRisk = hasPrimaryFinding
+    ? undefined
+    : findings.find(
+        (finding) =>
+          finding.severity ===
+          "high"
+      );
 
   if (highRisk) {
     return highRisk.summary;
