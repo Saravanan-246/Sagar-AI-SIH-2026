@@ -1,0 +1,294 @@
+{
+  "metric": {
+    "name": "Marine Fish Productivity Index",
+    "unit": "index",
+    "scale": {
+      "minimum": 0,
+      "maximum": 100
+    }
+  },
+  "areas": [
+    {
+      "id": "thoothukudi-coast",
+      "name": "Thoothukudi Coast",
+      "region": "Gulf of Mannar",
+      "current": {
+        "index": 74,
+        "status": "favourable",
+        "confidence": "moderate"
+      },
+      "trend": {
+        "direction": "stable",
+        "changePercent": 2.8,
+        "period": "last 30 days"
+      },
+      "monthlyHistory": [
+        {
+          "month": "2026-04",
+          "index": 68,
+          "status": "moderate"
+        },
+        {
+          "month": "2026-05",
+          "index": 71,
+          "status": "moderate"
+        },
+        {
+          "month": "2026-06",
+          "index": 75,
+          "status": "favourable"
+        },
+        {
+          "month": "2026-07",
+          "index": 72,
+          "status": "favourable"
+        },
+        {
+          "month": "2026-08",
+          "index": 70,
+          "status": "moderate"
+        },
+        {
+          "month": "2026-09",
+          "index": 74,
+          "status": "favourable"
+        }
+      ],
+      "drivers": {
+        "chlorophyll": {
+          "value": 1.42,
+          "unit": "mg/m3",
+          "effect": "positive"
+        },
+        "sst": {
+          "value": 28.4,
+          "unit": "°C",
+          "effect": "positive"
+        },
+        "seaState": {
+          "value": 3,
+          "effect": "neutral"
+        }
+      },
+      "interpretation": "Productivity indicators remain favourable with moderately strong chlorophyll and suitable SST conditions.",
+      "recommendation": "Prioritize favourable PFZ candidates after checking current marine safety conditions."
+    },
+    {
+      "id": "central-gulf-mannar",
+      "name": "Central Gulf of Mannar",
+      "region": "Gulf of Mannar",
+      "current": {
+        "index": 82,
+        "status": "high",
+        "confidence": "moderate"
+      },
+      "trend": {
+        "direction": "rising",
+        "changePercent": 6.5,
+        "period": "last 30 days"
+      },
+      "monthlyHistory": [
+        {
+          "month": "2026-04",
+          "index": 64,
+          "status": "moderate"
+        },
+        {
+          "month": "2026-05",
+          "index": 69,
+          "status": "moderate"
+        },
+        {
+          "month": "2026-06",
+          "index": 73,
+          "status": "favourable"
+        },
+        {
+          "month": "2026-07",
+          "index": 77,
+          "status": "favourable"
+        },
+        {
+          "month": "2026-08",
+          "index": 79,
+          "status": "high"
+        },
+        {
+          "month": "2026-09",
+          "index": 82,
+          "status": "high"
+        }
+      ],
+      "drivers": {
+        "chlorophyll": {
+          "value": 1.76,
+          "unit": "mg/m3",
+          "effect": "strong_positive"
+        },
+        "sst": {
+          "value": 28.1,
+          "unit": "°C",
+          "effect": "positive"
+        },
+        "seaState": {
+          "value": 4,
+          "effect": "negative_for_access"
+        }
+      },
+      "interpretation": "The sector shows strong productivity indicators, but current sea conditions increase the operational risk of accessing the area.",
+      "recommendation": "Do not treat high productivity as an automatic go signal; combine productivity with route and safety risk."
+    },
+    {
+      "id": "southern-gulf-mannar",
+      "name": "Southern Gulf of Mannar",
+      "region": "Gulf of Mannar",
+      "current": {
+        "index": 79,
+        "status": "favourable",
+        "confidence": "moderate"
+      },
+      "trend": {
+        "direction": "rising",
+        "changePercent": 4.1,
+        "period": "last 30 days"
+      },
+      "monthlyHistory": [
+        {
+          "month": "2026-04",
+          "index": 70,
+          "status": "favourable"
+        },
+        {
+          "month": "2026-05",
+          "index": 72,
+          "status": "favourable"
+        },
+        {
+          "month": "2026-06",
+          "index": 74,
+          "status": "favourable"
+        },
+        {
+          "month": "2026-07",
+          "index": 76,
+          "status": "favourable"
+        },
+        {
+          "month": "2026-08",
+          "index": 75,
+          "status": "favourable"
+        },
+        {
+          "month": "2026-09",
+          "index": 79,
+          "status": "favourable"
+        }
+      ],
+      "drivers": {
+        "chlorophyll": {
+          "value": 1.55,
+          "unit": "mg/m3",
+          "effect": "positive"
+        },
+        "sst": {
+          "value": 27.9,
+          "unit": "°C",
+          "effect": "positive"
+        },
+        "seaState": {
+          "value": 2,
+          "effect": "positive_for_access"
+        }
+      },
+      "interpretation": "Productivity remains favourable while current sea conditions are comparatively suitable for access.",
+      "recommendation": "This sector can be considered a balanced candidate when productivity and marine safety are evaluated together."
+    },
+    {
+      "id": "north-gulf-mannar",
+      "name": "Northern Gulf of Mannar",
+      "region": "Gulf of Mannar",
+      "current": {
+        "index": 42,
+        "status": "low",
+        "confidence": "moderate"
+      },
+      "trend": {
+        "direction": "declining",
+        "changePercent": -9.6,
+        "period": "last 30 days"
+      },
+      "monthlyHistory": [
+        {
+          "month": "2026-04",
+          "index": 61,
+          "status": "moderate"
+        },
+        {
+          "month": "2026-05",
+          "index": 57,
+          "status": "moderate"
+        },
+        {
+          "month": "2026-06",
+          "index": 55,
+          "status": "moderate"
+        },
+        {
+          "month": "2026-07",
+          "index": 51,
+          "status": "moderate"
+        },
+        {
+          "month": "2026-08",
+          "index": 46,
+          "status": "low"
+        },
+        {
+          "month": "2026-09",
+          "index": 42,
+          "status": "low"
+        }
+      ],
+      "drivers": {
+        "chlorophyll": {
+          "value": 0.48,
+          "unit": "mg/m3",
+          "effect": "negative"
+        },
+        "sst": {
+          "value": 29.8,
+          "unit": "°C",
+          "effect": "less_favourable"
+        },
+        "seaState": {
+          "value": 3,
+          "effect": "neutral"
+        }
+      },
+      "interpretation": "The productivity index has declined over recent months, associated with lower chlorophyll and less favourable SST conditions.",
+      "recommendation": "Treat this sector as lower priority and compare it against stronger productivity zones before planning a trip."
+    }
+  ],
+  "regionalComparison": [
+    {
+      "areaId": "central-gulf-mannar",
+      "rank": 1,
+      "index": 82
+    },
+    {
+      "areaId": "southern-gulf-mannar",
+      "rank": 2,
+      "index": 79
+    },
+    {
+      "areaId": "thoothukudi-coast",
+      "rank": 3,
+      "index": 74
+    },
+    {
+      "areaId": "north-gulf-mannar",
+      "rank": 4,
+      "index": 42
+    }
+  ]
+}

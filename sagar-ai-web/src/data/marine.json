@@ -1,0 +1,43 @@
+{
+  "areaName": "Gulf of Mannar Sector",
+  "coordinates": {
+    "latitude": 8.7534,
+    "longitude": 78.1620
+  },
+  "seaState": "Moderate",
+  "waveHeight": 1.2,
+  "windSpeed": 14,
+  "windDirection": "South-West",
+  "surfaceTemperature": 28.3,
+  "salinity": 34.8,
+  "tide": "Ebb (Falling)",
+  "hazards": [
+    {
+      "id": "hazard-marine-park",
+      "type": "Restricted Sanctuary",
+      "name": "Gulf of Mannar Biosphere Core Zone",
+      "severity": "High",
+      "latitude": 8.8500,
+      "longitude": 78.3400,
+      "description": "Strictly restricted zone under Marine Protected Area regulations. Mechanized fishing prohibited."
+    },
+    {
+      "id": "hazard-chennai-anchorage",
+      "type": "Vessel Traffic Hazard",
+      "name": "Chennai Commercial Vessel Anchorage",
+      "severity": "Moderate",
+      "latitude": 13.1100,
+      "longitude": 80.3600,
+      "description": "High-density cargo transit sector. Maintain radar watch."
+    },
+    {
+      "id": "hazard-pamban-bridge",
+      "type": "Navigational Obstruction",
+      "name": "Pamban Channel Shallows",
+      "severity": "Elevated",
+      "latitude": 9.2780,
+      "longitude": 79.2150,
+      "description": "Submerged reefs and restricted draft under Pamban rail alignment."
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+[
+  {
+    "id": "scenario-tomorrow-morning",
+    "type": "departure_time",
+    "name": "Tomorrow Morning Departure",
+    "description": "Evaluate expected operating risk for an early-morning offshore departure.",
+    "inputs": {
+      "departureTime": "06:00",
+      "durationHours": 6,
+      "vesselType": "small"
+    },
+    "baselineArea": "thoothukudi-coast",
+    "modifiers": {
+      "wind": 1.05,
+      "waves": 1.08,
+      "visibility": 1.02
+    },
+    "result": {
+      "riskLevel": "moderate",
+      "riskScore": 52,
+      "operability": "caution",
+      "recommendation": "Proceed only after checking updated marine conditions before departure.",
+      "keyFactors": [
+        "moderate wind",
+        "possible lightning activity",
+        "offshore cyclone influence"
+      ]
+    }
+  },
+  {
+    "id": "scenario-strong-wind",
+    "type": "weather_change",
+    "name": "Strong Wind Increase",
+    "description": "Evaluate route safety when wind conditions become significantly stronger.",
+    "inputs": {
+      "windSpeedIncreasePercent": 40,
+      "waveIncreasePercent": 25,
+      "vesselType": "small"
+    },
+    "baselineArea": "thoothukudi-coast",
+    "modifiers": {
+      "riskScore": 18,
+      "travelTimeMultiplier": 1.12,
+      "fuelUseMultiplier": 1.16
+    },
+    "result": {
+      "riskLevel": "high",
+      "riskScore": 69,
+      "operability": "avoid",
+      "recommendation": "Delay offshore travel or select a shorter route through lower-risk waters.",
+      "keyFactors": [
+        "increased wind resistance",
+        "higher wave activity",
+        "longer travel time"
+      ]
+    }
+  },
+  {
+    "id": "scenario-lightning",
+    "type": "hazard_activation",
+    "name": "Lightning Activity Increases",
+    "description": "Evaluate how a developing lightning event changes a planned offshore trip.",
+    "inputs": {
+      "lightningRisk": "high",
+      "affectedRadiusKm": 60,
+      "vesselType": "small"
+    },
+    "baselineArea": "thoothukudi-coast",
+    "modifiers": {
+      "riskScore": 24,
+      "visibilityMultiplier": 0.9
+    },
+    "result": {
+      "riskLevel": "high",
+      "riskScore": 72,
+      "operability": "avoid",
+      "recommendation": "Return toward safer waters or delay departure until the active lightning threat has passed.",
+      "keyFactors": [
+        "direct lightning exposure",
+        "rapid weather changes",
+        "reduced navigation safety"
+      ]
+    }
+  },
+  {
+    "id": "scenario-route-delay",
+    "type": "route_change",
+    "name": "Avoid Hazardous Sector",
+    "description": "Compare the original route against a route that avoids an active hazard.",
+    "inputs": {
+      "routeId": "route-thoothukudi-central-001",
+      "avoidHazards": true,
+      "vesselType": "small"
+    },
+    "modifiers": {
+      "distanceIncreasePercent": 18,
+      "travelTimeIncreasePercent": 21,
+      "riskReductionPercent": 46
+    },
+    "result": {
+      "riskLevel": "moderate",
+      "riskScore": 41,
+      "operability": "caution",
+      "recommendation": "Take the longer alternative route because the additional travel time provides a substantial reduction in marine risk.",
+      "keyFactors": [
+        "hazard avoidance",
+        "longer travel distance",
+        "lower route exposure"
+      ]
+    }
+  },
+  {
+    "id": "scenario-productivity-decline",
+    "type": "productivity_change",
+    "name": "Productivity Decline",
+    "description": "Evaluate the effect of declining marine productivity in a coastal region.",
+    "inputs": {
+      "areaId": "north-gulf-mannar",
+      "productivityDecreasePercent": 20
+    },
+    "modifiers": {
+      "productivityIndexChange": -8,
+      "pfzPriorityChange": -1
+    },
+    "result": {
+      "riskLevel": "moderate",
+      "riskScore": 45,
+      "operability": "caution",
+      "recommendation": "Compare alternative fishing zones with stronger productivity indicators before planning the trip.",
+      "keyFactors": [
+        "lower chlorophyll signal",
+        "less favourable SST",
+        "declining productivity trend"
+      ]
+    }
+  },
+  {
+    "id": "scenario-restricted-zone",
+    "type": "geofence",
+    "name": "Restricted Zone Encounter",
+    "description": "Evaluate a route that approaches or intersects a restricted marine boundary.",
+    "inputs": {
+      "boundaryId": "boundary-protected-sector-001",
+      "distanceToBoundaryKm": 0,
+      "vesselType": "small"
+    },
+    "modifiers": {
+      "riskScore": 40,
+      "routeStatus": "blocked"
+    },
+    "result": {
+      "riskLevel": "critical",
+      "riskScore": 100,
+      "operability": "blocked",
+      "recommendation": "Do not continue through the restricted boundary. Recalculate the route around the exclusion zone.",
+      "keyFactors": [
+        "restricted marine boundary",
+        "route geofence violation",
+        "mandatory route diversion"
+      ]
+    }
+  }
+]
