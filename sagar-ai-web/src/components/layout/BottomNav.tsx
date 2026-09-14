@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
   Activity,
   Bell,
   Compass,
+  Database,
   Home,
   Map,
+  MoreHorizontal,
   Route,
   Sparkles,
   User,
@@ -41,26 +44,60 @@ const navigation = [
 
 const moreNavigation = [
   {
-    label: "Routes",
+    label: "Route Planning",
     path: "/route",
     icon: Route,
   },
   {
-    label: "Alerts",
+    label: "What-If Analysis",
+    path: "/scenario",
+    icon: Compass,
+  },
+  {
+    label: "Marine Alerts",
     path: "/alerts",
     icon: Bell,
   },
   {
-    label: "Scenarios",
-    path: "/scenario",
-    icon: Compass,
+    label: "Data Sources",
+    path: "/sources",
+    icon: Database,
   },
 ];
 
 export default function BottomNav() {
+  const [moreOpen, setMoreOpen] = useState(false);
+
   return (
     <>
       <nav className="mobile-bottom-nav">
+        {moreOpen && (
+          <div
+            className="mobile-more-backdrop"
+            onClick={() => setMoreOpen(false)}
+          />
+        )}
+
+        {moreOpen && (
+          <div className="mobile-more-sheet">
+            {moreNavigation.map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className="mobile-more-link"
+                  onClick={() => setMoreOpen(false)}
+                >
+                  <Icon size={18} strokeWidth={2} />
+                  <span>{item.label}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        )}
+
         <div className="mobile-bottom-nav-inner">
           {navigation.map((item) => {
             const Icon = item.icon;
@@ -70,6 +107,7 @@ export default function BottomNav() {
                 key={item.path}
                 to={item.path}
                 end={item.path === "/"}
+                onClick={() => setMoreOpen(false)}
                 className={({ isActive }) =>
                   [
                     "mobile-nav-item",
@@ -109,6 +147,27 @@ export default function BottomNav() {
               </NavLink>
             );
           })}
+
+          <button
+            type="button"
+            className={
+              moreOpen
+                ? "mobile-nav-item mobile-nav-item-active"
+                : "mobile-nav-item"
+            }
+            onClick={() => setMoreOpen((open) => !open)}
+            aria-label="More navigation"
+            aria-expanded={moreOpen}
+          >
+            <span className="mobile-nav-icon">
+              <MoreHorizontal
+                size={19}
+                strokeWidth={moreOpen ? 2.4 : 1.9}
+              />
+            </span>
+
+            <span className="mobile-nav-label">More</span>
+          </button>
         </div>
       </nav>
 

@@ -76,7 +76,7 @@ export interface StructuredSagarResponse {
 
 let cachedDataStatus: DataStatus | null = null;
 
-function buildDataStatus(): DataStatus {
+export function buildDataStatus(): DataStatus {
   if (cachedDataStatus) {
     return cachedDataStatus;
   }

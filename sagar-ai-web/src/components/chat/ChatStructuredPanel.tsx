@@ -13,7 +13,10 @@ export type ChatStructuredData = {
   keyFactors?: string[];
   evidenceTitles?: string[];
   whatIfSummary?: string;
-  mapAction?: ChatMapAction;
+  /** A small set of result-relevant actions (View on Map, View Route,
+   * Simulate, ...) - never every possible action, just what applies to
+   * this particular result. */
+  actions?: ChatMapAction[];
 };
 
 function riskTone(level?: string) {
@@ -43,12 +46,14 @@ export default function ChatStructuredPanel({
     data.evidenceTitles && data.evidenceTitles.length > 0
   );
 
+  const hasActions = Boolean(data.actions && data.actions.length > 0);
+
   if (
     !hasRisk &&
     !hasFactors &&
     !hasEvidence &&
     !data.whatIfSummary &&
-    !data.mapAction
+    !hasActions
   ) {
     return null;
   }
@@ -94,15 +99,20 @@ export default function ChatStructuredPanel({
         </div>
       )}
 
-      {data.mapAction && (
-        <button
-          type="button"
-          className="chat-structured-map-action"
-          onClick={data.mapAction.onClick}
-        >
-          <MapPinned size={13} />
-          {data.mapAction.label}
-        </button>
+      {hasActions && (
+        <div className="chat-structured-actions">
+          {data.actions!.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              className="chat-structured-map-action"
+              onClick={action.onClick}
+            >
+              <MapPinned size={13} />
+              {action.label}
+            </button>
+          ))}
+        </div>
       )}
 
       <style>{`
@@ -172,12 +182,17 @@ export default function ChatStructuredPanel({
           color: #6d28d9;
         }
 
+        .chat-structured-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 7px;
+        }
+
         .chat-structured-map-action {
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 6px;
-          align-self: flex-start;
           min-height: 30px;
           padding: 0 12px;
           border: 1px solid #6d28d9;

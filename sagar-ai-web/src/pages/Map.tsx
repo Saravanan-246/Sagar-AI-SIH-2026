@@ -85,9 +85,11 @@ export default function Map() {
 
   // Captured once on arrival so clearing the store's pending focus
   // afterwards doesn't bounce the selected area back to the default.
-  const [focusedAreaId] = useState(
-    () => useAppStore.getState().pendingMapFocus?.areaId
+  const [pendingFocus] = useState(
+    () => useAppStore.getState().pendingMapFocus
   );
+
+  const focusedAreaId = pendingFocus?.areaId;
 
   const {
     area,
@@ -101,6 +103,29 @@ export default function Map() {
     // Clear once on mount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Actually move the map to whatever Sagar chat handed off - an
+  // explicit coordinate (an alert/zone/route point) takes priority,
+  // otherwise fall back to the resolved area's centroid once it loads.
+  const focusCenter = useMemo(() => {
+    if (
+      typeof pendingFocus?.latitude === "number" &&
+      typeof pendingFocus?.longitude === "number"
+    ) {
+      return {
+        latitude: pendingFocus.latitude,
+        longitude: pendingFocus.longitude,
+      };
+    }
+
+    if (area?.coordinates) {
+      return area.coordinates;
+    }
+
+    return undefined;
+  }, [pendingFocus, area]);
+
+  const hasFocusTarget = Boolean(pendingFocus);
 
   const {
     alerts,
@@ -211,7 +236,15 @@ export default function Map() {
             </div>
 
             <div className="map-canvas">
-              <MarineMap />
+              <MarineMap
+                center={focusCenter}
+                zoom={hasFocusTarget ? 11 : undefined}
+                highlight={
+                  hasFocusTarget && focusCenter
+                    ? { ...focusCenter, label: pendingFocus?.label ?? area?.name }
+                    : null
+                }
+              />
 
               <div className="map-canvas-topbar">
                 <div className="map-location-pill">

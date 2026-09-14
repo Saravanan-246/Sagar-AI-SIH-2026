@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -9,7 +9,10 @@ import { askSagar as askSagarLocal } from "../services/ai/localSagar";
 import { useAppStore } from "../store/appStore";
 import { ROUTES } from "../constants/routes";
 
-import type { ChatStructuredData } from "../components/chat/ChatStructuredPanel";
+import type {
+  ChatMapAction,
+  ChatStructuredData,
+} from "../components/chat/ChatStructuredPanel";
 import type { RoutePlan } from "../types/route";
 
 type SagarChatMessage = {
@@ -19,6 +22,10 @@ type SagarChatMessage = {
   timestamp: string;
   route?: RoutePlan | null;
   structured?: ChatStructuredData;
+  /** The language Sagar actually answered in (from the backend's detected
+   * language), so voice playback can match the reply instead of a static
+   * app-wide setting. */
+  language?: string;
 };
 
 type SagarOptions = {
@@ -35,24 +42,64 @@ type UseSagarReturn = {
     options?: SagarOptions
   ) => Promise<SagarChatMessage | null>;
   clearConversation: () => void;
+  restoreMessages: (messages: SagarChatMessage[]) => void;
 };
 
 interface AssistantReply {
   text: string;
   route: RoutePlan | null;
   structured?: ChatStructuredData;
+  language?: string;
 }
 
-function buildStructuredData(
+/**
+ * A small, result-relevant action set - never every possible action.
+ * Map/route/zone navigation reuses the existing map handoff; "Simulate"
+ * reuses the existing deterministic what-if pipeline by asking a real
+ * follow-up question through the same Chat pipeline (no new engine).
+ */
+function buildStructuredActions(
   result: SagarChatResponse,
-  onViewMap: () => void
-): ChatStructuredData | undefined {
+  handlers: { onView: () => void; onSimulate: () => void }
+): ChatMapAction[] {
+  const actions: ChatMapAction[] = [];
+
   const hasMapTarget = Boolean(
     result.route ||
       (result.zones && result.zones.length > 0) ||
       (result.alerts && result.alerts.length > 0) ||
       result.affectedArea
   );
+
+  if (hasMapTarget) {
+    const label = result.route
+      ? "View route"
+      : result.zones && result.zones.length > 0
+        ? "View zone"
+        : "View on map";
+
+    actions.push({ label, onClick: handlers.onView });
+  }
+
+  // Only offer to simulate when there's a real risk baseline to compare
+  // against and this answer isn't already a what-if comparison itself.
+  const canSimulate =
+    !result.whatIf &&
+    typeof result.riskScore === "number" &&
+    (result.intent === "safety" || result.intent === "route");
+
+  if (canSimulate) {
+    actions.push({ label: "Simulate (what if?)", onClick: handlers.onSimulate });
+  }
+
+  return actions.slice(0, 2);
+}
+
+function buildStructuredData(
+  result: SagarChatResponse,
+  handlers: { onView: () => void; onSimulate: () => void }
+): ChatStructuredData | undefined {
+  const actions = buildStructuredActions(result, handlers);
 
   const structured: ChatStructuredData = {
     riskLevel: result.riskLevel,
@@ -62,12 +109,7 @@ function buildStructuredData(
     whatIfSummary: result.whatIf
       ? `What if ${result.whatIf.question}? ${result.whatIf.impact}`
       : undefined,
-    mapAction: hasMapTarget
-      ? {
-          label: result.route ? "View route on map" : "View on map",
-          onClick: onViewMap,
-        }
-      : undefined,
+    actions: actions.length > 0 ? actions : undefined,
   };
 
   const hasAnyField = Object.values(structured).some(
@@ -100,6 +142,11 @@ export default function useSagar(): UseSagarReturn {
     (state) => state.selectedAreaId
   );
 
+  // Lets a structured action (e.g. "Simulate") ask a real follow-up
+  // question through this same hook's own sendMessage, without a
+  // circular dependency between the two useCallbacks below.
+  const sendMessageRef = useRef<UseSagarReturn["sendMessage"] | null>(null);
+
   const resolveAssistantReply = useCallback(
     async (
       text: string,
@@ -118,6 +165,13 @@ export default function useSagar(): UseSagarReturn {
           label: result.affectedArea?.name,
         });
         navigate(ROUTES.MAP);
+      };
+
+      const handleSimulate = () => {
+        void sendMessageRef.current?.(
+          "What if wind speed increases by 20%?",
+          options
+        );
       };
 
       try {
@@ -146,10 +200,11 @@ export default function useSagar(): UseSagarReturn {
         return {
           text: base,
           route: result.route ?? null,
-          structured: buildStructuredData(
-            result,
-            handleViewOnMap(result)
-          ),
+          structured: buildStructuredData(result, {
+            onView: handleViewOnMap(result),
+            onSimulate: handleSimulate,
+          }),
+          language: result.language,
         };
       } catch (backendError) {
         console.warn(
@@ -162,7 +217,7 @@ export default function useSagar(): UseSagarReturn {
           areaId: options.areaId,
         });
 
-        return { text: local.text, route: null };
+        return { text: local.text, route: null, language: options.language };
       }
     },
     [
@@ -218,6 +273,7 @@ export default function useSagar(): UseSagarReturn {
           timestamp: new Date().toISOString(),
           route: reply.route,
           structured: reply.structured,
+          language: reply.language,
         };
 
         setMessages((current) => [
@@ -244,10 +300,20 @@ export default function useSagar(): UseSagarReturn {
     [loading, messages, resolveAssistantReply]
   );
 
+  sendMessageRef.current = sendMessage;
+
   const clearConversation = useCallback(() => {
     setMessages([]);
     setError(null);
   }, []);
+
+  const restoreMessages = useCallback(
+    (restored: SagarChatMessage[]) => {
+      setMessages(restored);
+      setError(null);
+    },
+    []
+  );
 
   return {
     messages,
@@ -255,5 +321,6 @@ export default function useSagar(): UseSagarReturn {
     error,
     sendMessage,
     clearConversation,
+    restoreMessages,
   };
 }

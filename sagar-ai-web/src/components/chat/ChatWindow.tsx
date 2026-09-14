@@ -11,11 +11,14 @@ export type ChatItem = {
   text: string;
   timestamp?: string;
   structured?: ChatStructuredData;
+  /** Language this message was actually asked/answered in (e.g. "ta"). */
+  language?: string;
 };
 
 type ChatWindowProps = {
   messages: ChatItem[];
   loading?: boolean;
+  suggestions?: string[];
   onSuggestion?: (value: string) => void;
   renderVoiceControl?: (message: ChatItem) => ReactNode;
 };
@@ -23,6 +26,7 @@ type ChatWindowProps = {
 export default function ChatWindow({
   messages,
   loading = false,
+  suggestions,
   onSuggestion,
   renderVoiceControl,
 }: ChatWindowProps) {
@@ -43,6 +47,7 @@ export default function ChatWindow({
         <div className="chat-window-content">
           {isEmpty ? (
             <ChatWelcome
+              suggestions={suggestions}
               onSuggestion={onSuggestion}
             />
           ) : (

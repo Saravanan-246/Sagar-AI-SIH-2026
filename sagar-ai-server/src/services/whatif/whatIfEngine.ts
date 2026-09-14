@@ -18,8 +18,34 @@ export interface WhatIfDetection {
   hours?: number;
 }
 
+// English plus the Tamil/Telugu/Malayalam/Kannada/Hindi phrasing used
+// elsewhere in the app (see services/ai/intent.ts) for the same
+// "what if" question, so a hypothetical asked in any supported
+// language still reaches the deterministic scenario engine below.
 const WHAT_IF_PATTERN =
-  /what if|what would happen|what happens if|suppose |imagine if/i;
+  /what if|what would happen|what happens if|suppose |imagine if|என்ன ஆகும்|ஆனால்.*என்ன|అయితే.*ఏమి|ఏమి జరుగుతుంది|എന്ത് സംഭവിക്കും|ಏನಾಗುತ್ತದೆ|अगर.*तो|क्या होगा/i;
+
+const ROUTE_WORDS =
+  /route|பாதை|వழి|വഴി|ಮಾರ್ಗ|मार्ग|रूट/i;
+const BLOCKED_WORDS =
+  /block|close|unavailable|impassable|தடை|மூடப்பட்ட|முடக்க|అడ్డుకో|మూసివేత|തടസ്സ|അടച്ച|ನಿರ್ಬಂಧ|मुंद|बंद|अवरुद्ध/i;
+const LIGHTNING_WORDS =
+  /lightning|மின்னல்|మెరుపు|മിന്നൽ|ಮಿಂಚು|बिजली/i;
+const CYCLONE_WORDS =
+  /cyclone|புயல்|சூறாவளி|తుఫాను|ചുഴലിക്കാറ്റ്|ಚಂಡಮಾರುತ|तूफान|चक्रवात/i;
+const PRODUCTIVITY_WORDS =
+  /productivity|உற்பத்தி|ఉత్పాదకత|ഉൽപ്പാദനക്ഷമത|ಉತ್ಪಾದಕತೆ|उत्पादकता/i;
+const WAVE_WORDS =
+  /wave|அலை|అల|തിര|ಅಲೆ|लहर/i;
+// காற்ற (not காற்று) - the bare stem, so declined forms like காற்றின்
+// ("of the wind") and காற்றால் ("by the wind") still match, not just
+// the nominative காற்று.
+const WIND_WORDS =
+  /wind|காற்ற|గాలి|കാറ്റ്|ಗಾಳಿ|हवा/i;
+const DEPART_WORDS =
+  /depart|leave|புறப்பாடு|கிளம்பு|బయలుదేరు|പുറപ്പെടൽ|ಹೊರಡು|प्रस्थान|रवाना/i;
+const LATER_WORDS =
+  /later|delay|தாமதமாக|பிந்தி|ఆలస్యంగా|താമസിച്ച്|ತಡವಾಗಿ|देर से|विलंब/i;
 
 export function detectWhatIf(
   message: string
@@ -39,35 +65,35 @@ export function detectWhatIf(
   const hours = hoursMatch ? Number(hoursMatch[1]) : undefined;
 
   if (
-    /route/.test(text) &&
-    /(block|close|unavailable|impassable)/.test(text)
+    ROUTE_WORDS.test(text) &&
+    BLOCKED_WORDS.test(text)
   ) {
     return { kind: "route_blocked" };
   }
 
-  if (/lightning/.test(text)) {
+  if (LIGHTNING_WORDS.test(text)) {
     return { kind: "lightning_active" };
   }
 
-  if (/cyclone/.test(text)) {
+  if (CYCLONE_WORDS.test(text)) {
     return { kind: "cyclone_active" };
   }
 
-  if (/productivity/.test(text)) {
+  if (PRODUCTIVITY_WORDS.test(text)) {
     return { kind: "productivity_lower", percent: percent ?? 15 };
   }
 
-  if (/wave/.test(text)) {
+  if (WAVE_WORDS.test(text)) {
     return { kind: "wave_increase", percent: percent ?? 20 };
   }
 
-  if (/wind/.test(text)) {
+  if (WIND_WORDS.test(text)) {
     return { kind: "wind_increase", percent: percent ?? 20 };
   }
 
   if (
-    (/depart/.test(text) || /leave/.test(text)) &&
-    (/later/.test(text) || /delay/.test(text))
+    DEPART_WORDS.test(text) &&
+    LATER_WORDS.test(text)
   ) {
     return { kind: "departure_later", hours: hours ?? 4 };
   }

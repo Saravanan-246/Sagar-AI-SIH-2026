@@ -276,20 +276,27 @@ function buildSituationSummary(
       ? ` for ${areaName}`
       : "";
 
+  // Finding summaries already end with a period; appending " for
+  // <area>." after that reads as a dangling fragment ("...risk. for
+  // Area."), so the trailing period is dropped first to fold the area
+  // into the same closing sentence.
+  const withLocation = (summary: string) =>
+    `${summary.replace(/\.\s*$/, "")}${location}.`;
+
   if (riskFinding) {
-    return `${riskFinding.summary}${location}.`;
+    return withLocation(riskFinding.summary);
   }
 
   if (primaryFinding) {
-    return `${primaryFinding.summary}${location}.`;
+    return withLocation(primaryFinding.summary);
   }
 
   if (hazardFinding) {
-    return `${hazardFinding.summary}${location}.`;
+    return withLocation(hazardFinding.summary);
   }
 
   if (findings.length > 0) {
-    return `${findings[0].summary}${location}.`;
+    return withLocation(findings[0].summary);
   }
 
   return `Sagar analysed the available marine information${location}.`;
@@ -422,90 +429,43 @@ function buildTitle(
   }
 }
 
+/*
+ * Keeps the visible chat bubble short: a situation sentence plus a
+ * recommendation (when it says something new). Risk score, key factors
+ * and evidence are already returned as their own structured fields
+ * (riskLevel/riskScore/keyFactors/evidence on the API response) and
+ * rendered as separate Risk/Why/Evidence sections in the chat UI, so
+ * repeating them here as prose would just produce a duplicated wall of
+ * text instead of a decision-support-grade answer.
+ */
 function buildHumanResponse(
-  request: AgentRequest,
+  _request: AgentRequest,
   summary: string,
   recommendation: string,
-  findings: AgentFinding[],
-  evidence: AgentEvidence[]
+  _findings: AgentFinding[],
+  _evidence: AgentEvidence[]
 ): string {
-  const risk =
-    highestSeverity(
-      findings
-    );
+  const trimmedSummary = summary.trim();
+  const trimmedRecommendation = recommendation.trim();
 
-  const areaName =
-    request.context.areaName ??
-    request.area?.name;
-
-  const lines: string[] = [];
-
-  lines.push(summary);
-
-  if (areaName) {
-    lines.push(
-      `Area: ${areaName}.`
-    );
-  }
+  // Compare on the core text (no trailing period, case-insensitive) -
+  // buildSituationSummary folds an area name onto the same sentence, so
+  // an exact substring check against the untouched recommendation would
+  // miss a real duplicate and print it twice.
+  const normalizedSummary = trimmedSummary.toLowerCase();
+  const normalizedRecommendation = trimmedRecommendation
+    .replace(/\.\s*$/, "")
+    .toLowerCase();
 
   if (
-    risk === "critical" ||
-    risk === "high"
+    !trimmedRecommendation ||
+    (normalizedRecommendation.length > 0 &&
+      normalizedSummary.includes(normalizedRecommendation))
   ) {
-    lines.push(
-      `Risk level: ${
-        risk === "critical"
-          ? "Critical"
-          : "High"
-      }.`
-    );
+    return trimmedSummary;
   }
 
-  if (recommendation) {
-    lines.push(
-      `Recommendation: ${recommendation}`
-    );
-  }
-
-  if (findings.length > 0) {
-    const supportingFindings =
-      findings
-        .filter(
-          (finding) =>
-            finding.agent !==
-              "reporting" &&
-            finding.summary
-        )
-        .slice(0, 3);
-
-    if (
-      supportingFindings.length > 0
-    ) {
-      lines.push(
-        `Key factors: ${supportingFindings
-          .map(
-            (finding) =>
-              finding.summary
-          )
-          .join(" ")}`
-      );
-    }
-  }
-
-  if (evidence.length > 0) {
-    lines.push(
-      `Supporting evidence: ${evidence
-        .slice(0, 3)
-        .map((item) =>
-          item.source
-            ? `${item.title} (${item.source})`
-            : item.title
-        )
-        .join("; ")}.`
-    );
-  }
-
-  return lines.join("\n\n");
+  return `${trimmedSummary} ${trimmedRecommendation}`;
 }
 
 function buildReportData(

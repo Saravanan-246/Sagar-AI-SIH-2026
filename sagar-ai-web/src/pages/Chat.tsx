@@ -4,14 +4,17 @@ import {
   ArrowLeft,
   Bot,
   Compass,
+  FolderClock,
   Fish,
   Mic,
   MicOff,
   Navigation,
   Pause,
   RotateCcw,
+  Save,
   Sparkles,
   Square,
+  Trash2,
   Volume2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -27,6 +30,13 @@ import { useUserLocation } from "../hooks/useUserLocation";
 import { useVoiceInput } from "../hooks/useVoiceInput";
 import { useVoiceOutput } from "../hooks/useVoiceOutput";
 import { getMarineAreas } from "../services/marine/marineData";
+import { getSuggestedQuestions } from "../utils/chatSuggestions";
+import {
+  deleteSavedChat,
+  listSavedChats,
+  saveChat,
+  type SavedChat,
+} from "../utils/savedChats";
 import { useAppStore, type AppLanguage } from "../store/appStore";
 import { ROUTES } from "../constants/routes";
 
@@ -41,6 +51,12 @@ const LOCALE_BY_LANGUAGE: Record<AppLanguage, string> = {
   hi: "hi-IN",
 };
 
+const VOICE_LANGUAGE_OPTIONS: Array<{ value: AppLanguage; label: string }> = [
+  { value: "en", label: "English" },
+  { value: "ta", label: "தமிழ்" },
+  { value: "hi", label: "हिन्दी" },
+];
+
 type MicState = "idle" | "listening" | "thinking" | "speaking" | "error";
 
 export default function Chat() {
@@ -52,6 +68,7 @@ export default function Chat() {
     error,
     sendMessage,
     clearConversation,
+    restoreMessages,
   } = useSagar();
 
   const [input, setInput] = useState("");
@@ -60,10 +77,18 @@ export default function Chat() {
     null,
   );
 
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [savedPanelOpen, setSavedPanelOpen] = useState(false);
+  const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+
   const language = useAppStore((state) => state.language);
+  const setLanguage = useAppStore((state) => state.setLanguage);
   const locationLabel = useAppStore((state) => state.locationLabel);
   const setSelectedArea = useAppStore((state) => state.setSelectedArea);
   const clearLocation = useAppStore((state) => state.clearLocation);
+  const selectedAreaId = useAppStore((state) => state.selectedAreaId);
+  const currentLocation = useAppStore((state) => state.currentLocation);
 
   const { requestLocation, status: locationStatus } = useUserLocation();
 
@@ -72,6 +97,18 @@ export default function Chat() {
   const locale = LOCALE_BY_LANGUAGE[language] ?? "en-IN";
 
   const marineAreas = useMemo(() => getMarineAreas(), []);
+
+  // Deterministic, local-data-only suggestions (no AI call) that change
+  // with the selected area/location and interaction language.
+  const suggestions = useMemo(
+    () =>
+      getSuggestedQuestions({
+        areaId: selectedAreaId,
+        coordinates: currentLocation,
+        language,
+      }),
+    [selectedAreaId, currentLocation, language],
+  );
 
   const handleVoiceTranscript = (transcript: string) => {
     setInput(transcript);
@@ -94,12 +131,22 @@ export default function Chat() {
             ? "speaking"
             : "idle";
 
+  const VOICE_ERROR_LABEL: Record<string, string> = {
+    denied: "Mic permission blocked — allow it in your browser, then tap to retry",
+    "no-speech": "Didn't catch that — tap to try again",
+    unsupported: "Voice input isn't supported in this browser",
+    network: "Voice recognition needs an internet connection — tap to retry",
+    unknown: "Couldn't hear that — tap to retry",
+  };
+
   const micLabel: Record<MicState, string> = {
     idle: "Tap to speak",
     listening: "Listening…",
     thinking: "Sagar is analyzing…",
     speaking: "Sagar is responding…",
-    error: "Couldn't hear that — tap to retry",
+    error:
+      VOICE_ERROR_LABEL[voiceInput.errorReason ?? "unknown"] ??
+      VOICE_ERROR_LABEL.unknown,
   };
 
   const chatMessages: ChatItem[] = messages.map(
@@ -109,8 +156,12 @@ export default function Chat() {
       text: message.text,
       timestamp: message.timestamp,
       structured: message.structured,
+      language: message.language,
     }),
   );
+
+  const localeForMessage = (messageLanguage?: string) =>
+    LOCALE_BY_LANGUAGE[(messageLanguage as AppLanguage) ?? language] ?? locale;
 
   const submitMessage = async (
     value: string,
@@ -160,7 +211,7 @@ export default function Chat() {
     if (reply && options.spokenAloud && voiceOutput.isSupported) {
       voiceOutput.speak(reply.text, {
         id: reply.id,
-        language: locale,
+        language: localeForMessage(reply.language),
       });
     }
   };
@@ -168,13 +219,106 @@ export default function Chat() {
   const handleSend = () => submitMessage(input);
 
   const handleSuggestion = (value: string) => {
-    setInput(value);
+    void submitMessage(value);
   };
 
-  const handleClear = () => {
+  const handleNewConversation = () => {
+    // Only interrupt with a confirmation when there's actually unsaved
+    // work to lose - a chat that's already saved (or empty) can clear
+    // silently.
+    if (chatMessages.length > 0 && !currentChatId) {
+      const proceed = window.confirm(
+        "Start a new conversation? This chat hasn't been saved.",
+      );
+
+      if (!proceed) {
+        return;
+      }
+    }
+
     clearConversation();
     setInput("");
+    setCurrentChatId(null);
+    setSaveNotice(null);
     voiceOutput.stop();
+  };
+
+  const handleSaveChat = () => {
+    if (chatMessages.length === 0) {
+      return;
+    }
+
+    const saved = saveChat({
+      id: currentChatId,
+      messages: chatMessages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        text: message.text,
+        timestamp: message.timestamp,
+        language: message.language,
+        structured: message.structured
+          ? {
+              riskLevel: message.structured.riskLevel,
+              riskScore: message.structured.riskScore,
+              keyFactors: message.structured.keyFactors,
+              evidenceTitles: message.structured.evidenceTitles,
+              whatIfSummary: message.structured.whatIfSummary,
+            }
+          : undefined,
+      })),
+      language,
+      areaId: selectedAreaId,
+      areaLabel: locationLabel,
+    });
+
+    setCurrentChatId(saved.id);
+    setSaveNotice(`Saved as "${saved.title}"`);
+    window.setTimeout(() => setSaveNotice(null), 2500);
+  };
+
+  const handleOpenSavedChats = () => {
+    setSavedChats(listSavedChats());
+    setSavedPanelOpen((open) => !open);
+  };
+
+  const handleLoadSavedChat = (id: string) => {
+    const saved = savedChats.find((chat) => chat.id === id);
+
+    if (!saved) {
+      return;
+    }
+
+    restoreMessages(
+      saved.messages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        text: message.text,
+        timestamp: message.timestamp ?? new Date().toISOString(),
+        language: message.language,
+        structured: message.structured,
+        route: null,
+      })),
+    );
+
+    setLanguage(saved.language);
+
+    if (saved.areaId) {
+      setSelectedArea(saved.areaId, saved.areaLabel ?? saved.areaId);
+    }
+
+    setCurrentChatId(saved.id);
+    setSavedPanelOpen(false);
+    setInput("");
+    voiceOutput.stop();
+  };
+
+  const handleDeleteSavedChat = (id: string) => {
+    deleteSavedChat(id);
+    setSavedChats((current) => current.filter((chat) => chat.id !== id));
+
+    if (id === currentChatId) {
+      setCurrentChatId(null);
+    }
   };
 
   const handleMicPress = () => {
@@ -256,17 +400,112 @@ export default function Chat() {
               </div>
             </div>
 
-            {chatMessages.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClear}
-              >
-                <RotateCcw size={15} />
-                New conversation
-              </Button>
-            )}
+            <div className="chat-page-actions">
+              {chatMessages.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSaveChat}
+                >
+                  <Save size={14} />
+                  Save chat
+                </Button>
+              )}
+
+              <div className="chat-saved-menu">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleOpenSavedChats}
+                >
+                  <FolderClock size={14} />
+                  Saved chats
+                </Button>
+
+                {savedPanelOpen && (
+                  <div className="chat-saved-panel">
+                    {savedChats.length === 0 ? (
+                      <p className="chat-saved-empty">
+                        No saved conversations yet.
+                      </p>
+                    ) : (
+                      savedChats.map((chat) => (
+                        <div
+                          key={chat.id}
+                          className={
+                            chat.id === currentChatId
+                              ? "chat-saved-item chat-saved-item-active"
+                              : "chat-saved-item"
+                          }
+                        >
+                          <button
+                            type="button"
+                            className="chat-saved-item-main"
+                            onClick={() =>
+                              handleLoadSavedChat(chat.id)
+                            }
+                          >
+                            <span className="chat-saved-item-title">
+                              {chat.title}
+                            </span>
+                            <span className="chat-saved-item-meta">
+                              {new Date(
+                                chat.updatedAt,
+                              ).toLocaleString()}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="chat-saved-item-delete"
+                            onClick={() =>
+                              handleDeleteSavedChat(chat.id)
+                            }
+                            aria-label={`Delete "${chat.title}"`}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {chatMessages.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleNewConversation}
+                >
+                  <RotateCcw size={15} />
+                  New conversation
+                </Button>
+              )}
+            </div>
           </header>
+
+          {saveNotice && (
+            <div className="chat-save-notice">{saveNotice}</div>
+          )}
+
+          <div className="chat-language-bar">
+            {VOICE_LANGUAGE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={
+                  language === option.value
+                    ? "chat-language-chip active"
+                    : "chat-language-chip"
+                }
+                onClick={() => setLanguage(option.value)}
+                aria-pressed={language === option.value}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
 
           <div className="chat-location-bar">
             <div className="chat-location-status">
@@ -370,6 +609,7 @@ export default function Chat() {
             <ChatWindow
               messages={chatMessages}
               loading={loading}
+              suggestions={suggestions}
               onSuggestion={handleSuggestion}
               renderVoiceControl={(message) => {
                 if (!voiceOutput.isSupported) {
@@ -427,7 +667,7 @@ export default function Chat() {
                     onClick={() =>
                       voiceOutput.speak(message.text, {
                         id: message.id,
-                        language: locale,
+                        language: localeForMessage(message.language),
                       })
                     }
                     aria-label="Speak this response"
@@ -445,6 +685,16 @@ export default function Chat() {
               <div className="chat-error">
                 <AlertTriangle size={15} />
                 <span>{error}</span>
+              </div>
+            )}
+
+            {voiceOutput.status === "error" && (
+              <div className="chat-error">
+                <AlertTriangle size={15} />
+                <span>
+                  Couldn't play voice reply — text-to-speech may be
+                  unavailable on this device.
+                </span>
               </div>
             )}
 

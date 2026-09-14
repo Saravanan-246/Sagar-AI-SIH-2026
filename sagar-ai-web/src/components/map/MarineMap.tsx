@@ -46,6 +46,13 @@ type MarineMapProps = {
   /** Demo-only route simulation marker (never real vessel tracking). */
   journeyPosition?: Coordinates | null;
   journeyBearingDeg?: number;
+
+  /**
+   * Marks the specific area/zone/alert Sagar chat handed off to the map
+   * (distinct from the user's own device-location marker) so the
+   * "View on map" action visibly lands somewhere, not just re-centers.
+   */
+  highlight?: { latitude: number; longitude: number; label?: string } | null;
 };
 
 const DEFAULT_CENTER: LatLngExpression = APP_CONFIG.map.defaultCenter;
@@ -135,6 +142,7 @@ export default function MarineMap({
   endPoint,
   journeyPosition,
   journeyBearingDeg = 0,
+  highlight,
 }: MarineMapProps) {
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [location, setLocation] = useState<Coordinates | null>(null);
@@ -281,6 +289,11 @@ export default function MarineMap({
   const journeyMarkerPosition = useMemo(
     () => toLatLng(journeyPosition),
     [journeyPosition]
+  );
+
+  const highlightPosition = useMemo(
+    () => toLatLng(highlight),
+    [highlight]
   );
 
   const boatIcon = useMemo(
@@ -540,6 +553,35 @@ export default function MarineMap({
           <Marker position={journeyMarkerPosition} icon={boatIcon}>
             <Popup>Route simulation (demo)</Popup>
           </Marker>
+        )}
+
+        {/* CHAT -> MAP HANDOFF HIGHLIGHT */}
+        {highlightPosition && (
+          <>
+            <CircleMarker
+              center={highlightPosition}
+              radius={22}
+              pathOptions={{
+                color: "#EA580C",
+                fillColor: "#EA580C",
+                fillOpacity: 0.1,
+                weight: 2,
+                dashArray: "3, 5",
+              }}
+            />
+            <CircleMarker
+              center={highlightPosition}
+              radius={9}
+              pathOptions={{
+                color: "#FFFFFF",
+                fillColor: "#EA580C",
+                fillOpacity: 1,
+                weight: 3,
+              }}
+            >
+              {highlight?.label && <Popup>{highlight.label}</Popup>}
+            </CircleMarker>
+          </>
         )}
 
         {/* USER POSITION */}

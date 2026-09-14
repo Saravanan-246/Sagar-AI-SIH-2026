@@ -21,11 +21,9 @@ import Button from "../components/ui/Button";
 import Select from "../components/ui/Select";
 import { APP_CONFIG } from "../constants/config";
 import { ROUTES } from "../constants/routes";
+import { useAppStore } from "../store/appStore";
 
 import "./Profile.css";
-
-const LANGUAGE_STORAGE_KEY =
-  "sagar-ai-language";
 
 const AREA_STORAGE_KEY =
   "sagar-ai-area";
@@ -92,30 +90,6 @@ const areaOptions = [
   },
 ];
 
-function readLanguage(): LanguageCode {
-  try {
-    const value =
-      localStorage.getItem(
-        LANGUAGE_STORAGE_KEY,
-      );
-
-    if (
-      value === "en" ||
-      value === "ta" ||
-      value === "te" ||
-      value === "ml" ||
-      value === "kn" ||
-      value === "hi"
-    ) {
-      return value;
-    }
-  } catch {
-    // Ignore unavailable local storage.
-  }
-
-  return "en";
-}
-
 function readArea() {
   try {
     return (
@@ -167,10 +141,13 @@ function readAlertPreferences(): AlertPreference {
 export default function Profile() {
   const navigate = useNavigate();
 
-  const [language, setLanguage] =
-    useState<LanguageCode>(
-      readLanguage,
-    );
+  const language = useAppStore(
+    (state) => state.language,
+  );
+
+  const setLanguage = useAppStore(
+    (state) => state.setLanguage,
+  );
 
   const [area, setArea] =
     useState(readArea);
@@ -185,11 +162,6 @@ export default function Profile() {
 
   const savePreferences = () => {
     try {
-      localStorage.setItem(
-        LANGUAGE_STORAGE_KEY,
-        language,
-      );
-
       localStorage.setItem(
         AREA_STORAGE_KEY,
         area,
@@ -225,10 +197,6 @@ export default function Profile() {
     });
 
     try {
-      localStorage.removeItem(
-        LANGUAGE_STORAGE_KEY,
-      );
-
       localStorage.removeItem(
         AREA_STORAGE_KEY,
       );

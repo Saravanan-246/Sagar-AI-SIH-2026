@@ -26,7 +26,12 @@ export function createApp(): Express {
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", service: "sagar-ai-server" });
+    res.json({
+      status: "ok",
+      service: "sagar-ai-server",
+      aiEnabled: config.ai.enabled,
+      aiModel: config.ai.enabled ? config.ai.model : null,
+    });
   });
 
   app.use("/api/chat", chatRoutes);

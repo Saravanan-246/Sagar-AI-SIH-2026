@@ -1,6 +1,6 @@
 import { MessageCircle } from "lucide-react";
 
-const suggestions = [
+const FALLBACK_SUGGESTIONS = [
   "Is it safe to venture into the sea tomorrow morning?",
   "Are there any lightning or cyclone alerts in my area?",
   "What are the sea conditions near my location?",
@@ -8,10 +8,12 @@ const suggestions = [
 ];
 
 type ChatWelcomeProps = {
+  suggestions?: string[];
   onSuggestion?: (value: string) => void;
 };
 
 export default function ChatWelcome({
+  suggestions = FALLBACK_SUGGESTIONS,
   onSuggestion,
 }: ChatWelcomeProps) {
   return (

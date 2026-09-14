@@ -127,7 +127,10 @@ export async function classifyWithAi(
         )}\n\nLatest message: ${message}`,
       },
     ],
-    { temperature: 0, maxTokens: 200 }
+    // Kept deliberately small: the model only ever emits one compact JSON
+    // line here, and a low cap keeps this call affordable even when the
+    // configured OpenRouter account has little balance left.
+    { temperature: 0, maxTokens: 100 }
   );
 
   if (!raw) {
