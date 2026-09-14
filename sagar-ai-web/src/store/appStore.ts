@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import type { RoutePlan } from "../types/route";
+
 export type AppLanguage =
   | "en"
   | "ta"
@@ -37,6 +39,11 @@ interface AppState {
   setGeofenceAlerts: (enabled: boolean) => void;
 
   getPreferences: () => AppPreferences;
+
+  /** A route Sagar found in chat, pending pickup by the Route Planning page. */
+  pendingRoute: RoutePlan | null;
+  setPendingRoute: (route: RoutePlan) => void;
+  clearPendingRoute: () => void;
 }
 
 const STORAGE_KEY = "sagar-ai-preferences";
@@ -177,5 +184,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       severeAlerts: state.severeAlerts,
       geofenceAlerts: state.geofenceAlerts,
     };
+  },
+
+  pendingRoute: null,
+
+  setPendingRoute: (route) => {
+    set({ pendingRoute: route });
+  },
+
+  clearPendingRoute: () => {
+    set({ pendingRoute: null });
   },
 }));

@@ -2,12 +2,16 @@ import { useCallback, useState } from "react";
 
 import { askSagarBackend } from "../services/api/sagarApiClient";
 import { askSagar as askSagarLocal } from "../services/ai/localSagar";
+import { useAppStore } from "../store/appStore";
+
+import type { RoutePlan } from "../types/route";
 
 type SagarChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
   timestamp: string;
+  route?: RoutePlan | null;
 };
 
 type SagarOptions = {
@@ -26,10 +30,15 @@ type UseSagarReturn = {
   clearConversation: () => void;
 };
 
-async function resolveAssistantText(
+interface AssistantReply {
+  text: string;
+  route: RoutePlan | null;
+}
+
+async function resolveAssistantReply(
   text: string,
   options: SagarOptions
-): Promise<string> {
+): Promise<AssistantReply> {
   try {
     const result = await askSagarBackend(text, {
       language: options.language,
@@ -43,19 +52,17 @@ async function resolveAssistantText(
         ? result.warnings.join(" ")
         : "Sagar could not generate a response for this request.");
 
-    if (result.whatIf) {
-      const whatIf = result.whatIf;
+    const replyText = result.whatIf
+      ? [
+          base,
+          "",
+          `What if ${result.whatIf.question}?`,
+          result.whatIf.impact,
+          `Recommendation: ${result.whatIf.recommendation}`,
+        ].join("\n")
+      : base;
 
-      return [
-        base,
-        "",
-        `What if ${whatIf.question}?`,
-        whatIf.impact,
-        `Recommendation: ${whatIf.recommendation}`,
-      ].join("\n");
-    }
-
-    return base;
+    return { text: replyText, route: result.route ?? null };
   } catch (backendError) {
     console.warn(
       "Sagar backend is unavailable, using the offline responder:",
@@ -67,7 +74,7 @@ async function resolveAssistantText(
       areaId: options.areaId,
     });
 
-    return local.text;
+    return { text: local.text, route: null };
   }
 }
 
@@ -75,6 +82,10 @@ export default function useSagar(): UseSagarReturn {
   const [messages, setMessages] = useState<SagarChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const setPendingRoute = useAppStore(
+    (state) => state.setPendingRoute
+  );
 
   const sendMessage = useCallback(
     async (
@@ -104,16 +115,21 @@ export default function useSagar(): UseSagarReturn {
       setLoading(true);
 
       try {
-        const assistantText = await resolveAssistantText(
+        const reply = await resolveAssistantReply(
           text,
           options
         );
 
+        if (reply.route) {
+          setPendingRoute(reply.route);
+        }
+
         const assistantMessage: SagarChatMessage = {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          text: assistantText,
+          text: reply.text,
           timestamp: new Date().toISOString(),
+          route: reply.route,
         };
 
         setMessages((current) => [
@@ -137,7 +153,7 @@ export default function useSagar(): UseSagarReturn {
         setLoading(false);
       }
     },
-    [loading]
+    [loading, setPendingRoute]
   );
 
   const clearConversation = useCallback(() => {

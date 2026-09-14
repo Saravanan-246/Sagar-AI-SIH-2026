@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  calculateRouteOptionsRemote,
   calculateRouteRemote,
   fetchRoutes,
 } from "../services/api/sagarApiClient";
 
 import {
   calculateRoute as calculateRouteLocal,
+  calculateRouteOptions as calculateRouteOptionsLocal,
   getRoutes as getRoutesLocal,
 } from "../services/routes/routeService";
 
@@ -19,6 +21,10 @@ export default function useRoute() {
   const [routes, setRoutes] = useState<RoutePlan[]>(
     []
   );
+
+  const [routeOptions, setRouteOptions] = useState<
+    RoutePlan[]
+  >([]);
 
   const [selectedRoute, setSelectedRoute] =
     useState<RoutePlan | null>(null);
@@ -71,18 +77,31 @@ export default function useRoute() {
       setError(null);
 
       try {
-        const calculated = await calculateRouteRemote(
-          origin,
-          destination,
-        ).catch((err) => {
-          console.warn(
-            "Sagar backend is unavailable, calculating the route locally:",
-            err
-          );
-          return calculateRouteLocal(origin, destination);
-        });
+        const [calculated, options] = await Promise.all([
+          calculateRouteRemote(
+            origin,
+            destination,
+          ).catch((err) => {
+            console.warn(
+              "Sagar backend is unavailable, calculating the route locally:",
+              err
+            );
+            return calculateRouteLocal(origin, destination);
+          }),
+          calculateRouteOptionsRemote(
+            origin,
+            destination,
+          ).catch((err) => {
+            console.warn(
+              "Sagar backend is unavailable, calculating route options locally:",
+              err
+            );
+            return calculateRouteOptionsLocal(origin, destination);
+          }),
+        ]);
 
         setResult(calculated);
+        setRouteOptions(options);
 
         if (calculated) {
           setSelectedRoute(
@@ -117,6 +136,7 @@ export default function useRoute() {
 
   const clearResult = useCallback(() => {
     setResult(null);
+    setRouteOptions([]);
   }, []);
 
   const clearError = useCallback(() => {
@@ -125,6 +145,8 @@ export default function useRoute() {
 
   return {
     routes,
+
+    routeOptions,
 
     selectedRoute,
 

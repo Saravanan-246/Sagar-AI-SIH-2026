@@ -34,6 +34,21 @@
   z-index: 400;
 }
 
+.marine-map-boat-icon {
+  background: transparent;
+  border: none;
+}
+
+.marine-map-boat-glyph {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 16px solid #6d28d9;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+  transition: transform 140ms linear;
+}
+
 .marine-map-overlay {
   position: absolute;
   inset: 0;

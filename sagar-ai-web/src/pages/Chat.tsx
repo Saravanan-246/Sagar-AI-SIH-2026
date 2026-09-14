@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   ArrowLeft,
   Bot,
+  MapPinned,
   MessageCircle,
   RotateCcw,
   Sparkles,
@@ -31,6 +32,11 @@ export default function Chat() {
   } = useSagar();
 
   const [input, setInput] = useState("");
+
+  const lastRoute = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.route)
+    ?.route;
 
   const chatMessages: ChatItem[] = messages.map(
     (message) => ({
@@ -126,6 +132,22 @@ export default function Chat() {
           </div>
 
           <div className="chat-page-composer">
+            {lastRoute && (
+              <div className="chat-route-callout">
+                <MapPinned size={14} />
+                <span>
+                  Sagar found a route: {lastRoute.name}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(ROUTES.ROUTE)}
+                >
+                  View route
+                </Button>
+              </div>
+            )}
+
             {error && (
               <div className="chat-error">
                 <MessageCircle size={15} />

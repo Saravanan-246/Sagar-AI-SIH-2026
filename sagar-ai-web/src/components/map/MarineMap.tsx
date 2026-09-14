@@ -1,7 +1,8 @@
 import "leaflet/dist/leaflet.css";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { CircleMarker, MapContainer, TileLayer, Polyline, Polygon, Popup, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, TileLayer, Polyline, Polygon, Popup, useMap } from "react-leaflet";
+import { divIcon } from "leaflet";
 import type { LatLngExpression, Map as LeafletMap } from "leaflet";
 
 import MapControls from "./MapControls";
@@ -13,6 +14,8 @@ import routesData from "../../data/routes.json";
 import alertsData from "../../data/alerts.json";
 import marineData from "../../data/marine.json";
 import boundariesData from "../../data/boundaries.json";
+
+import type { RoutePlan } from "../../types/route";
 
 import "./MarineMap.css";
 
@@ -26,6 +29,23 @@ type MarineMapProps = {
   zoom?: number;
   onLocationChange?: (location: Coordinates) => void;
   className?: string;
+
+  /**
+   * When provided, the routes layer draws exactly these routes (e.g. the
+   * planner's calculated options) instead of the full configured route
+   * dataset. `selectedRouteId` makes one visually dominant; the rest stay
+   * visually secondary. Clicking a route line calls `onSelectRoute`.
+   */
+  overrideRoutes?: RoutePlan[];
+  selectedRouteId?: string | null;
+  onSelectRoute?: (routeId: string) => void;
+
+  startPoint?: Coordinates | null;
+  endPoint?: Coordinates | null;
+
+  /** Demo-only route simulation marker (never real vessel tracking). */
+  journeyPosition?: Coordinates | null;
+  journeyBearingDeg?: number;
 };
 
 const DEFAULT_CENTER: LatLngExpression = APP_CONFIG.map.defaultCenter;
@@ -77,11 +97,44 @@ function MapSyncController({ center, zoom }: { center: LatLngExpression; zoom: n
   return null;
 }
 
+/** Fits the view to the currently planned route options so a short
+ * corridor is actually visible, instead of a tiny sliver on the full
+ * regional view. */
+function RouteBoundsController({
+  points,
+}: {
+  points: [number, number][];
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map || !map.getContainer() || points.length === 0) return;
+
+    const timer = setTimeout(() => {
+      if (map && map.getContainer()) {
+        map.fitBounds(points, { padding: [48, 48], maxZoom: 11 });
+      }
+    }, 120);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, JSON.stringify(points)]);
+
+  return null;
+}
+
 export default function MarineMap({
   center,
   zoom = DEFAULT_ZOOM,
   onLocationChange,
   className = "",
+  overrideRoutes,
+  selectedRouteId,
+  onSelectRoute,
+  startPoint,
+  endPoint,
+  journeyPosition,
+  journeyBearingDeg = 0,
 }: MarineMapProps) {
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [location, setLocation] = useState<Coordinates | null>(null);
@@ -181,6 +234,66 @@ export default function MarineMap({
       .filter((route: any) => route.parsedWaypoints.length >= 2);
   }, []);
 
+  const overrideRoutesList = useMemo(() => {
+    if (!overrideRoutes) {
+      return null;
+    }
+
+    return overrideRoutes
+      .map((route) => ({
+        ...route,
+        calculatedScore: route.risk.score,
+        resolvedDecision:
+          route.routeDecision === "avoid" || route.routeDecision === "blocked"
+            ? "avoid"
+            : route.routeDecision === "caution"
+              ? "caution"
+              : "preferred",
+        parsedWaypoints: route.waypoints
+          .map((point) => toLatLng(point))
+          .filter((c): c is [number, number] => c !== null),
+      }))
+      .filter((route) => route.parsedWaypoints.length >= 2);
+  }, [overrideRoutes]);
+
+  const activeRoutesList = overrideRoutesList ?? routesList;
+
+  const routeBoundsPoints = useMemo<[number, number][]>(() => {
+    if (!overrideRoutesList) {
+      return [];
+    }
+
+    return overrideRoutesList.flatMap(
+      (route) => route.parsedWaypoints
+    );
+  }, [overrideRoutesList]);
+
+  const startMarkerPosition = useMemo(
+    () => toLatLng(startPoint),
+    [startPoint]
+  );
+
+  const endMarkerPosition = useMemo(
+    () => toLatLng(endPoint),
+    [endPoint]
+  );
+
+  const journeyMarkerPosition = useMemo(
+    () => toLatLng(journeyPosition),
+    [journeyPosition]
+  );
+
+  const boatIcon = useMemo(
+    () =>
+      divIcon({
+        className: "marine-map-boat-icon",
+        html: `<div class="marine-map-boat-glyph" style="transform: rotate(${journeyBearingDeg}deg)"></div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      }),
+    [journeyBearingDeg]
+  );
+
   const handleLocationChange = useCallback(
     (nextLocation: Coordinates) => {
       setLocation(nextLocation);
@@ -242,6 +355,10 @@ export default function MarineMap({
         />
 
         <MapSyncController center={mapCenter} zoom={zoom} />
+
+        {routeBoundsPoints.length > 0 && (
+          <RouteBoundsController points={routeBoundsPoints} />
+        )}
 
         {/* 1. SEA CONDITIONS LAYER */}
         {activeLayers.conditions && marineCoords && (
@@ -349,10 +466,13 @@ export default function MarineMap({
 
         {/* 5. ROUTES LAYER */}
         {activeLayers.routes &&
-          routesList.map((route: any, idx: number) => {
+          activeRoutesList.map((route: any, idx: number) => {
             const isAvoid = route.resolvedDecision === "avoid" || route.resolvedDecision === "blocked";
             const isCaution = route.resolvedDecision === "caution";
             const routeColor = isAvoid ? "#DC2626" : isCaution ? "#D97706" : "#16A34A";
+
+            const isControlled = Boolean(overrideRoutesList);
+            const isSelected = !isControlled || route.id === selectedRouteId;
 
             return (
               <Polyline
@@ -360,10 +480,15 @@ export default function MarineMap({
                 positions={route.parsedWaypoints}
                 pathOptions={{
                   color: routeColor,
-                  weight: 3.5,
-                  opacity: 0.9,
+                  weight: isSelected ? 5 : 3,
+                  opacity: isSelected ? 0.95 : 0.45,
                   dashArray: isAvoid ? "6, 8" : undefined,
                 }}
+                eventHandlers={
+                  onSelectRoute
+                    ? { click: () => onSelectRoute(route.id) }
+                    : undefined
+                }
               >
                 <Popup>
                   <div className="marine-map-popup">
@@ -388,6 +513,34 @@ export default function MarineMap({
               </Polyline>
             );
           })}
+
+        {/* ROUTE PLANNER START / DESTINATION MARKERS */}
+        {startMarkerPosition && (
+          <CircleMarker
+            center={startMarkerPosition}
+            radius={8}
+            pathOptions={{ color: "#FFFFFF", fillColor: "#6D28D9", fillOpacity: 1, weight: 3 }}
+          >
+            <Popup>Departure point</Popup>
+          </CircleMarker>
+        )}
+
+        {endMarkerPosition && (
+          <CircleMarker
+            center={endMarkerPosition}
+            radius={8}
+            pathOptions={{ color: "#FFFFFF", fillColor: "#15803D", fillOpacity: 1, weight: 3 }}
+          >
+            <Popup>Destination</Popup>
+          </CircleMarker>
+        )}
+
+        {/* JOURNEY SIMULATION MARKER (demo only, not live vessel tracking) */}
+        {journeyMarkerPosition && (
+          <Marker position={journeyMarkerPosition} icon={boatIcon}>
+            <Popup>Route simulation (demo)</Popup>
+          </Marker>
+        )}
 
         {/* USER POSITION */}
         {location && (

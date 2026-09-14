@@ -231,6 +231,27 @@ export async function calculateRouteRemote(
   return data.route;
 }
 
+export async function calculateRouteOptionsRemote(
+  origin: { latitude: number; longitude: number },
+  destination: { latitude: number; longitude: number },
+  maxOptions = 3
+): Promise<RoutePlan[]> {
+  const { data } = await apiClient.get<{ routes: RoutePlan[] }>(
+    "/api/routes",
+    {
+      params: {
+        originLat: origin.latitude,
+        originLng: origin.longitude,
+        destinationLat: destination.latitude,
+        destinationLng: destination.longitude,
+        maxOptions,
+      },
+    }
+  );
+
+  return data.routes;
+}
+
 export async function fetchRisk(
   options: ChatRequestOptions & {
     latitude?: number;

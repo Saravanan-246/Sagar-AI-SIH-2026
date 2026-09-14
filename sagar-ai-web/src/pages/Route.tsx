@@ -2,18 +2,21 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
-  ChevronDown,
   Clock3,
   MapPin,
   Navigation,
+  Pause,
+  Play,
   Route as RouteIcon,
   ShieldAlert,
   Sparkles,
+  Square,
   Waves,
   Wind,
   XCircle,
 } from "lucide-react";
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -28,15 +31,22 @@ import EmptyState from "../components/ui/EmptyState";
 import LoadingState from "../components/ui/LoadingState";
 import ErrorState from "../components/ui/ErrorState";
 import useRoute from "../hooks/useRoute";
+import { useJourneySimulation } from "../hooks/useJourneySimulation";
+import { getMarineAreas } from "../services/marine/marineData";
+import { useAppStore } from "../store/appStore";
 import { ROUTES } from "../constants/routes";
+
+import type { RoutePlan } from "../types/route";
 
 import "./Route.css";
 
-type RouteRisk =
-  | "low"
-  | "moderate"
-  | "high"
-  | "critical";
+type NamedPoint = {
+  label: string;
+  latitude: number;
+  longitude: number;
+};
+
+type OptionLabel = "RECOMMENDED" | "ALTERNATIVE" | "AVOID";
 
 function riskTone(
   level: string,
@@ -57,24 +67,6 @@ function riskTone(
   }
 }
 
-function routeStatusLabel(
-  status: string,
-) {
-  switch (status) {
-    case "recommended":
-      return "Recommended";
-
-    case "caution":
-      return "Use caution";
-
-    case "blocked":
-      return "Blocked";
-
-    default:
-      return "Review";
-  }
-}
-
 function routeDecisionTone(
   decision: string,
 ) {
@@ -91,6 +83,31 @@ function routeDecisionTone(
 
     default:
       return "neutral" as const;
+  }
+}
+
+function optionLabel(
+  route: RoutePlan,
+  index: number,
+): OptionLabel {
+  if (
+    route.routeDecision === "avoid" ||
+    route.routeDecision === "blocked"
+  ) {
+    return "AVOID";
+  }
+
+  return index === 0 ? "RECOMMENDED" : "ALTERNATIVE";
+}
+
+function optionLabelTone(label: OptionLabel) {
+  switch (label) {
+    case "RECOMMENDED":
+      return "success" as const;
+    case "ALTERNATIVE":
+      return "neutral" as const;
+    case "AVOID":
+      return "danger" as const;
   }
 }
 
@@ -125,11 +142,34 @@ function formatDuration(
   return `${h} hr ${m} min`;
 }
 
+function buildWhyThisRoute(route: RoutePlan): string[] {
+  const reasons: string[] = [];
+
+  if (route.reason) {
+    reasons.push(route.reason);
+  }
+
+  if (route.avoidedHazards && route.avoidedHazards.length > 0) {
+    reasons.push(
+      `Avoids ${route.avoidedHazards.join(" and ")}.`
+    );
+  }
+
+  if (route.risk.level === "low") {
+    reasons.push("Acceptable travel time for a low-risk corridor.");
+  } else if (route.risk.score <= 45) {
+    reasons.push("Acceptable travel time for the current risk level.");
+  }
+
+  return reasons;
+}
+
 export default function RoutePage() {
   const navigate = useNavigate();
 
   const {
     routes,
+    routeOptions,
     selectedRoute,
     selectRoute,
     loading,
@@ -138,13 +178,21 @@ export default function RoutePage() {
     refresh,
   } = useRoute();
 
-  const [originId, setOriginId] =
+  const pendingRoute = useAppStore(
+    (state) => state.pendingRoute,
+  );
+
+  const clearPendingRoute = useAppStore(
+    (state) => state.clearPendingRoute,
+  );
+
+  const [originLabel, setOriginLabel] =
     useState("");
 
-  const [destinationId, setDestinationId] =
+  const [destinationLabel, setDestinationLabel] =
     useState("");
 
-  const [selectorOpen, setSelectorOpen] =
+  const [hasCalculated, setHasCalculated] =
     useState(false);
 
   const routeList = useMemo(
@@ -152,52 +200,118 @@ export default function RoutePage() {
     [routes],
   );
 
+  const locationOptions = useMemo<
+    NamedPoint[]
+  >(() => {
+    const map = new Map<string, NamedPoint>();
+
+    for (const area of getMarineAreas()) {
+      map.set(area.name, {
+        label: area.name,
+        latitude: area.coordinates.latitude,
+        longitude: area.coordinates.longitude,
+      });
+    }
+
+    for (const route of routeList) {
+      const originLabel =
+        route.origin.name ??
+        `${route.origin.latitude}, ${route.origin.longitude}`;
+
+      const destinationLabel =
+        route.destination.name ??
+        `${route.destination.latitude}, ${route.destination.longitude}`;
+
+      map.set(originLabel, {
+        label: originLabel,
+        latitude: route.origin.latitude,
+        longitude: route.origin.longitude,
+      });
+
+      map.set(destinationLabel, {
+        label: destinationLabel,
+        latitude: route.destination.latitude,
+        longitude: route.destination.longitude,
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.label.localeCompare(b.label)
+    );
+  }, [routeList]);
+
+  const displayedOptions = useMemo(() => {
+    if (routeOptions.length > 0) {
+      return routeOptions;
+    }
+
+    return routeList;
+  }, [routeOptions, routeList]);
+
   const selected =
     selectedRoute ??
+    displayedOptions[0] ??
     routeList[0] ??
     null;
 
+  const safestOption = displayedOptions[0] ?? null;
+
+  const journey = useJourneySimulation(selected);
+
+  // Apply a route Sagar found via chat ("give me the safest route...").
+  useEffect(() => {
+    if (pendingRoute) {
+      selectRoute(pendingRoute);
+      setHasCalculated(true);
+      clearPendingRoute();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRoute]);
+
   const handleCalculate = async () => {
-    if (!originId || !destinationId) {
+    const origin = locationOptions.find(
+      (item) => item.label === originLabel,
+    );
+
+    const destination = locationOptions.find(
+      (item) => item.label === destinationLabel,
+    );
+
+    if (!origin || !destination) {
       return;
     }
 
-    const originRoute =
-      routeList.find(
-        (route) =>
-          route.origin.name === originId,
-      );
+    journey.stop();
 
-    const destinationRoute =
-      routeList.find(
-        (route) =>
-          route.destination.name ===
-          destinationId,
-      );
-
-    if (
-      !originRoute ||
-      !destinationRoute
-    ) {
-      return;
-    }
-
-    await calculate(
+    const calculated = await calculate(
       {
-        latitude:
-          originRoute.origin.latitude,
-        longitude:
-          originRoute.origin.longitude,
+        latitude: origin.latitude,
+        longitude: origin.longitude,
       },
       {
-        latitude:
-          destinationRoute.destination
-            .latitude,
-        longitude:
-          destinationRoute.destination
-            .longitude,
+        latitude: destination.latitude,
+        longitude: destination.longitude,
       },
     );
+
+    if (calculated) {
+      setHasCalculated(true);
+    }
+  };
+
+  const handleSelectRouteId = (routeId: string) => {
+    const found =
+      displayedOptions.find(
+        (route) => route.id === routeId,
+      ) ??
+      routeList.find(
+        (route) => route.id === routeId,
+      );
+
+    if (found) {
+      journey.stop();
+      selectRoute(found);
+    }
   };
 
   if (loading && !selected) {
@@ -245,6 +359,8 @@ export default function RoutePage() {
       </AppShell>
     );
   }
+
+  const whyThisRoute = buildWhyThisRoute(selected);
 
   return (
     <AppShell>
@@ -295,9 +411,115 @@ export default function RoutePage() {
               </div>
             </header>
 
+            <section className="route-planner-bar">
+              <div className="route-planner-field">
+                <span>From</span>
+                <select
+                  value={originLabel}
+                  onChange={(event) =>
+                    setOriginLabel(event.target.value)
+                  }
+                >
+                  <option value="">
+                    Select starting point
+                  </option>
+
+                  {locationOptions.map((item) => (
+                    <option
+                      key={item.label}
+                      value={item.label}
+                    >
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <ArrowRight
+                size={15}
+                className="route-planner-arrow"
+              />
+
+              <div className="route-planner-field">
+                <span>To</span>
+                <select
+                  value={destinationLabel}
+                  onChange={(event) =>
+                    setDestinationLabel(
+                      event.target.value,
+                    )
+                  }
+                >
+                  <option value="">
+                    Select destination
+                  </option>
+
+                  {locationOptions.map((item) => (
+                    <option
+                      key={item.label}
+                      value={item.label}
+                    >
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={
+                  !originLabel ||
+                  !destinationLabel ||
+                  loading
+                }
+                onClick={handleCalculate}
+              >
+                {loading ? "Planning..." : "Plan route"}
+              </Button>
+            </section>
+
+            {error && (
+              <div className="route-inline-error">
+                <AlertTriangle size={14} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {hasCalculated && safestOption && (
+              <section className="route-safest-banner">
+                <div className="route-safest-icon">
+                  <ShieldAlert size={16} />
+                </div>
+
+                <div className="route-safest-body">
+                  <span>Safest viable route</span>
+                  <strong>{safestOption.name}</strong>
+                  <p>
+                    Risk {safestOption.risk.score}/100 ·{" "}
+                    {safestOption.distanceKm.toFixed(1)} km ·{" "}
+                    {formatDuration(
+                      safestOption.estimatedDurationHours,
+                    )}{" "}
+                    · {safestOption.reason}
+                  </p>
+                </div>
+              </section>
+            )}
+
             <section className="route-map-card">
               <div className="route-map">
-                <MarineMap />
+                <MarineMap
+                  overrideRoutes={
+                    hasCalculated ? displayedOptions : undefined
+                  }
+                  selectedRouteId={selected.id}
+                  onSelectRoute={handleSelectRouteId}
+                  startPoint={selected.origin}
+                  endPoint={selected.destination}
+                  journeyPosition={journey.position}
+                  journeyBearingDeg={journey.bearingDeg}
+                />
               </div>
 
               <div className="route-map-footer">
@@ -337,7 +559,9 @@ export default function RoutePage() {
               <div className="route-section-header">
                 <div>
                   <span>
-                    Available route options
+                    {hasCalculated
+                      ? "Viable route options"
+                      : "Available route options"}
                   </span>
 
                   <h2>
@@ -346,14 +570,19 @@ export default function RoutePage() {
                 </div>
 
                 <span>
-                  {routeList.length} options
+                  {displayedOptions.length} options
                 </span>
               </div>
 
               <div className="route-options">
-                {routeList.map((route) => {
+                {displayedOptions.map((route, index) => {
                   const isSelected =
                     route.id === selected.id;
+
+                  const label = optionLabel(
+                    route,
+                    index,
+                  );
 
                   return (
                     <button
@@ -364,9 +593,10 @@ export default function RoutePage() {
                           ? "route-option selected"
                           : "route-option"
                       }
-                      onClick={() =>
-                        selectRoute(route)
-                      }
+                      onClick={() => {
+                        journey.stop();
+                        selectRoute(route);
+                      }}
                     >
                       <div className="route-option-top">
                         <div className="route-option-name">
@@ -383,15 +613,10 @@ export default function RoutePage() {
                         </div>
 
                         <Badge
-                          tone={riskTone(
-                            route.risk
-                              .level,
-                          )}
+                          tone={optionLabelTone(label)}
                           size="sm"
                         >
-                          {routeStatusLabel(
-                            route.status,
-                          )}
+                          {label}
                         </Badge>
                       </div>
 
@@ -522,14 +747,121 @@ export default function RoutePage() {
 
                 <div>
                   <span>
-                    Route reasoning
+                    Why this route?
                   </span>
 
-                  <p>
-                    {selected.reason}
-                  </p>
+                  <ul className="route-why-list">
+                    {whyThisRoute.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
                 </div>
               </div>
+            </section>
+
+            <section className="route-panel route-journey-panel">
+              <div className="route-panel-heading">
+                <div>
+                  <span>Demo simulation</span>
+                  <h2>Journey</h2>
+                </div>
+              </div>
+
+              <p className="route-journey-disclaimer">
+                Route simulation for demonstration only.
+                This is not a live vessel position or AIS
+                tracking.
+              </p>
+
+              {journey.status === "idle" ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  fullWidth
+                  onClick={journey.start}
+                >
+                  <Play size={14} />
+                  Simulate journey
+                </Button>
+              ) : (
+                <div className="route-journey-progress">
+                  <div className="route-journey-meta">
+                    <span>
+                      From: {selected.origin.name}
+                    </span>
+                    <span>
+                      To: {selected.destination.name}
+                    </span>
+                  </div>
+
+                  <div className="route-risk-bar route-journey-bar">
+                    <span
+                      className="risk-low"
+                      style={{
+                        width: `${Math.round(
+                          journey.progress * 100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="route-journey-stats">
+                    <span>
+                      Progress:{" "}
+                      {Math.round(journey.progress * 100)}%
+                    </span>
+
+                    <span>
+                      ETA:{" "}
+                      {journey.etaMinutesRemaining ?? "—"} min
+                    </span>
+                  </div>
+
+                  <div className="route-journey-controls">
+                    {journey.status === "running" && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={journey.pause}
+                      >
+                        <Pause size={14} />
+                        Pause
+                      </Button>
+                    )}
+
+                    {journey.status === "paused" && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={journey.resume}
+                      >
+                        <Play size={14} />
+                        Resume
+                      </Button>
+                    )}
+
+                    {journey.status === "finished" && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={journey.start}
+                      >
+                        <Play size={14} />
+                        Replay
+                      </Button>
+                    )}
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={journey.stop}
+                    >
+                      <Square size={14} />
+                      Stop
+                    </Button>
+                  </div>
+                </div>
+              )}
             </section>
 
             <section className="route-panel">
@@ -656,147 +988,6 @@ export default function RoutePage() {
                       assessment.
                     </span>
                   </div>
-                </div>
-              )}
-            </section>
-
-            <section className="route-panel route-planner-panel">
-              <button
-                type="button"
-                className="route-collapse"
-                onClick={() =>
-                  setSelectorOpen(
-                    (current) => !current,
-                  )
-                }
-              >
-                <div>
-                  <span>
-                    Route parameters
-                  </span>
-
-                  <strong>
-                    Change origin or
-                    destination
-                  </strong>
-                </div>
-
-                <ChevronDown
-                  size={16}
-                  className={
-                    selectorOpen
-                      ? "route-chevron open"
-                      : "route-chevron"
-                  }
-                />
-              </button>
-
-              {selectorOpen && (
-                <div className="route-selector-body">
-                  <label>
-                    Origin
-                    <select
-                      value={originId}
-                      onChange={(event) =>
-                        setOriginId(
-                          event.target
-                            .value,
-                        )
-                      }
-                    >
-                      <option value="">
-                        Select origin
-                      </option>
-
-                      {Array.from(
-                        new Map(
-                          routeList.map(
-                            (route) => [
-                              route.origin
-                                .name,
-                              route
-                                .origin
-                                .name,
-                            ],
-                          ),
-                        ).values(),
-                      ).map((name) => (
-                        <option
-                          key={name}
-                          value={name}
-                        >
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label>
-                    Destination
-                    <select
-                      value={
-                        destinationId
-                      }
-                      onChange={(event) =>
-                        setDestinationId(
-                          event.target
-                            .value,
-                        )
-                      }
-                    >
-                      <option value="">
-                        Select destination
-                      </option>
-
-                      {Array.from(
-                        new Map(
-                          routeList.map(
-                            (route) => [
-                              route.destination
-                                .name,
-                              route
-                                .destination
-                                .name,
-                            ],
-                          ),
-                        ).values(),
-                      ).map((name) => (
-                        <option
-                          key={name}
-                          value={name}
-                        >
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    fullWidth
-                    disabled={
-                      !originId ||
-                      !destinationId ||
-                      loading
-                    }
-                    onClick={
-                      handleCalculate
-                    }
-                  >
-                    {loading
-                      ? "Calculating..."
-                      : "Calculate route"}
-                  </Button>
-
-                  {error && (
-                    <div className="route-inline-error">
-                      <AlertTriangle
-                        size={14}
-                      />
-                      <span>{error}</span>
-                    </div>
-                  )}
                 </div>
               )}
             </section>

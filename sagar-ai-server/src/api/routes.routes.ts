@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   calculateRoute,
+  calculateRouteOptions,
   getRecommendedRoutes,
   getRouteById,
   getRoutes,
@@ -23,6 +24,7 @@ const querySchema = z.object({
   originLng: z.coerce.number().optional(),
   destinationLat: z.coerce.number().optional(),
   destinationLng: z.coerce.number().optional(),
+  maxOptions: z.coerce.number().min(1).max(5).optional(),
 });
 
 const router = Router();
@@ -59,11 +61,20 @@ router.get(
       typeof query.destinationLat === "number" &&
       typeof query.destinationLng === "number"
     ) {
-      const route = calculateRoute(
-        { latitude: query.originLat, longitude: query.originLng },
-        { latitude: query.destinationLat, longitude: query.destinationLng }
-      );
-      res.json({ route });
+      const origin = { latitude: query.originLat, longitude: query.originLng };
+      const destination = {
+        latitude: query.destinationLat,
+        longitude: query.destinationLng,
+      };
+
+      const options = calculateRouteOptions(origin, destination, {
+        maxOptions: query.maxOptions ?? 3,
+      });
+
+      res.json({
+        route: options[0] ?? calculateRoute(origin, destination),
+        routes: options,
+      });
       return;
     }
 

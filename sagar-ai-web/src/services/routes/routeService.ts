@@ -270,6 +270,45 @@ export function calculateRoute(origin: Coordinate, destination: Coordinate): Rou
   return buildCalculatedRoute(origin, destination);
 }
 
+/**
+ * Returns up to `maxOptions` genuinely configured route candidates for a
+ * FROM/TO pair, ranked safety-first (see compareRouteSafety), not by
+ * distance alone. A route qualifies if its origin or its destination is
+ * within range of the requested origin/destination - this surfaces real
+ * alternative corridors from the same departure point even when none of
+ * the configured routes share the exact destination. Only when nothing
+ * configured is nearby does this fall back to a single coordinate-derived
+ * corridor (the existing calculateRoute behaviour), so no route is ever
+ * invented when real alternatives exist.
+ */
+export function calculateRouteOptions(
+  origin: Coordinate,
+  destination: Coordinate,
+  options: { maxOptions?: number } = {}
+): RoutePlan[] {
+  validateCoordinate(origin);
+  validateCoordinate(destination);
+
+  const maxOptions = options.maxOptions ?? 3;
+  const PROXIMITY_THRESHOLD_KM = 20;
+
+  const candidates = normalizedRoutes.filter((route) => {
+    const originDistance = haversineDistanceKm(origin, route.origin);
+    const destinationDistance = haversineDistanceKm(destination, route.destination);
+
+    return (
+      originDistance <= PROXIMITY_THRESHOLD_KM ||
+      destinationDistance <= PROXIMITY_THRESHOLD_KM
+    );
+  });
+
+  if (candidates.length === 0) {
+    return [buildCalculatedRoute(origin, destination)];
+  }
+
+  return [...candidates].sort(compareRouteSafety).slice(0, maxOptions);
+}
+
 function findMatchingRoutes(origin: Coordinate, destination: Coordinate): RoutePlan[] {
   const ORIGIN_THRESHOLD_KM = 8;
   const DESTINATION_THRESHOLD_KM = 8;
