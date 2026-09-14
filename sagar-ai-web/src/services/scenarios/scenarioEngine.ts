@@ -185,31 +185,19 @@ function getActiveHazardPenalty(
 
   let penalty = 0;
 
-  if (
-    area.hazards?.cyclone?.risk ===
-    "high"
-  ) {
+  if (area.hazards?.cyclone) {
     penalty += 8;
   }
 
-  if (
-    area.hazards?.lightning?.risk ===
-    "high"
-  ) {
+  if (area.hazards?.lightning) {
     penalty += 8;
   }
 
-  if (
-    area.hazards?.roughSea?.risk ===
-    "high"
-  ) {
+  if (area.hazards?.roughSea) {
     penalty += 8;
   }
 
-  if (
-    area.hazards?.strongWind?.risk ===
-    "high"
-  ) {
+  if (area.hazards?.strongWind) {
     penalty += 7;
   }
 
@@ -334,17 +322,7 @@ function calculateLightningScenario(
   const area =
     findMarineArea(areaId);
 
-  if (
-    area?.hazards?.lightning?.risk ===
-    "moderate"
-  ) {
-    score += 5;
-  }
-
-  if (
-    area?.hazards?.lightning?.risk ===
-    "high"
-  ) {
+  if (area?.hazards?.lightning) {
     score += 10;
   }
 
@@ -874,11 +852,19 @@ export function calculateScenarioRisk(
   return result.riskScore;
 }
 
+const alertRecords: Array<{
+  status?: string;
+}> = Array.isArray(alertsData)
+  ? alertsData
+  : ((alertsData as { alerts?: unknown[] })
+      ?.alerts as Array<{ status?: string }>) ?? [];
+
 export function getActiveMarineHazardCount(
 ): number {
-  return alertsData.filter(
+  return alertRecords.filter(
     (alert) =>
-      alert.status === "active",
+      alert.status === "active" ||
+      alert.status === undefined,
   ).length;
 }
 

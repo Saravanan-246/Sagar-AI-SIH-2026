@@ -53,8 +53,11 @@ interface GeoPoint {
 const boundaries =
   boundariesData as BoundaryRecord[];
 
-const fishingZones =
-  fishingZonesData as FishingZoneRecord[];
+const fishingZones = (
+  Array.isArray(fishingZonesData)
+    ? fishingZonesData
+    : ((fishingZonesData as { zones?: unknown[] })?.zones ?? [])
+) as FishingZoneRecord[];
 
 const DEGREE_EPSILON = 1e-9;
 

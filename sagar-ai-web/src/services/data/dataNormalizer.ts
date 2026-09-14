@@ -326,13 +326,13 @@ export function normalizeRoute(
       route.distanceKm,
 
     durationHours:
-      route.durationHours,
+      route.estimatedDurationHours,
 
     riskLevel:
-      route.riskLevel,
+      route.risk.level,
 
     riskScore:
-      route.riskScore,
+      route.risk.score,
 
     status:
       route.status,

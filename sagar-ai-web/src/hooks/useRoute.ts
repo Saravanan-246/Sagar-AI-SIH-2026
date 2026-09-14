@@ -6,8 +6,8 @@ import {
 } from "../services/routes/routeService";
 
 import type {
-  RouteCalculationInput,
   RoutePlan,
+  RoutePoint,
 } from "../types/route";
 
 export default function useRoute() {
@@ -59,7 +59,8 @@ export default function useRoute() {
 
   const calculate = useCallback(
     async (
-      input: RouteCalculationInput
+      origin: RoutePoint,
+      destination: RoutePoint,
     ): Promise<RoutePlan | null> => {
       setIsLoading(true);
       setError(null);
@@ -67,20 +68,8 @@ export default function useRoute() {
       try {
         const calculated =
           calculateRoute(
-            input.origin,
-            input.destination,
-            {
-              speedKnots:
-                input.speedKnots,
-              vesselType:
-                input.vesselType,
-              departureTime:
-                input.departureTime,
-              avoidRestrictedAreas:
-                input.avoidRestrictedAreas,
-              preferredRisk:
-                input.preferredRisk,
-            }
+            origin,
+            destination,
           );
 
         setResult(calculated);
@@ -132,10 +121,12 @@ export default function useRoute() {
     result,
 
     isLoading,
+    loading: isLoading,
 
     error,
 
     loadRoutes,
+    refresh: loadRoutes,
 
     calculate,
 

@@ -80,6 +80,26 @@ function getHazardTone(
   }
 }
 
+function titleCase(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function seaStateTone(
+  seaState?: string,
+): "danger" | "warning" | "normal" {
+  if (seaState === "rough" || seaState === "very_rough") {
+    return "danger";
+  }
+
+  if (seaState === "moderate") {
+    return "warning";
+  }
+
+  return "normal";
+}
+
 export default function Area() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -263,19 +283,17 @@ export default function Area() {
             }
             headline={
               area.safety
-                ?.operatingRecommendation ??
+                ?.recommendation ??
               "Review current conditions before operating offshore."
             }
             summary={`Sea state: ${
-              conditions?.seaState?.label ??
-              "Unknown"
+              conditions?.seaState
+                ? titleCase(conditions.seaState)
+                : "Unknown"
             }. Wind: ${
-              conditions?.windSpeed?.value ??
+              conditions?.windSpeedKnots ??
               "—"
-            } ${
-              conditions?.windSpeed?.unit ??
-              ""
-            }.`}
+            } kn.`}
             area={area.name}
           />
 
@@ -316,22 +334,16 @@ export default function Area() {
             <MarineMetric
               label="Wind"
               value={formatNumber(
-                conditions?.windSpeed?.value,
+                conditions?.windSpeedKnots,
               )}
-              unit={
-                conditions?.windSpeed?.unit
-              }
+              unit="kn"
               icon={Wind}
               status={
-                conditions?.windSpeed
-                  ?.value &&
-                conditions.windSpeed.value >=
-                  22
+                conditions?.windSpeedKnots !== undefined &&
+                conditions.windSpeedKnots >= 22
                   ? "danger"
-                  : conditions?.windSpeed
-                        ?.value &&
-                      conditions.windSpeed.value >=
-                        16
+                  : conditions?.windSpeedKnots !== undefined &&
+                      conditions.windSpeedKnots >= 16
                     ? "warning"
                     : "normal"
               }
@@ -345,22 +357,16 @@ export default function Area() {
             <MarineMetric
               label="Wave height"
               value={formatNumber(
-                conditions?.waveHeight?.value,
+                conditions?.waveHeightM,
               )}
-              unit={
-                conditions?.waveHeight?.unit
-              }
+              unit="m"
               icon={Waves}
               status={
-                conditions?.waveHeight
-                  ?.value &&
-                conditions.waveHeight.value >=
-                  1.8
+                conditions?.waveHeightM !== undefined &&
+                conditions.waveHeightM >= 1.8
                   ? "danger"
-                  : conditions?.waveHeight
-                        ?.value &&
-                      conditions.waveHeight.value >=
-                        1.2
+                  : conditions?.waveHeightM !== undefined &&
+                      conditions.waveHeightM >= 1.2
                     ? "warning"
                     : "normal"
               }
@@ -374,21 +380,16 @@ export default function Area() {
             <MarineMetric
               label="Visibility"
               value={formatNumber(
-                conditions?.visibility?.value,
+                conditions?.visibilityKm,
               )}
-              unit={
-                conditions?.visibility?.unit
-              }
+              unit="km"
               icon={Compass}
               status={
-                conditions?.visibility
-                  ?.value &&
-                conditions.visibility.value < 5
+                conditions?.visibilityKm !== undefined &&
+                conditions.visibilityKm < 5
                   ? "danger"
-                  : conditions?.visibility
-                        ?.value &&
-                      conditions.visibility.value <
-                        7
+                  : conditions?.visibilityKm !== undefined &&
+                      conditions.visibilityKm < 7
                     ? "warning"
                     : "normal"
               }
@@ -398,39 +399,29 @@ export default function Area() {
               label="Sea state"
               value={
                 conditions?.seaState
-                  ?.value ?? "—"
+                  ? titleCase(conditions.seaState)
+                  : "—"
               }
               unit=""
               icon={Waves}
-              status={
-                conditions?.seaState
-                  ?.value &&
-                conditions.seaState.value >= 4
-                  ? "danger"
-                  : conditions?.seaState
-                        ?.value &&
-                      conditions.seaState.value >=
-                        3
-                    ? "warning"
-                    : "normal"
-              }
+              status={seaStateTone(conditions?.seaState)}
               detail={
-                conditions?.seaState?.label
+                conditions?.seaState
+                  ? titleCase(conditions.seaState)
+                  : undefined
               }
             />
 
             <MarineMetric
               label="Rain probability"
               value={formatNumber(
-                conditions?.rainProbability?.value,
+                conditions?.rainProbability,
               )}
               unit="%"
               icon={CloudRain}
               status={
-                conditions?.rainProbability
-                  ?.value &&
-                conditions.rainProbability
-                  .value >= 60
+                conditions?.rainProbability !== undefined &&
+                conditions.rainProbability >= 60
                   ? "warning"
                   : "normal"
               }
@@ -439,11 +430,9 @@ export default function Area() {
             <MarineMetric
               label="Air temperature"
               value={formatNumber(
-                conditions?.airTemperature?.value,
+                conditions?.airTemperatureC,
               )}
-              unit={
-                conditions?.airTemperature?.unit
-              }
+              unit="°C"
               icon={Thermometer}
               status="normal"
             />
@@ -469,22 +458,20 @@ export default function Area() {
               <div>
                 <span>Current phase</span>
                 <strong>
-                  {tide?.currentPhase ??
-                    "Unknown"}
+                  {tide?.currentState
+                    ? titleCase(tide.currentState)
+                    : "Unknown"}
                 </strong>
               </div>
 
               <div className="tide-height">
                 <strong>
                   {formatNumber(
-                    tide?.currentHeight?.value,
+                    tide?.currentHeightM,
                   )}
                 </strong>
 
-                <span>
-                  {tide?.currentHeight?.unit ??
-                    "m"}
-                </span>
+                <span>m</span>
               </div>
             </div>
 
@@ -496,7 +483,7 @@ export default function Area() {
                   </span>
                   <strong>
                     {formatDate(
-                      tide?.nextHighTide
+                      tide?.nextHigh
                         ?.time,
                     )}
                   </strong>
@@ -504,11 +491,10 @@ export default function Area() {
 
                 <span>
                   {formatNumber(
-                    tide?.nextHighTide
-                      ?.height?.value,
+                    tide?.nextHigh
+                      ?.heightM,
                   )}{" "}
-                  {tide?.nextHighTide
-                    ?.height?.unit ?? "m"}
+                  m
                 </span>
               </div>
 
@@ -519,7 +505,7 @@ export default function Area() {
                   </span>
                   <strong>
                     {formatDate(
-                      tide?.nextLowTide
+                      tide?.nextLow
                         ?.time,
                     )}
                   </strong>
@@ -527,11 +513,10 @@ export default function Area() {
 
                 <span>
                   {formatNumber(
-                    tide?.nextLowTide
-                      ?.height?.value,
+                    tide?.nextLow
+                      ?.heightM,
                   )}{" "}
-                  {tide?.nextLowTide
-                    ?.height?.unit ?? "m"}
+                  m
                 </span>
               </div>
             </div>
@@ -558,12 +543,9 @@ export default function Area() {
                 <span>SST</span>
                 <strong>
                   {formatNumber(
-                    indicators?.sst?.value,
+                    indicators?.seaSurfaceTemperatureC,
                   )}{" "}
-                  <small>
-                    {indicators?.sst
-                      ?.unit ?? "°C"}
-                  </small>
+                  <small>°C</small>
                 </strong>
               </div>
 
@@ -571,14 +553,10 @@ export default function Area() {
                 <span>Chlorophyll</span>
                 <strong>
                   {formatNumber(
-                    indicators?.chlorophyll
-                      ?.value,
+                    indicators?.chlorophyllMgM3,
                     2,
                   )}{" "}
-                  <small>
-                    {indicators?.chlorophyll
-                      ?.unit ?? "mg/m3"}
-                  </small>
+                  <small>mg/m3</small>
                 </strong>
               </div>
             </div>
@@ -685,13 +663,10 @@ function HazardItem({
 }: {
   label: string;
   icon: typeof AlertTriangle;
-  status?: {
-    status?: string;
-    risk?: string;
-  };
+  status?: boolean;
 }) {
-  const risk =
-    status?.risk ?? "unknown";
+  const active = Boolean(status);
+  const risk = active ? "high" : "low";
 
   return (
     <div className="hazard-item">
@@ -705,9 +680,7 @@ function HazardItem({
         <span>{label}</span>
 
         <strong>
-          {formatHazardStatus(
-            status?.status,
-          )}
+          {active ? "Active" : "No active hazard"}
         </strong>
       </div>
 
@@ -715,24 +688,10 @@ function HazardItem({
         tone={getHazardTone(risk)}
         size="sm"
       >
-        {risk.toUpperCase()}
+        {active ? "ACTIVE" : "CLEAR"}
       </Badge>
     </div>
   );
-}
-
-function formatHazardStatus(
-  status?: string,
-) {
-  if (!status) {
-    return "No status available";
-  }
-
-  return status
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) =>
-      letter.toUpperCase(),
-    );
 }
 
 function formatDate(

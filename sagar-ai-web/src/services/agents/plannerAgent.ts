@@ -269,16 +269,18 @@ export function planAgents(
     )
   );
 
-  const priority: AgentName[] = [
-    "marine-data",
-    "weather",
-    "ocean",
-    "geo",
-    "risk",
-    "evidence",
-    "visualization",
-    "reporting",
-  ].filter((agent) =>
+  const priority: AgentName[] = (
+    [
+      "marine-data",
+      "weather",
+      "ocean",
+      "geo",
+      "risk",
+      "evidence",
+      "visualization",
+      "reporting",
+    ] as AgentName[]
+  ).filter((agent) =>
     tasks.some(
       (task) => task.agent === agent
     )

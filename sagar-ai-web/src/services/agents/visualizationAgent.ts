@@ -590,36 +590,7 @@ function buildContextVisualization(
               "Wind",
             value:
               weather?.windSpeedKnots ??
-              marine?.area &&
-              typeof marine.area ===
-                "object"
-                ? (
-                    marine.area as Record<
-                      string,
-                      unknown
-                    >
-                  ).conditions &&
-                  typeof (
-                    marine.area as Record<
-                      string,
-                      unknown
-                    >
-                  ).conditions ===
-                    "object"
-                  ? (
-                      (
-                        marine.area as Record<
-                          string,
-                          unknown
-                        >
-                      ).conditions as Record<
-                        string,
-                        unknown
-                      >
-                    ).windSpeedKnots ??
-                    "—"
-                  : "—"
-                : "—",
+              "—",
           },
 
           {

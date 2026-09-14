@@ -12,6 +12,7 @@ import fishingZonesData from "../../data/fishingZones.json";
 import routesData from "../../data/routes.json";
 import alertsData from "../../data/alerts.json";
 import marineData from "../../data/marine.json";
+import boundariesData from "../../data/boundaries.json";
 
 import "./MarineMap.css";
 
@@ -99,17 +100,40 @@ export default function MarineMap({
     [center]
   );
 
-  const marineCoords = useMemo(() => {
-    const raw = (marineData as any)?.coordinates || (marineData as any)?.location;
-    return toLatLng(raw);
+  const defaultArea = useMemo(() => {
+    const areas = (marineData as any)?.areas;
+    return Array.isArray(areas) && areas.length > 0 ? areas[0] : null;
   }, []);
 
+  const marineCoords = useMemo(() => {
+    return toLatLng(defaultArea?.coordinates);
+  }, [defaultArea]);
+
   const hazardsList = useMemo(() => {
-    const list = (marineData as any)?.hazards || (alertsData as any)?.hazards || [];
-    if (!Array.isArray(list)) return [];
+    const list = Array.isArray(boundariesData) ? boundariesData : [];
     return list
-      .map((h: any) => ({ ...h, latLng: toLatLng(h) }))
-      .filter((h: any) => h.latLng !== null);
+      .map((boundary: any) => {
+        const points = Array.isArray(boundary.polygon)
+          ? boundary.polygon.map(toLatLng).filter((c: [number, number] | null): c is [number, number] => c !== null)
+          : [];
+
+        if (points.length === 0) return null;
+
+        const center: [number, number] = [
+          points.reduce((sum: number, p: [number, number]) => sum + p[0], 0) / points.length,
+          points.reduce((sum: number, p: [number, number]) => sum + p[1], 0) / points.length,
+        ];
+
+        return {
+          id: boundary.id,
+          type: boundary.type,
+          name: boundary.name,
+          severity: boundary.restriction === "no_entry" ? "Critical" : "Elevated",
+          description: boundary.description,
+          latLng: center,
+        };
+      })
+      .filter((h): h is NonNullable<typeof h> => h !== null);
   }, []);
 
   const fishingZonesList = useMemo(() => {
@@ -233,11 +257,11 @@ export default function MarineMap({
           >
             <Popup>
               <div className="marine-map-popup">
-                <div className="marine-map-popup-title">{(marineData as any)?.areaName || "Marine Monitoring Station"}</div>
-                <div>Sea State: <b>{(marineData as any)?.seaState || "Moderate"}</b></div>
-                <div>Wave Height: {(marineData as any)?.waveHeight ?? "1.2"} m</div>
-                <div>Wind Speed: {(marineData as any)?.windSpeed ?? "14"} kts</div>
-                <div>Surface Temp: {(marineData as any)?.surfaceTemperature ?? "28.3"} °C</div>
+                <div className="marine-map-popup-title">{defaultArea?.name || "Marine Monitoring Station"}</div>
+                <div>Sea State: <b>{defaultArea?.conditions?.seaState || "Moderate"}</b></div>
+                <div>Wave Height: {defaultArea?.conditions?.waveHeightM ?? "1.2"} m</div>
+                <div>Wind Speed: {defaultArea?.conditions?.windSpeedKnots ?? "14"} kts</div>
+                <div>Surface Temp: {defaultArea?.marineIndicators?.seaSurfaceTemperatureC ?? "28.3"} °C</div>
               </div>
             </Popup>
           </CircleMarker>

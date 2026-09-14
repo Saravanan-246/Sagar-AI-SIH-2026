@@ -82,8 +82,11 @@ const productivityRecords =
         data?: ProductivityRecord[];
       };
 
-const fishingZones =
-  fishingZonesData as FishingZoneRecord[];
+const fishingZones = (
+  Array.isArray(fishingZonesData)
+    ? fishingZonesData
+    : ((fishingZonesData as { zones?: unknown[] })?.zones ?? [])
+) as FishingZoneRecord[];
 
 function normalizeText(
   value: unknown

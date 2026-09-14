@@ -374,7 +374,7 @@ function assessVisibility(
 function assessHazards(
   hazards:
     | WeatherData["hazards"]
-    | MarineData["area"]["hazards"]
+    | NonNullable<MarineData["area"]>["hazards"]
     | undefined,
   factors: RiskFactor[]
 ) {

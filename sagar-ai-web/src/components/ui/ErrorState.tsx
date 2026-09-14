@@ -10,6 +10,7 @@ type ErrorStateProps = {
   title?: string;
   message?: string;
   onRetry?: () => void;
+  retry?: () => void;
   action?: ReactNode | ActionObject;
 };
 
@@ -17,8 +18,10 @@ export default function ErrorState({
   title = "Something went wrong",
   message = "We couldn't load this information right now. Please try again.",
   onRetry,
+  retry,
   action,
 }: ErrorStateProps) {
+  const handleRetry = onRetry ?? retry;
   // Safe helper to render action whether it is JSX or an object with {label, onClick}
   const renderAction = () => {
     if (!action) return null;
@@ -55,13 +58,13 @@ export default function ErrorState({
 
         <p className="sagar-error-message">{message}</p>
 
-        {(onRetry || action) && (
+        {(handleRetry || action) && (
           <div className="sagar-error-actions">
-            {onRetry && (
+            {handleRetry && (
               <button
                 type="button"
                 className="sagar-error-retry"
-                onClick={onRetry}
+                onClick={handleRetry}
               >
                 <RefreshCw size={15} strokeWidth={2} />
                 Try again

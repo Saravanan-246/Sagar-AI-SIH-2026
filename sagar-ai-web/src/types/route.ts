@@ -1,8 +1,15 @@
 export type RouteStatus =
   | "recommended"
+  | "review"
   | "caution"
   | "blocked"
   | "alternative";
+
+export type RouteDecision =
+  | "preferred"
+  | "caution"
+  | "avoid"
+  | "blocked";
 
 export type RouteRiskLevel =
   | "low"
@@ -37,16 +44,9 @@ export interface RouteRestriction {
 }
 
 export interface RouteConditions {
-  windSpeedKnots?: number;
-  windDirection?: string;
-
-  waveHeightM?: number;
-  waveDirection?: string;
-
-  seaState?: string;
-  visibilityKm?: number;
-
-  overallRisk?: RouteRiskLevel;
+  wind?: string;
+  waves?: string;
+  visibility?: string;
 }
 
 export interface RoutePlan {
@@ -61,23 +61,27 @@ export interface RoutePlan {
 
   status: RouteStatus;
 
-  riskLevel: RouteRiskLevel;
-  riskScore: number;
+  risk: {
+    level: RouteRiskLevel;
+    score: number;
+  };
 
   distanceKm: number;
-  durationHours: number;
+  estimatedDurationHours: number;
 
   recommendedSpeedKnots: number;
 
-  conditions?: RouteConditions;
+  conditions: RouteConditions;
 
   restrictions?: RouteRestriction[];
 
-  recommendation: string;
+  routeDecision: RouteDecision;
 
-  avoid?: boolean;
+  reason: string;
 
-  blockedReason?: string;
+  avoidedHazards: string[];
+
+  recommendation?: string;
 
   source?: string;
 

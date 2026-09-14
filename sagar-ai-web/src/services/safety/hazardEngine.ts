@@ -160,13 +160,13 @@ function resolveArea(
           "thoothukudi-coast"
         ),
         getMarineArea(
-          "central-gulf-of-mannar"
+          "central-gulf-mannar"
         ),
         getMarineArea(
-          "southern-gulf-of-mannar"
+          "southern-gulf-mannar"
         ),
         getMarineArea(
-          "northern-gulf-of-mannar"
+          "north-gulf-mannar"
         ),
       ].filter(
         (

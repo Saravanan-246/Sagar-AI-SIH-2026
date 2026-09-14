@@ -264,7 +264,7 @@ export default function Scenario() {
     );
 
   const resultData =
-    result?.result;
+    result;
 
   const riskLevel =
     resultData?.riskLevel ??
@@ -290,7 +290,7 @@ export default function Scenario() {
     selected.result?.recommendation ??
     selected.description;
 
-  const factors =
+  const factors: string[] =
     resultData?.keyFactors ??
     selected.result?.keyFactors ??
     [];

@@ -33,15 +33,18 @@ export default function Home() {
   const riskScore =
     area?.safety?.riskScore ?? 0;
 
-  const seaState =
-    area?.conditions?.seaState?.label ??
-    "Unknown";
+  const seaStateRaw =
+    area?.conditions?.seaState;
+
+  const seaState = seaStateRaw
+    ? seaStateRaw.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "Unknown";
 
   const waveHeight =
-    area?.conditions?.waveHeight?.value;
+    area?.conditions?.waveHeightM;
 
   const windSpeed =
-    area?.conditions?.windSpeed?.value;
+    area?.conditions?.windSpeedKnots;
 
   const productivitySignal =
     area?.marineIndicators
@@ -324,7 +327,7 @@ export default function Home() {
               <strong>
                 {typeof windSpeed ===
                 "number"
-                  ? `${windSpeed} km/h`
+                  ? `${windSpeed} kn`
                   : "—"}
               </strong>
             </div>

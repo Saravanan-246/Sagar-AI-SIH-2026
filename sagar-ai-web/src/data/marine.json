@@ -1,43 +1,176 @@
 {
-  "areaName": "Gulf of Mannar Sector",
-  "coordinates": {
-    "latitude": 8.7534,
-    "longitude": 78.1620
-  },
-  "seaState": "Moderate",
-  "waveHeight": 1.2,
-  "windSpeed": 14,
-  "windDirection": "South-West",
-  "surfaceTemperature": 28.3,
-  "salinity": 34.8,
-  "tide": "Ebb (Falling)",
-  "hazards": [
+  "areas": [
     {
-      "id": "hazard-marine-park",
-      "type": "Restricted Sanctuary",
-      "name": "Gulf of Mannar Biosphere Core Zone",
-      "severity": "High",
-      "latitude": 8.8500,
-      "longitude": 78.3400,
-      "description": "Strictly restricted zone under Marine Protected Area regulations. Mechanized fishing prohibited."
+      "id": "thoothukudi-coast",
+      "name": "Thoothukudi Coast",
+      "region": "Gulf of Mannar",
+      "coordinates": { "latitude": 8.7642, "longitude": 78.1348 },
+      "conditions": {
+        "airTemperatureC": 29.5,
+        "windSpeedKnots": 14,
+        "windDirection": "South-West",
+        "waveHeightM": 1.2,
+        "waveDirection": "South-West",
+        "seaState": "moderate",
+        "visibilityKm": 8,
+        "rainProbability": 20,
+        "cloudCover": 35
+      },
+      "tide": {
+        "currentState": "falling",
+        "currentHeightM": 0.8,
+        "nextHigh": { "time": "2026-09-14T18:20:00Z", "heightM": 1.4 },
+        "nextLow": { "time": "2026-09-14T12:05:00Z", "heightM": 0.4 }
+      },
+      "marineIndicators": {
+        "seaSurfaceTemperatureC": 28.4,
+        "chlorophyllMgM3": 1.42,
+        "productivitySignal": "favourable",
+        "productivityIndex": 74
+      },
+      "hazards": {
+        "lightning": false,
+        "cyclone": false,
+        "roughSea": false,
+        "strongWind": false,
+        "visibilityRisk": false
+      },
+      "safety": {
+        "overallRisk": "moderate",
+        "riskScore": 35,
+        "recommendation": "Conditions are generally manageable. Monitor active marine alerts before departure.",
+        "smallCraftSuitability": "caution"
+      },
+      "updatedAt": "2026-09-14T08:00:00Z"
     },
     {
-      "id": "hazard-chennai-anchorage",
-      "type": "Vessel Traffic Hazard",
-      "name": "Chennai Commercial Vessel Anchorage",
-      "severity": "Moderate",
-      "latitude": 13.1100,
-      "longitude": 80.3600,
-      "description": "High-density cargo transit sector. Maintain radar watch."
+      "id": "central-gulf-mannar",
+      "name": "Central Gulf of Mannar",
+      "region": "Gulf of Mannar",
+      "coordinates": { "latitude": 9.05, "longitude": 78.9 },
+      "conditions": {
+        "airTemperatureC": 29.8,
+        "windSpeedKnots": 19,
+        "windDirection": "South-East",
+        "waveHeightM": 2.1,
+        "waveDirection": "South-East",
+        "seaState": "rough",
+        "visibilityKm": 6,
+        "rainProbability": 30,
+        "cloudCover": 50
+      },
+      "tide": {
+        "currentState": "rising",
+        "currentHeightM": 1.0,
+        "nextHigh": { "time": "2026-09-14T19:10:00Z", "heightM": 1.6 },
+        "nextLow": { "time": "2026-09-14T13:00:00Z", "heightM": 0.3 }
+      },
+      "marineIndicators": {
+        "seaSurfaceTemperatureC": 28.1,
+        "chlorophyllMgM3": 1.76,
+        "productivitySignal": "high",
+        "productivityIndex": 82
+      },
+      "hazards": {
+        "lightning": false,
+        "cyclone": false,
+        "roughSea": true,
+        "strongWind": true,
+        "visibilityRisk": false
+      },
+      "safety": {
+        "overallRisk": "high",
+        "riskScore": 62,
+        "recommendation": "High productivity but rough sea and strong wind increase access risk. Do not treat productivity alone as a go signal.",
+        "smallCraftSuitability": "not_recommended"
+      },
+      "updatedAt": "2026-09-14T08:00:00Z"
     },
     {
-      "id": "hazard-pamban-bridge",
-      "type": "Navigational Obstruction",
-      "name": "Pamban Channel Shallows",
-      "severity": "Elevated",
-      "latitude": 9.2780,
-      "longitude": 79.2150,
-      "description": "Submerged reefs and restricted draft under Pamban rail alignment."
+      "id": "southern-gulf-mannar",
+      "name": "Southern Gulf of Mannar",
+      "region": "Gulf of Mannar",
+      "coordinates": { "latitude": 8.55, "longitude": 78.5 },
+      "conditions": {
+        "airTemperatureC": 29.2,
+        "windSpeedKnots": 10,
+        "windDirection": "West",
+        "waveHeightM": 0.9,
+        "waveDirection": "West",
+        "seaState": "slight",
+        "visibilityKm": 10,
+        "rainProbability": 10,
+        "cloudCover": 20
+      },
+      "tide": {
+        "currentState": "high",
+        "currentHeightM": 1.3,
+        "nextHigh": { "time": "2026-09-15T00:40:00Z", "heightM": 1.5 },
+        "nextLow": { "time": "2026-09-14T18:30:00Z", "heightM": 0.5 }
+      },
+      "marineIndicators": {
+        "seaSurfaceTemperatureC": 27.9,
+        "chlorophyllMgM3": 1.55,
+        "productivitySignal": "favourable",
+        "productivityIndex": 79
+      },
+      "hazards": {
+        "lightning": false,
+        "cyclone": false,
+        "roughSea": false,
+        "strongWind": false,
+        "visibilityRisk": false
+      },
+      "safety": {
+        "overallRisk": "low",
+        "riskScore": 22,
+        "recommendation": "Conditions are comparatively favourable for operation, subject to normal checks.",
+        "smallCraftSuitability": "favourable"
+      },
+      "updatedAt": "2026-09-14T08:00:00Z"
+    },
+    {
+      "id": "north-gulf-mannar",
+      "name": "Northern Gulf of Mannar",
+      "region": "Gulf of Mannar",
+      "coordinates": { "latitude": 9.3, "longitude": 79.1 },
+      "conditions": {
+        "airTemperatureC": 30.1,
+        "windSpeedKnots": 13,
+        "windDirection": "South-West",
+        "waveHeightM": 1.1,
+        "waveDirection": "South-West",
+        "seaState": "moderate",
+        "visibilityKm": 9,
+        "rainProbability": 15,
+        "cloudCover": 30
+      },
+      "tide": {
+        "currentState": "falling",
+        "currentHeightM": 0.7,
+        "nextHigh": { "time": "2026-09-14T17:50:00Z", "heightM": 1.3 },
+        "nextLow": { "time": "2026-09-14T11:40:00Z", "heightM": 0.3 }
+      },
+      "marineIndicators": {
+        "seaSurfaceTemperatureC": 29.8,
+        "chlorophyllMgM3": 0.48,
+        "productivitySignal": "low",
+        "productivityIndex": 42
+      },
+      "hazards": {
+        "lightning": false,
+        "cyclone": false,
+        "roughSea": false,
+        "strongWind": false,
+        "visibilityRisk": false
+      },
+      "safety": {
+        "overallRisk": "moderate",
+        "riskScore": 30,
+        "recommendation": "Sea conditions are manageable, but declining productivity makes this a lower-priority fishing sector right now.",
+        "smallCraftSuitability": "caution"
+      },
+      "updatedAt": "2026-09-14T08:00:00Z"
     }
   ]
 }

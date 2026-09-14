@@ -2,7 +2,12 @@ import { useCallback, useState } from "react";
 
 import { askSagar } from "../services/ai/localSagar";
 
-import type { ChatMessage } from "../types/chat";
+type SagarChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  timestamp: string;
+};
 
 type SagarOptions = {
   language?: string;
@@ -10,18 +15,18 @@ type SagarOptions = {
 };
 
 type UseSagarReturn = {
-  messages: ChatMessage[];
+  messages: SagarChatMessage[];
   loading: boolean;
   error: string | null;
   sendMessage: (
     message: string,
     options?: SagarOptions
-  ) => Promise<ChatMessage | null>;
+  ) => Promise<SagarChatMessage | null>;
   clearConversation: () => void;
 };
 
 export default function useSagar(): UseSagarReturn {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<SagarChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +43,7 @@ export default function useSagar(): UseSagarReturn {
 
       setError(null);
 
-      const userMessage: ChatMessage = {
+      const userMessage: SagarChatMessage = {
         id: `user-${Date.now()}`,
         role: "user",
         text,
@@ -63,7 +68,7 @@ export default function useSagar(): UseSagarReturn {
             ? result
             : result.text;
 
-        const assistantMessage: ChatMessage = {
+        const assistantMessage: SagarChatMessage = {
           id: `assistant-${Date.now()}`,
           role: "assistant",
           text: assistantText,

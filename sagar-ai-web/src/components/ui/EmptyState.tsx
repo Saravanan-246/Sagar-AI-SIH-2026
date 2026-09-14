@@ -4,12 +4,28 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
+type EmptyStateAction = {
+  label: string;
+  onClick?: () => void;
+};
+
 type EmptyStateProps = {
   title: string;
   description?: string;
   icon?: LucideIcon;
-  action?: ReactNode;
+  action?: ReactNode | EmptyStateAction;
 };
+
+function isActionDescriptor(
+  action: ReactNode | EmptyStateAction
+): action is EmptyStateAction {
+  return (
+    typeof action === "object" &&
+    action !== null &&
+    "label" in action &&
+    !("$$typeof" in (action as Record<string, unknown>))
+  );
+}
 
 export default function EmptyState({
   title,
@@ -17,6 +33,22 @@ export default function EmptyState({
   icon: Icon = Inbox,
   action,
 }: EmptyStateProps) {
+  let resolvedAction: ReactNode = null;
+
+  if (action) {
+    resolvedAction = isActionDescriptor(action) ? (
+      <button
+        type="button"
+        className="sagar-empty-action-button"
+        onClick={action.onClick}
+      >
+        {action.label}
+      </button>
+    ) : (
+      action
+    );
+  }
+
   return (
     <>
       <section className="sagar-empty-state">
@@ -36,7 +68,7 @@ export default function EmptyState({
 
         {action && (
           <div className="sagar-empty-action">
-            {action}
+            {resolvedAction}
           </div>
         )}
       </section>

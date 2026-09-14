@@ -4,7 +4,7 @@ import {
   detectQueryLanguage,
   type SupportedLanguage,
   type SagarIntent,
-} from "./intent";
+} from "../ai/intent";
 
 import type {
   AgentFinding,

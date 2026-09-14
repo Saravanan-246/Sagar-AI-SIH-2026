@@ -37,19 +37,30 @@ export function useAlerts(options: UseAlertsOptions = {}) {
       let result: Alert[] = getAlerts();
 
       if (activeOnly) {
-        result = getActiveAlerts(result);
+        result = getActiveAlerts().filter((alert) =>
+          result.some((item) => item.id === alert.id)
+        );
       }
 
       if (areaId) {
-        result = getAlertsByArea(result, areaId);
+        const areaFiltered = getAlertsByArea(areaId);
+        result = result.filter((alert) =>
+          areaFiltered.some((item) => item.id === alert.id)
+        );
       }
 
       if (type) {
-        result = getAlertsByType(result, type);
+        const typeFiltered = getAlertsByType(type);
+        result = result.filter((alert) =>
+          typeFiltered.some((item) => item.id === alert.id)
+        );
       }
 
       if (severity) {
-        result = getAlertsBySeverity(result, severity);
+        const severityFiltered = getAlertsBySeverity(severity);
+        result = result.filter((alert) =>
+          severityFiltered.some((item) => item.id === alert.id)
+        );
       }
 
       setAlerts(result);

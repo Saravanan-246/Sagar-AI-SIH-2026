@@ -173,7 +173,7 @@ function normalizeRoute(route: RouteSourceRecord, index: number): RoutePlan {
   return {
     id: route.id || `route-${index}`,
     name: route.name || `Navigational Route ${index + 1}`,
-    status: route.status || (routeDecision === "preferred" ? "recommended" : "review"),
+    status: (route.status as RoutePlan["status"]) || (routeDecision === "preferred" ? "recommended" : "review"),
     origin: {
       name: route.origin?.name || "Port of Origin",
       latitude: originCoord.latitude,
@@ -251,8 +251,8 @@ export function getRoutesBetween(originName: string, destinationName: string): R
 
   return normalizedRoutes
     .filter((route) => {
-      const origin = route.origin.name.toLowerCase();
-      const destination = route.destination.name.toLowerCase();
+      const origin = (route.origin.name ?? "").toLowerCase();
+      const destination = (route.destination.name ?? "").toLowerCase();
       return origin.includes(originQuery) && destination.includes(destinationQuery);
     })
     .sort((a, b) => compareRouteSafety(a, b));

@@ -14,10 +14,9 @@ export type ScenarioRiskLevel =
   | "critical";
 
 export type ScenarioOperability =
-  | "favourable"
+  | "proceed"
   | "caution"
-  | "restricted"
-  | "not_recommended"
+  | "avoid"
   | "blocked";
 
 export interface ScenarioInput {
@@ -52,6 +51,8 @@ export interface ScenarioFactor {
     | "negative";
   explanation?: string;
 }
+
+export type Scenario = ScenarioDefinition;
 
 export interface ScenarioDefinition {
   id: string;

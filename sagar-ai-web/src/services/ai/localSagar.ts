@@ -1,14 +1,18 @@
 import marineData from "../../data/marine.json";
-import alertsData from "../../data/alerts.json";
-import fishingZones from "../../data/fishingZones.json";
+import fishingZonesRaw from "../../data/fishingZones.json";
 import boundaries from "../../data/boundaries.json";
 import productivityData from "../../data/productivity.json";
+
+import { getAlerts } from "../alerts/alertService";
 
 import {
   analyzeIntent,
   type SupportedLanguage,
   type SagarIntent,
 } from "./intent";
+
+const alertsData = getAlerts();
+const fishingZones = fishingZonesRaw.zones;
 
 type AskSagarOptions = {
   language?: string;
@@ -32,7 +36,49 @@ export type SagarResponse = {
   evidence: SagarEvidence[];
 };
 
-type MarineArea = (typeof marineData.areas)[number];
+type RawMarineArea = (typeof marineData.areas)[number];
+
+/*
+ * Sagar's local (offline-fallback) responder was originally written
+ * against a richer, display-oriented shape (value/unit wrapper
+ * objects). Rather than rewriting every language template, the raw
+ * dataset is adapted into that shape once here.
+ */
+type MarineArea = {
+  id: string;
+  name: string;
+  region?: string;
+  conditions: {
+    windSpeed: { value: number; unit: string };
+    windDirection: string;
+    waveHeight: { value: number; unit: string };
+    seaState: { label: string };
+    visibility: { value: number; unit: string };
+    rainProbability: { value: number };
+  };
+  tide: {
+    currentPhase: string;
+    currentHeight: { value: number; unit: string };
+    nextHighTide: {
+      time: string;
+      height: { value: number; unit: string };
+    };
+    nextLowTide: {
+      time: string;
+      height: { value: number; unit: string };
+    };
+  };
+  marineIndicators: {
+    chlorophyll: { value: number; unit: string };
+    sst: { value: number };
+    productivitySignal: string;
+  };
+  safety: {
+    overallRisk: string;
+    riskScore: number;
+    operatingRecommendation: string;
+  };
+};
 
 type AlertRecord =
   (typeof alertsData)[number];
@@ -46,6 +92,71 @@ type Boundary =
 type ProductivityArea =
   (typeof productivityData.areas)[number];
 
+function toDisplayArea(area: RawMarineArea): MarineArea {
+  return {
+    id: area.id,
+    name: area.name,
+    region: area.region,
+    conditions: {
+      windSpeed: {
+        value: area.conditions.windSpeedKnots,
+        unit: "kn",
+      },
+      windDirection: area.conditions.windDirection,
+      waveHeight: {
+        value: area.conditions.waveHeightM,
+        unit: "m",
+      },
+      seaState: {
+        label: titleCase(area.conditions.seaState),
+      },
+      visibility: {
+        value: area.conditions.visibilityKm,
+        unit: "km",
+      },
+      rainProbability: {
+        value: area.conditions.rainProbability,
+      },
+    },
+    tide: {
+      currentPhase: titleCase(area.tide.currentState),
+      currentHeight: {
+        value: area.tide.currentHeightM ?? 0,
+        unit: "m",
+      },
+      nextHighTide: {
+        time: area.tide.nextHigh.time,
+        height: {
+          value: area.tide.nextHigh.heightM,
+          unit: "m",
+        },
+      },
+      nextLowTide: {
+        time: area.tide.nextLow.time,
+        height: {
+          value: area.tide.nextLow.heightM,
+          unit: "m",
+        },
+      },
+    },
+    marineIndicators: {
+      chlorophyll: {
+        value: area.marineIndicators.chlorophyllMgM3,
+        unit: "mg/m3",
+      },
+      sst: {
+        value: area.marineIndicators.seaSurfaceTemperatureC,
+      },
+      productivitySignal: area.marineIndicators.productivitySignal,
+    },
+    safety: {
+      overallRisk: area.safety.overallRisk,
+      riskScore: area.safety.riskScore,
+      operatingRecommendation: area.safety.recommendation,
+    },
+  };
+}
+
 function getArea(
   areaId?: string,
 ): MarineArea {
@@ -56,11 +167,11 @@ function getArea(
       );
 
     if (found) {
-      return found;
+      return toDisplayArea(found);
     }
   }
 
-  return marineData.areas[0];
+  return toDisplayArea(marineData.areas[0]);
 }
 
 function getAreaByName(
@@ -69,12 +180,14 @@ function getAreaByName(
   const query =
     areaName.toLowerCase();
 
-  return marineData.areas.find(
+  const found = marineData.areas.find(
     (area) =>
       area.name
         .toLowerCase()
         .includes(query),
   );
+
+  return found ? toDisplayArea(found) : undefined;
 }
 
 function cleanNumber(
@@ -146,7 +259,7 @@ function getEvidence(
           source: "Marine alert layer",
           title: alert.title,
           value: alert.severity.toUpperCase(),
-          detail: `${alert.area} · valid until ${formatDateTime(
+          detail: `${alert.location.name} · valid until ${formatDateTime(
             alert.validUntil,
           )}`,
           status: "available",
@@ -224,29 +337,6 @@ function findProductivity(
   );
 }
 
-function findFishingZones(
-  query: string,
-): FishingZone[] {
-  const text = query.toLowerCase();
-
-  return fishingZones.filter(
-    (zone) => {
-      return (
-        zone.status === "active" &&
-        (zone.name
-          .toLowerCase()
-          .includes(text) ||
-          zone.summary
-            .toLowerCase()
-            .includes(text) ||
-          zone.recommendation
-            .toLowerCase()
-            .includes(text))
-      );
-    },
-  );
-}
-
 function formatDateTime(
   value: string,
 ) {
@@ -313,7 +403,7 @@ function generateEnglish(
       return [
         `There are ${active.length} active marine alerts in the current alert set.`,
         `The highest-severity alert is ${highest.title} (${highest.severity}).`,
-        `It affects ${highest.area}. ${highest.recommendation}`,
+        `It affects ${highest.location.name}. ${highest.recommendation}`,
       ].join(" ");
     }
 
@@ -322,11 +412,7 @@ function generateEnglish(
         fishingZones
           .filter(
             (zone) =>
-              zone.status ===
-                "active" &&
-              (zone.type === "pfz" ||
-                zone.type ===
-                  "fishing_zone"),
+              typeof zone.suitability === "string",
           )
           .sort(
             (a, b) =>
@@ -348,18 +434,18 @@ function generateEnglish(
       return [
         `The strongest current fishing candidate is ${best.name}.`,
         `Its suitability is ${best.suitability}.`,
-        best.chlorophyll
+        typeof best.chlorophyll === "number"
           ? `Chlorophyll is ${cleanNumber(
-              best.chlorophyll.value,
+              best.chlorophyll,
               2,
-            )} ${best.chlorophyll.unit}`
+            )} mg/m3`
           : "",
-        best.sst
+        typeof best.sst === "number"
           ? `SST is ${cleanNumber(
-              best.sst.value,
-            )} ${best.sst.unit}.`
+              best.sst,
+            )} °C.`
           : "",
-        `${best.recommendation}`,
+        "Confirm current marine safety conditions before proceeding to this zone.",
       ]
         .filter(Boolean)
         .join(" ");
@@ -523,7 +609,7 @@ function generateTamil(
             severityScore(a.severity),
         )[0];
 
-      return `தற்போது ${active.length} கடல் எச்சரிக்கைகள் உள்ளன. முக்கியமான எச்சரிக்கை: ${highest.title}. இது ${highest.area} பகுதியை பாதிக்கிறது. ${highest.recommendation}`;
+      return `தற்போது ${active.length} கடல் எச்சரிக்கைகள் உள்ளன. முக்கியமான எச்சரிக்கை: ${highest.title}. இது ${highest.location.name} பகுதியை பாதிக்கிறது. ${highest.recommendation}`;
     }
 
     case "pfz": {
@@ -531,9 +617,7 @@ function generateTamil(
         fishingZones
           .filter(
             (zone) =>
-              zone.status ===
-                "active" &&
-              zone.type === "pfz",
+              typeof zone.suitability === "string",
           )
           .sort(
             (a, b) =>
@@ -550,11 +634,11 @@ function generateTamil(
       }
 
       return `${best.name} தற்போது நல்ல மீன்பிடி வாய்ப்புள்ள பகுதியாக உள்ளது. Chlorophyll ${cleanNumber(
-        best.chlorophyll?.value,
+        best.chlorophyll,
         2,
       )} mg/m3 மற்றும் SST ${cleanNumber(
-        best.sst?.value,
-      )} °C. ${best.recommendation}`;
+        best.sst,
+      )} °C. `;
     }
 
     case "route":
@@ -638,9 +722,7 @@ function generateTelugu(
         fishingZones
           .filter(
             (zone) =>
-              zone.status ===
-                "active" &&
-              zone.type === "pfz",
+              typeof zone.suitability === "string",
           )
           .sort(
             (a, b) =>
@@ -654,11 +736,11 @@ function generateTelugu(
 
       return best
         ? `${best.name} మంచి చేపల వేట అవకాశాన్ని చూపుతోంది. Chlorophyll ${cleanNumber(
-            best.chlorophyll?.value,
+            best.chlorophyll,
             2,
           )} mg/m3 మరియు SST ${cleanNumber(
-            best.sst?.value,
-          )} °C. ${best.recommendation}`
+            best.sst,
+          )} °C. `
         : "ప్రస్తుతం క్రియాశీల PFZ సమాచారం అందుబాటులో లేదు.";
     }
 
@@ -705,9 +787,7 @@ function generateMalayalam(
         fishingZones
           .filter(
             (zone) =>
-              zone.status ===
-                "active" &&
-              zone.type === "pfz",
+              typeof zone.suitability === "string",
           )
           .sort(
             (a, b) =>
@@ -721,11 +801,11 @@ function generateMalayalam(
 
       return best
         ? `${best.name} നല്ല മത്സ്യബന്ധന സാധ്യത കാണിക്കുന്നു. Chlorophyll ${cleanNumber(
-            best.chlorophyll?.value,
+            best.chlorophyll,
             2,
           )} mg/m3, SST ${cleanNumber(
-            best.sst?.value,
-          )} °C. ${best.recommendation}`
+            best.sst,
+          )} °C. `
         : "സജീവ PFZ വിവരങ്ങൾ ഇപ്പോൾ ലഭ്യമല്ല.";
     }
 
@@ -772,9 +852,7 @@ function generateKannada(
         fishingZones
           .filter(
             (zone) =>
-              zone.status ===
-                "active" &&
-              zone.type === "pfz",
+              typeof zone.suitability === "string",
           )
           .sort(
             (a, b) =>
@@ -788,11 +866,11 @@ function generateKannada(
 
       return best
         ? `${best.name} ಉತ್ತಮ ಮೀನುಗಾರಿಕೆ ಸಾಧ್ಯತೆಯನ್ನು ತೋರಿಸುತ್ತದೆ. Chlorophyll ${cleanNumber(
-            best.chlorophyll?.value,
+            best.chlorophyll,
             2,
           )} mg/m3 ಮತ್ತು SST ${cleanNumber(
-            best.sst?.value,
-          )} °C. ${best.recommendation}`
+            best.sst,
+          )} °C. `
         : "ಪ್ರಸ್ತುತ ಸಕ್ರಿಯ PFZ ಮಾಹಿತಿ ಲಭ್ಯವಿಲ್ಲ.";
     }
 
@@ -839,9 +917,7 @@ function generateHindi(
         fishingZones
           .filter(
             (zone) =>
-              zone.status ===
-                "active" &&
-              zone.type === "pfz",
+              typeof zone.suitability === "string",
           )
           .sort(
             (a, b) =>
@@ -855,11 +931,11 @@ function generateHindi(
 
       return best
         ? `${best.name} बेहतर मछली पकड़ने की संभावना दिखाता है। Chlorophyll ${cleanNumber(
-            best.chlorophyll?.value,
+            best.chlorophyll,
             2,
           )} mg/m3 और SST ${cleanNumber(
-            best.sst?.value,
-          )} °C है। ${best.recommendation}`
+            best.sst,
+          )} °C है। `
         : "वर्तमान सक्रिय PFZ जानकारी उपलब्ध नहीं है।";
     }
 

@@ -1228,7 +1228,7 @@ export async function runAgentOrchestrator(
 
       if (response.data) {
         const data =
-          response.data as Record<
+          response.data as unknown as Record<
             string,
             unknown
           >;

@@ -1,96 +1,102 @@
 import rawMarineData from "../../data/marine.json";
-import type { MarineArea, MarineConditions } from "../../types/marine";
 
-function parseMarineAreas(): any[] {
-  if (Array.isArray(rawMarineData)) {
-    return rawMarineData;
-  }
-  if (Array.isArray((rawMarineData as any)?.areas)) {
-    return (rawMarineData as any).areas;
-  }
-  if (rawMarineData && typeof rawMarineData === "object") {
-    return [rawMarineData];
-  }
-  return [];
+import type {
+  MarineArea,
+  MarineConditions,
+  TideInfo,
+  MarineIndicators,
+  MarineHazards,
+  MarineSummary,
+} from "../../types/marine";
+
+const normalizedAreas: MarineArea[] = Array.isArray(
+  (rawMarineData as { areas?: MarineArea[] }).areas
+)
+  ? ((rawMarineData as { areas: MarineArea[] }).areas)
+  : [];
+
+function normalizeText(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase();
 }
-
-const rawAreas = parseMarineAreas();
-
-function normalizeMarineArea(item: any, index: number): MarineArea {
-  return {
-    id: item.id || `area-${index}`,
-    name: item.areaName || item.name || "Thoothukudi Coast",
-    coordinates: {
-      latitude: item.coordinates?.latitude ?? item.latitude ?? 8.7642,
-      longitude: item.coordinates?.longitude ?? item.longitude ?? 78.1348,
-    },
-    seaState: item.seaState || "Moderate",
-    waveHeight: item.waveHeight ?? 1.2,
-    windSpeed: item.windSpeed ?? 14,
-    windDirection: item.windDirection || "SW",
-    surfaceTemperature: item.surfaceTemperature ?? 28.3,
-    salinity: item.salinity ?? 34.8,
-    tide: item.tide || "Ebb",
-    hazards: Array.isArray(item.hazards) ? item.hazards : [],
-  };
-}
-
-const normalizedAreas: MarineArea[] = rawAreas.map(normalizeMarineArea);
 
 export function getMarineAreas(): MarineArea[] {
   return [...normalizedAreas];
 }
 
 export function getDefaultMarineArea(): MarineArea {
-  return (
-    normalizedAreas[0] || {
-      id: "thoothukudi",
-      name: "Thoothukudi Coast",
-      coordinates: { latitude: 8.7642, longitude: 78.1348 },
-      seaState: "Moderate",
-      waveHeight: 1.2,
-      windSpeed: 14,
-      windDirection: "SW",
-      surfaceTemperature: 28.3,
-      salinity: 34.8,
-      tide: "Ebb",
-      hazards: [],
-    }
-  );
+  return normalizedAreas[0];
 }
 
 export function getMarineArea(idOrName?: string): MarineArea {
   if (!idOrName || !idOrName.trim()) {
     return getDefaultMarineArea();
   }
-  const target = idOrName.trim().toLowerCase();
+
+  const target = normalizeText(idOrName);
+
   const matched = normalizedAreas.find(
-    (a) => a.id.toLowerCase() === target || a.name.toLowerCase().includes(target)
+    (area) =>
+      normalizeText(area.id) === target ||
+      normalizeText(area.name).includes(target) ||
+      target.includes(normalizeText(area.name))
   );
-  return matched || getDefaultMarineArea();
+
+  return matched ?? getDefaultMarineArea();
 }
 
 export function getMarineAreaById(id: string): MarineArea | undefined {
   if (!id) return undefined;
-  const target = id.trim().toLowerCase();
+
+  const target = normalizeText(id);
+
+  return normalizedAreas.find((area) => normalizeText(area.id) === target);
+}
+
+export function getMarineAreaByName(name: string): MarineArea | undefined {
+  if (!name) return undefined;
+
+  const target = normalizeText(name);
+
   return normalizedAreas.find(
-    (a) => a.id.toLowerCase() === target || a.name.toLowerCase().includes(target)
+    (area) =>
+      normalizeText(area.name) === target ||
+      normalizeText(area.name).includes(target) ||
+      target.includes(normalizeText(area.name))
   );
 }
 
-export function getMarineConditions(areaName?: string): MarineConditions | null {
-  const targetArea = areaName ? getMarineArea(areaName) : getDefaultMarineArea();
-  return (targetArea as unknown) as MarineConditions;
+export function getMarineConditions(idOrName?: string): MarineConditions {
+  return getMarineArea(idOrName).conditions;
 }
 
-export function getMarineConditionsByArea(areaName?: string): MarineConditions | null {
-  return getMarineConditions(areaName);
+export function getMarineTide(idOrName?: string): TideInfo {
+  return getMarineArea(idOrName).tide;
 }
 
-export function getMarineHazards(): any[] {
-  const rootHazards = Array.isArray((rawMarineData as any)?.hazards) ? (rawMarineData as any).hazards : [];
-  const areaHazards = normalizedAreas.flatMap((a) => (Array.isArray(a.hazards) ? a.hazards : []));
-  return [...rootHazards, ...areaHazards];
+export function getMarineIndicators(idOrName?: string): MarineIndicators {
+  return getMarineArea(idOrName).marineIndicators;
+}
+
+export function getMarineHazards(idOrName?: string): MarineHazards {
+  return getMarineArea(idOrName).hazards;
+}
+
+export function getMarineSummary(idOrName?: string): MarineSummary {
+  const area = getMarineArea(idOrName);
+
+  return {
+    areaId: area.id,
+    areaName: area.name,
+    riskLevel: area.safety.overallRisk,
+    riskScore: area.safety.riskScore,
+    seaState: area.conditions.seaState,
+    windSpeedKnots: area.conditions.windSpeedKnots,
+    waveHeightM: area.conditions.waveHeightM,
+    seaSurfaceTemperatureC: area.marineIndicators.seaSurfaceTemperatureC,
+    chlorophyllMgM3: area.marineIndicators.chlorophyllMgM3,
+    productivitySignal: area.marineIndicators.productivitySignal,
+    recommendation: area.safety.recommendation,
+  };
 }
 
 export default {
@@ -98,7 +104,10 @@ export default {
   getDefaultMarineArea,
   getMarineArea,
   getMarineAreaById,
+  getMarineAreaByName,
   getMarineConditions,
-  getMarineConditionsByArea,
+  getMarineTide,
+  getMarineIndicators,
   getMarineHazards,
+  getMarineSummary,
 };

@@ -121,14 +121,17 @@ export default function Map() {
     area?.safety?.riskScore ?? 0;
 
   const wind =
-    area?.conditions?.windSpeed?.value;
+    area?.conditions?.windSpeedKnots;
 
   const waves =
-    area?.conditions?.waveHeight?.value;
+    area?.conditions?.waveHeightM;
 
   const seaState =
-    area?.conditions?.seaState?.label ??
-    "Unknown";
+    area?.conditions?.seaState
+      ? area.conditions.seaState
+          .replaceAll("_", " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+      : "Unknown";
 
   return (
     <AppShell>
@@ -446,7 +449,7 @@ export default function Map() {
                                 alert.type,
                               )}{" "}
                               ·{" "}
-                              {alert.area}
+                              {alert.location.name}
                             </span>
                           </div>
 
