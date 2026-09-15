@@ -75,6 +75,16 @@ export interface DataStatus {
   plannedLiveSources: Array<{ name: string; provider: string }>;
 }
 
+/**
+ * What a clarification answer is still missing, so the chat can offer
+ * the matching action inline instead of sending the user to settings.
+ * Mirrors the backend's ChatClarificationNeed.
+ */
+export interface ChatClarificationNeed {
+  kind: "location" | "location_out_of_coverage" | "route_endpoints";
+  missing: Array<"location" | "origin" | "destination">;
+}
+
 /** Structured response shape returned by POST/GET /api/chat. */
 export interface SagarChatResponse {
   requestId: string;
@@ -107,6 +117,9 @@ export interface SagarChatResponse {
   dataStatus: DataStatus;
 
   warnings?: string[];
+
+  /** Present only on clarification responses. */
+  needs?: ChatClarificationNeed;
 }
 
 export async function askSagarBackend(

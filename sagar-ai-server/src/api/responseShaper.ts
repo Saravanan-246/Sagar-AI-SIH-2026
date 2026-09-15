@@ -37,6 +37,17 @@ export interface DataStatus {
   plannedLiveSources: Array<{ name: string; provider: string }>;
 }
 
+/**
+ * What a clarification response is still missing, so the client can
+ * offer the matching action (use my location / choose an area) inline
+ * instead of making the user find app settings. Purely additive - it
+ * never replaces the human-readable `answer`.
+ */
+export interface ChatClarificationNeed {
+  kind: "location" | "location_out_of_coverage" | "route_endpoints";
+  missing: Array<"location" | "origin" | "destination">;
+}
+
 export interface StructuredSagarResponse {
   requestId: string;
   status: string;
@@ -72,6 +83,9 @@ export interface StructuredSagarResponse {
   dataStatus: DataStatus;
 
   warnings?: string[];
+
+  /** Present only on clarification responses - see ChatClarificationNeed. */
+  needs?: ChatClarificationNeed;
 }
 
 let cachedDataStatus: DataStatus | null = null;

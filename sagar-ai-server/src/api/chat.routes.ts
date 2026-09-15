@@ -18,12 +18,17 @@ import {
 import { analyzeIntent, detectQueryLanguage } from "../services/ai/intent";
 import { narrateResponse } from "../services/ai/responseNarrator";
 import { buildDeterministicAnswer } from "../services/ai/fallbackNarrator";
-import { isAiEnabled } from "../services/ai/openRouterClient";
+import { isLlmEnabled } from "../services/llm/llmProvider";
 import { asyncHandler } from "../middleware/validate";
-import { buildAgentRequest, resolveArea } from "./shared";
+import {
+  buildAgentRequest,
+  findNearestMarineAreaWithinCoverage,
+  resolveArea,
+} from "./shared";
 import {
   shapeChatResponse,
   buildDataStatus,
+  type ChatClarificationNeed,
   type ShapeChatResponseExtras,
   type StructuredSagarResponse,
 } from "./responseShaper";
@@ -197,6 +202,19 @@ function applyZoneAnswer(shaped: StructuredSagarResponse): void {
   shaped.situation = `${best.name} looks like the best fishing zone right now${area ? ` near ${area}` : ""}.`;
   shaped.recommendation = reason ?? `This zone is currently rated "${best.recommendation}".`;
   shaped.answer = `${shaped.situation} ${shaped.recommendation}`.trim();
+
+  /*
+   * The riskLevel/riskScore inherited from the shaper describe the
+   * area-wide hazard assessment, not this zone - so a zone being
+   * recommended on suitability/chlorophyll/SST renders under a
+   * "CRITICAL 84/100" badge, directly contradicting the favourable
+   * reasons listed beside it. Zones carry a PREFER/MONITOR/AVOID
+   * recommendation but no equivalent 0-100 score, so drop the fields
+   * rather than substitute a number Sagar has not computed; the client
+   * already hides the risk row when they are absent.
+   */
+  shaped.riskLevel = undefined;
+  shaped.riskScore = undefined;
 }
 
 function applyAlertsAnswer(shaped: StructuredSagarResponse): void {
@@ -325,29 +343,89 @@ const UNSUPPORTED_REPLY: Record<ChatLanguage, string> = {
   kn: "That's outside Sagar's marine decision-support scope. I can help with marine safety, weather, ocean conditions, alerts, fishing zones, routes or what-if analysis.",
 };
 
+/*
+ * Clarification copy is deliberately conversational rather than a
+ * technical "Location required." - the user is talking to Sagar, not
+ * configuring it. Each entry pairs with a `needs` descriptor so the
+ * client can offer the matching action inline in the conversation.
+ * These are plain templates, not an LLM call, so they stay instant and
+ * work with the AI provider offline.
+ */
 const LOCATION_CLARIFICATION: Record<ChatLanguage, string> = {
-  en: "Which area would you like me to check?",
-  ta: "நான் எந்த பகுதியை சரிபார்க்க வேண்டும்?",
-  hi: "मुझे किस क्षेत्र की जांच करनी चाहिए?",
-  te: "Which area would you like me to check?",
-  ml: "Which area would you like me to check?",
-  kn: "Which area would you like me to check?",
+  en: "Sure - I can check that. Would you like me to use your current location, or pick an area?",
+  ta: "கண்டிப்பாக - நான் பார்க்கிறேன். உங்கள் தற்போதைய இருப்பிடத்தைப் பயன்படுத்தவா, அல்லது ஒரு பகுதியைத் தேர்ந்தெடுக்கிறீர்களா?",
+  hi: "ज़रूर - मैं देख सकता हूं। क्या मैं आपकी वर्तमान लोकेशन का उपयोग करूं, या आप कोई क्षेत्र चुनना चाहेंगे?",
+  te: "Sure - I can check that. Would you like me to use your current location, or pick an area?",
+  ml: "Sure - I can check that. Would you like me to use your current location, or pick an area?",
+  kn: "Sure - I can check that. Would you like me to use your current location, or pick an area?",
 };
 
-const ROUTE_CLARIFICATION: Record<ChatLanguage, string> = {
-  en: "Which origin and destination should I use?",
-  ta: "நான் எந்த தொடக்க இடம் மற்றும் இலக்கு இடத்தைப் பயன்படுத்த வேண்டும்?",
-  hi: "मुझे कौन सा प्रारंभिक स्थान और गंतव्य उपयोग करना चाहिए?",
-  te: "Which origin and destination should I use?",
-  ml: "Which origin and destination should I use?",
-  kn: "Which origin and destination should I use?",
+const OUT_OF_COVERAGE_CLARIFICATION: Record<ChatLanguage, string> = {
+  en: "Your current location is outside the sea areas Sagar covers right now, so I don't have marine data for it. You can pick one of the available areas instead.",
+  ta: "உங்கள் தற்போதைய இருப்பிடம் சாகர் தற்போது உள்ளடக்கிய கடல் பகுதிகளுக்கு வெளியே உள்ளது, அதற்கான கடல் தரவு என்னிடம் இல்லை. கிடைக்கும் பகுதிகளில் ஒன்றைத் தேர்ந்தெடுக்கலாம்.",
+  hi: "आपकी वर्तमान लोकेशन उन समुद्री क्षेत्रों से बाहर है जिन्हें Sagar अभी कवर करता है, इसलिए मेरे पास उसका समुद्री डेटा नहीं है। आप उपलब्ध क्षेत्रों में से कोई एक चुन सकते हैं।",
+  te: "Your current location is outside the sea areas Sagar covers right now. You can pick one of the available areas instead.",
+  ml: "Your current location is outside the sea areas Sagar covers right now. You can pick one of the available areas instead.",
+  kn: "Your current location is outside the sea areas Sagar covers right now. You can pick one of the available areas instead.",
 };
+
+/*
+ * Ask only for the endpoint that is actually missing - never re-ask for
+ * one the user has already given.
+ */
+const ROUTE_CLARIFICATION: Record<
+  "both" | "origin" | "destination",
+  Record<ChatLanguage, string>
+> = {
+  both: {
+    en: "Sure. Where are you starting from, and where are you going?",
+    ta: "கண்டிப்பாக. நீங்கள் எங்கிருந்து புறப்படுகிறீர்கள், எங்கே செல்கிறீர்கள்?",
+    hi: "ज़रूर। आप कहां से शुरू कर रहे हैं, और कहां जाना है?",
+    te: "Sure. Where are you starting from, and where are you going?",
+    ml: "Sure. Where are you starting from, and where are you going?",
+    kn: "Sure. Where are you starting from, and where are you going?",
+  },
+  origin: {
+    en: "Sure - where are you starting from?",
+    ta: "கண்டிப்பாக - நீங்கள் எங்கிருந்து புறப்படுகிறீர்கள்?",
+    hi: "ज़रूर - आप कहां से शुरू कर रहे हैं?",
+    te: "Sure - where are you starting from?",
+    ml: "Sure - where are you starting from?",
+    kn: "Sure - where are you starting from?",
+  },
+  destination: {
+    en: "Got it. Where would you like to go?",
+    ta: "சரி. நீங்கள் எங்கே செல்ல விரும்புகிறீர்கள்?",
+    hi: "समझ गया। आप कहां जाना चाहेंगे?",
+    te: "Got it. Where would you like to go?",
+    ml: "Got it. Where would you like to go?",
+    kn: "Got it. Where would you like to go?",
+  },
+};
+
+// Which half of "from X to Y" the message already supplies, so the
+// question back to the user only covers the genuinely missing part.
+const ORIGIN_ONLY_PATTERN = /\bfrom\s+\S+/i;
+const DESTINATION_ONLY_PATTERN = /\b(?:to|towards|toward)\s+\S+/i;
+
+function detectMissingRouteEndpoints(
+  message: string
+): Array<"origin" | "destination"> {
+  const hasOrigin = ORIGIN_ONLY_PATTERN.test(message);
+  const hasDestination = DESTINATION_ONLY_PATTERN.test(message);
+
+  if (hasOrigin && !hasDestination) return ["destination"];
+  if (hasDestination && !hasOrigin) return ["origin"];
+
+  return ["origin", "destination"];
+}
 
 function buildGateResponse(
   status: "unsupported" | "clarification_needed",
   intent: string,
   language: ChatLanguage,
-  answer: string
+  answer: string,
+  needs?: ChatClarificationNeed
 ): StructuredSagarResponse {
   return {
     requestId: randomUUID(),
@@ -357,13 +435,14 @@ function buildGateResponse(
     answer,
     timestamp: new Date().toISOString(),
     dataStatus: buildDataStatus(),
+    ...(needs ? { needs } : {}),
   };
 }
 
 async function handleChat(input: ChatInput) {
   const history: ConversationTurn[] = input.history ?? [];
 
-  const classification = isAiEnabled()
+  const classification = isLlmEnabled()
     ? await classifyWithAi(input.message, history).catch(() => null)
     : null;
 
@@ -385,7 +464,22 @@ async function handleChat(input: ChatInput) {
       .find(Boolean);
 
   const deterministicIntent = analyzeIntent(input.message).intent;
-  const effectiveIntent = (classification?.intent ?? deterministicIntent) as ChatIntent;
+
+  /*
+   * The AI classifier is better at follow-ups and phrasing, but it also
+   * falls back to "general" whenever it is unsure - and a local model
+   * does that fairly often on Tamil/Hindi script. Letting that vague
+   * "general" override a confident keyword match silently drops real
+   * questions into the out-of-scope reply (e.g. the Tamil fishing-zone
+   * phrasing "இன்று எந்த மீன்பிடி பகுதி சிறந்தது?", which the
+   * deterministic classifier already scores as "pfz"). Prefer the AI
+   * label only when it actually commits to one.
+   */
+  const effectiveIntent = (
+    classification?.intent && classification.intent !== "general"
+      ? classification.intent
+      : deterministicIntent
+  ) as ChatIntent;
 
   const hasExplicitLocation = Boolean(
     input.areaId ||
@@ -405,6 +499,40 @@ async function handleChat(input: ChatInput) {
   // "productivity" (a pre-existing classifier quirk), not because the
   // question is actually ambiguous.
   const isWhatIfQuery = Boolean(detectWhatIf(input.message) || classification?.isWhatIf);
+
+  /*
+   * Device coordinates that sit outside Sagar's configured marine areas
+   * have no supported data behind them. resolveArea would still snap
+   * them to the nearest configured area, which would present coverage
+   * Sagar does not actually have - so say so plainly and offer the area
+   * picker instead. Only applies to location-dependent questions; a
+   * greeting is still just a greeting.
+   */
+  const needsCoverageCheck =
+    LOCATION_REQUIRED_INTENTS.has(effectiveIntent) ||
+    effectiveIntent === "route" ||
+    isWhatIfQuery;
+
+  if (
+    needsCoverageCheck &&
+    typeof input.latitude === "number" &&
+    typeof input.longitude === "number" &&
+    !input.areaId &&
+    !input.areaName &&
+    !findNearestMarineAreaWithinCoverage({
+      latitude: input.latitude,
+      longitude: input.longitude,
+    })
+  ) {
+    return buildGateResponse(
+      "clarification_needed",
+      effectiveIntent,
+      gateLanguage,
+      OUT_OF_COVERAGE_CLARIFICATION[gateLanguage] ??
+        OUT_OF_COVERAGE_CLARIFICATION.en,
+      { kind: "location_out_of_coverage", missing: ["location"] }
+    );
+  }
 
   // Nothing in the message matched any known Sagar capability, and
   // there's no prior conversation to resolve it against - this is
@@ -426,11 +554,22 @@ async function handleChat(input: ChatInput) {
     !parseFromToRoute(input.message) &&
     !mentionedArea
   ) {
+    const missing = detectMissingRouteEndpoints(input.message);
+
+    const which =
+      missing.length === 2
+        ? "both"
+        : missing[0] === "origin"
+          ? "origin"
+          : "destination";
+
     return buildGateResponse(
       "clarification_needed",
       "route",
       gateLanguage,
-      ROUTE_CLARIFICATION[gateLanguage] ?? ROUTE_CLARIFICATION.en
+      ROUTE_CLARIFICATION[which][gateLanguage] ??
+        ROUTE_CLARIFICATION[which].en,
+      { kind: "route_endpoints", missing }
     );
   }
 
@@ -446,7 +585,8 @@ async function handleChat(input: ChatInput) {
       "clarification_needed",
       effectiveIntent,
       gateLanguage,
-      LOCATION_CLARIFICATION[gateLanguage] ?? LOCATION_CLARIFICATION.en
+      LOCATION_CLARIFICATION[gateLanguage] ?? LOCATION_CLARIFICATION.en,
+      { kind: "location", missing: ["location"] }
     );
   }
 
@@ -470,7 +610,9 @@ async function handleChat(input: ChatInput) {
   if (classification?.intent) {
     baseRequest.parameters = {
       ...baseRequest.parameters,
-      aiIntentHint: classification.intent,
+      // The reconciled intent, not the raw AI label - otherwise the
+      // pipeline would still run on the "general" the gate just rejected.
+      aiIntentHint: effectiveIntent,
     };
   }
 
@@ -603,7 +745,7 @@ async function handleChat(input: ChatInput) {
 
   let narrated: string | null = null;
 
-  if (isAiEnabled()) {
+  if (isLlmEnabled()) {
     const routeSummary = shaped.route
       ? `${shaped.route.name}, ${shaped.route.distanceKm.toFixed(1)} km, risk ${shaped.route.risk.score}/100 (${shaped.route.risk.level}), ${shaped.route.routeDecision} - ${shaped.route.reason}`
       : undefined;
@@ -628,6 +770,20 @@ async function handleChat(input: ChatInput) {
       ? `If ${shaped.whatIf.question}, ${shaped.whatIf.impact} ${shaped.whatIf.recommendation}`
       : undefined;
 
+    // Only the last few turns, and only as conversational reference -
+    // every fact the answer may state still comes from the verified
+    // fields below.
+    const recentContext =
+      history.length > 0
+        ? history
+            .slice(-4)
+            .map(
+              (turn) =>
+                `${turn.role === "user" ? "User" : "Sagar"}: ${turn.text}`
+            )
+            .join("\n")
+        : undefined;
+
     narrated = await narrateResponse({
       userQuestion: input.message,
       situation: shaped.situation,
@@ -640,6 +796,8 @@ async function handleChat(input: ChatInput) {
       zonesSummary,
       alertsSummary,
       whatIfSummary,
+      recentContext,
+      dataSources: shaped.dataSources,
       language: resolvedLanguage,
     }).catch(() => null);
   }
@@ -647,7 +805,8 @@ async function handleChat(input: ChatInput) {
   if (narrated) {
     shaped.answer = narrated;
   } else {
-    // OpenRouter unavailable (disabled, failed, out of credits) - the
+    // The configured LLM was unavailable (disabled, unreachable,
+    // timed out, out of credits, or it returned nothing usable) - the
     // existing deterministic answer is already correct and grounded,
     // but it's only ever composed in English. For Tamil/Hindi, swap
     // in a short template-based answer built from these same facts

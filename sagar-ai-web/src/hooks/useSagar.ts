@@ -33,6 +33,34 @@ type SagarOptions = {
   areaId?: string;
 };
 
+/**
+ * Handlers the Chat page supplies so a clarification answer can offer
+ * its action inline. They reuse the page's existing location controls
+ * (browser geolocation + the area picker) rather than introducing a
+ * second location system.
+ */
+type SagarHandlers = {
+  onUseMyLocation?: () => void;
+  onChooseArea?: () => void;
+};
+
+/*
+ * Chip labels follow the language Sagar actually answered in, so a
+ * Tamil clarification gets Tamil actions. Deterministic templates - no
+ * LLM call - so the chips appear instantly with the message.
+ */
+const CLARIFY_LABELS: Record<
+  string,
+  { useLocation: string; chooseArea: string }
+> = {
+  en: { useLocation: "Use my location", chooseArea: "Choose area" },
+  ta: {
+    useLocation: "என் இருப்பிடத்தைப் பயன்படுத்து",
+    chooseArea: "பகுதியைத் தேர்ந்தெடு",
+  },
+  hi: { useLocation: "मेरा स्थान उपयोग करें", chooseArea: "क्षेत्र चुनें" },
+};
+
 type UseSagarReturn = {
   messages: SagarChatMessage[];
   loading: boolean;
@@ -43,6 +71,10 @@ type UseSagarReturn = {
   ) => Promise<SagarChatMessage | null>;
   clearConversation: () => void;
   restoreMessages: (messages: SagarChatMessage[]) => void;
+  /** Re-asks the last user question, e.g. once a location is chosen. */
+  retryLastQuestion: () => void;
+  /** Supported area the backend resolved for the last answer, if any. */
+  resolvedAreaName: string | null;
 };
 
 interface AssistantReply {
@@ -60,8 +92,40 @@ interface AssistantReply {
  */
 function buildStructuredActions(
   result: SagarChatResponse,
-  handlers: { onView: () => void; onSimulate: () => void }
+  handlers: {
+    onView: () => void;
+    onSimulate: () => void;
+    onUseMyLocation?: () => void;
+    onChooseArea?: () => void;
+  }
 ): ChatMapAction[] {
+  /*
+   * A clarification answer has no result to act on yet - what it needs
+   * is the missing piece of context, offered right there in the
+   * conversation. "Outside coverage" deliberately omits "use my
+   * location": retrying the same coordinates would fail the same way.
+   */
+  if (result.needs) {
+    const labels = CLARIFY_LABELS[result.language] ?? CLARIFY_LABELS.en;
+    const clarifyActions: ChatMapAction[] = [];
+
+    if (result.needs.kind !== "location_out_of_coverage" && handlers.onUseMyLocation) {
+      clarifyActions.push({
+        label: labels.useLocation,
+        onClick: handlers.onUseMyLocation,
+      });
+    }
+
+    if (handlers.onChooseArea) {
+      clarifyActions.push({
+        label: labels.chooseArea,
+        onClick: handlers.onChooseArea,
+      });
+    }
+
+    return clarifyActions;
+  }
+
   const actions: ChatMapAction[] = [];
 
   const hasMapTarget = Boolean(
@@ -97,7 +161,12 @@ function buildStructuredActions(
 
 function buildStructuredData(
   result: SagarChatResponse,
-  handlers: { onView: () => void; onSimulate: () => void }
+  handlers: {
+    onView: () => void;
+    onSimulate: () => void;
+    onUseMyLocation?: () => void;
+    onChooseArea?: () => void;
+  }
 ): ChatStructuredData | undefined {
   const actions = buildStructuredActions(result, handlers);
 
@@ -119,7 +188,9 @@ function buildStructuredData(
   return hasAnyField ? structured : undefined;
 }
 
-export default function useSagar(): UseSagarReturn {
+export default function useSagar(
+  handlers: SagarHandlers = {}
+): UseSagarReturn {
   const [messages, setMessages] = useState<SagarChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +217,19 @@ export default function useSagar(): UseSagarReturn {
   // question through this same hook's own sendMessage, without a
   // circular dependency between the two useCallbacks below.
   const sendMessageRef = useRef<UseSagarReturn["sendMessage"] | null>(null);
+
+  // The last question the user actually asked, so a clarification chip
+  // can re-ask it once the missing context is supplied.
+  const lastUserMessageRef = useRef<string | null>(null);
+
+  const [resolvedAreaName, setResolvedAreaName] = useState<string | null>(
+    null
+  );
+
+  // Held in a ref so changing page-level handlers never re-creates the
+  // send pipeline mid-conversation.
+  const handlersRef = useRef<SagarHandlers>(handlers);
+  handlersRef.current = handlers;
 
   const resolveAssistantReply = useCallback(
     async (
@@ -190,6 +274,10 @@ export default function useSagar(): UseSagarReturn {
           })),
         });
 
+        // Only the resolved supported area is kept - never the raw
+        // coordinates that produced it.
+        setResolvedAreaName(result.affectedArea?.name ?? null);
+
         const base =
           result.answer ||
           result.recommendation ||
@@ -203,6 +291,8 @@ export default function useSagar(): UseSagarReturn {
           structured: buildStructuredData(result, {
             onView: handleViewOnMap(result),
             onSimulate: handleSimulate,
+            onUseMyLocation: handlersRef.current.onUseMyLocation,
+            onChooseArea: handlersRef.current.onChooseArea,
           }),
           language: result.language,
         };
@@ -249,6 +339,8 @@ export default function useSagar(): UseSagarReturn {
         text,
         timestamp: new Date().toISOString(),
       };
+
+      lastUserMessageRef.current = text;
 
       const historySnapshot = [...messages, userMessage];
 
@@ -302,9 +394,25 @@ export default function useSagar(): UseSagarReturn {
 
   sendMessageRef.current = sendMessage;
 
+  /*
+   * Re-asks the question the clarification was about, now that the
+   * missing context (location or area) has been supplied - so the user
+   * never has to retype it. The store already holds the new location,
+   * which sendMessage reads on its own.
+   */
+  const retryLastQuestion = useCallback(() => {
+    const question = lastUserMessageRef.current;
+
+    if (question) {
+      void sendMessageRef.current?.(question);
+    }
+  }, []);
+
   const clearConversation = useCallback(() => {
     setMessages([]);
     setError(null);
+    setResolvedAreaName(null);
+    lastUserMessageRef.current = null;
   }, []);
 
   const restoreMessages = useCallback(
@@ -322,5 +430,7 @@ export default function useSagar(): UseSagarReturn {
     sendMessage,
     clearConversation,
     restoreMessages,
+    retryLastQuestion,
+    resolvedAreaName,
   };
 }

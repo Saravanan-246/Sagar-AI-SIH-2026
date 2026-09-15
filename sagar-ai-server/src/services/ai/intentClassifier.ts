@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { requestChatCompletion } from "./openRouterClient";
+import { requestLlmCompletion } from "../llm/llmProvider";
 
 import type { ChatIntent, ChatLanguage } from "../../types/chat";
 
@@ -117,7 +117,7 @@ export async function classifyWithAi(
   message: string,
   history: ConversationTurn[] = []
 ): Promise<AiClassification | null> {
-  const raw = await requestChatCompletion(
+  const raw = await requestLlmCompletion(
     [
       { role: "system", content: SYSTEM_PROMPT },
       {
@@ -129,7 +129,9 @@ export async function classifyWithAi(
     ],
     // Kept deliberately small: the model only ever emits one compact JSON
     // line here, and a low cap keeps this call affordable even when the
-    // configured OpenRouter account has little balance left.
+    // configured OpenRouter account has little balance left. A local
+    // provider raises this to its own floor, since local tokens are free
+    // and a truncated JSON line would just fail to parse.
     { temperature: 0, maxTokens: 100 }
   );
 

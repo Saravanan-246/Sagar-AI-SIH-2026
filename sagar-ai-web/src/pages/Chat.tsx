@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -62,6 +62,45 @@ type MicState = "idle" | "listening" | "thinking" | "speaking" | "error";
 export default function Chat() {
   const navigate = useNavigate();
 
+  /*
+   * A clarification chip needs to retry the question after the location
+   * is set, but retryLastQuestion comes from the very hook these
+   * handlers are passed into - the refs break that cycle without
+   * re-creating the hook on every render.
+   */
+  const retryRef = useRef<(() => void) | null>(null);
+  const requestLocationRef = useRef<(() => Promise<boolean>) | null>(null);
+
+  // Set when the user opened the area picker from a chat chip, so
+  // picking an area re-asks the question instead of leaving it hanging.
+  const retryAfterAreaSelectRef = useRef(false);
+
+  const handleClarifyUseMyLocation = useCallback(async () => {
+    setLocationNotice(null);
+    setAreaPickerOpen(false);
+
+    const granted = await requestLocationRef.current?.();
+
+    if (granted) {
+      retryRef.current?.();
+      return;
+    }
+
+    // Requirement of the browser permission model: we can offer the
+    // area picker, but we can never re-prompt once it is blocked.
+    setLocationNotice(
+      "Location access is blocked. You can choose an area instead.",
+    );
+    retryAfterAreaSelectRef.current = true;
+    setAreaPickerOpen(true);
+  }, []);
+
+  const handleClarifyChooseArea = useCallback(() => {
+    setLocationNotice(null);
+    retryAfterAreaSelectRef.current = true;
+    setAreaPickerOpen(true);
+  }, []);
+
   const {
     messages,
     loading,
@@ -69,7 +108,18 @@ export default function Chat() {
     sendMessage,
     clearConversation,
     restoreMessages,
-  } = useSagar();
+    retryLastQuestion,
+    resolvedAreaName,
+  } = useSagar({
+    onUseMyLocation: () => {
+      void handleClarifyUseMyLocation();
+    },
+    onChooseArea: handleClarifyChooseArea,
+  });
+
+  useEffect(() => {
+    retryRef.current = retryLastQuestion;
+  }, [retryLastQuestion]);
 
   const [input, setInput] = useState("");
   const [areaPickerOpen, setAreaPickerOpen] = useState(false);
@@ -89,8 +139,13 @@ export default function Chat() {
   const clearLocation = useAppStore((state) => state.clearLocation);
   const selectedAreaId = useAppStore((state) => state.selectedAreaId);
   const currentLocation = useAppStore((state) => state.currentLocation);
+  const locationPermission = useAppStore((state) => state.locationPermission);
 
   const { requestLocation, status: locationStatus } = useUserLocation();
+
+  useEffect(() => {
+    requestLocationRef.current = requestLocation;
+  }, [requestLocation]);
 
   const voiceOutput = useVoiceOutput();
 
@@ -148,6 +203,23 @@ export default function Chat() {
       VOICE_ERROR_LABEL[voiceInput.errorReason ?? "unknown"] ??
       VOICE_ERROR_LABEL.unknown,
   };
+
+  /*
+   * One compact line covering the distinct location states: none,
+   * using the device location (with the supported area the backend
+   * resolved it to, once known), a manually selected area, or blocked.
+   * The raw coordinates are never shown.
+   */
+  const locationStateLabel = currentLocation
+    ? resolvedAreaName
+      ? `Using your location · ${resolvedAreaName}`
+      : "Using your location"
+    : selectedAreaId && locationLabel
+      ? locationLabel
+      : locationPermission === "denied" ||
+          locationPermission === "unavailable"
+        ? "Location unavailable"
+        : "No location set";
 
   const chatMessages: ChatItem[] = messages.map(
     (message) => ({
@@ -342,7 +414,7 @@ export default function Chat() {
 
     if (!granted) {
       setLocationNotice(
-        "Location permission is unavailable. Choose a marine area instead.",
+        "Location access is blocked. You can choose an area instead.",
       );
       setAreaPickerOpen(true);
     }
@@ -357,6 +429,14 @@ export default function Chat() {
     }
 
     setAreaPickerOpen(false);
+
+    // Only auto-retry when the picker was opened from a chat
+    // clarification - changing area from the toolbar mid-conversation
+    // should not silently re-send the previous question.
+    if (area && retryAfterAreaSelectRef.current) {
+      retryAfterAreaSelectRef.current = false;
+      retryRef.current?.();
+    }
   };
 
   return (
@@ -510,11 +590,7 @@ export default function Chat() {
           <div className="chat-location-bar">
             <div className="chat-location-status">
               <Compass size={13} />
-              <span>
-                {locationLabel
-                  ? locationLabel
-                  : "No location set"}
-              </span>
+              <span>{locationStateLabel}</span>
             </div>
 
             <div className="chat-location-actions">

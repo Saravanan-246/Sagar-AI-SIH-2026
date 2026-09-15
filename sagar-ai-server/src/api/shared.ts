@@ -44,6 +44,27 @@ export function findNearestMarineArea(
   )[0];
 }
 
+/*
+ * Every marine area Sagar has data for sits in the Gulf of Mannar, so a
+ * device coordinate from anywhere else has no supported marine data at
+ * all - yet findNearestMarineArea above will still hand back the
+ * closest one. Callers that must not present coverage Sagar does not
+ * have (the chat "use my location" flow) use this instead and treat a
+ * null result as "outside supported coverage".
+ */
+export const COVERAGE_RADIUS_KM = 250;
+
+export function findNearestMarineAreaWithinCoverage(
+  point: { latitude: number; longitude: number },
+  radiusKm: number = COVERAGE_RADIUS_KM
+): MarineArea | null {
+  const nearest = findNearestMarineArea(point);
+
+  return haversineDistanceKm(point, nearest.coordinates) <= radiusKm
+    ? nearest
+    : null;
+}
+
 export function resolveArea(query: {
   areaId?: string;
   areaName?: string;

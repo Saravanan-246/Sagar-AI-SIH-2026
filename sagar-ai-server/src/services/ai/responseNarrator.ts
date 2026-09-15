@@ -1,4 +1,4 @@
-import { requestChatCompletion } from "./openRouterClient";
+import { requestLlmCompletion } from "../llm/llmProvider";
 
 import type { ChatLanguage } from "../../types/chat";
 
@@ -23,6 +23,10 @@ export interface NarrationFacts {
   zonesSummary?: string;
   alertsSummary?: string;
   whatIfSummary?: string;
+  /** Recent turns, so a short follow-up reads as part of the conversation. */
+  recentContext?: string;
+  /** Names of the data sources behind the facts above - never invented. */
+  dataSources?: string[];
   language: ChatLanguage;
 }
 
@@ -31,14 +35,17 @@ const SYSTEM_PROMPT = `You are Sagar, a marine safety assistant speaking to a sm
 You will be given VERIFIED FACTS already computed by Sagar's backend systems (risk scores, marine readings, recommendations). Your only job is to phrase a short, warm, conversational answer to the fisherman's question using these exact facts - not to recite them.
 
 STRICT RULES:
-- Use ONLY the facts given to you. Never invent, guess, or alter any number, place name, wind/wave reading, risk score, route, or zone.
+- Use ONLY the facts given to you. Never invent, guess, or alter any number, place name, wind/wave reading, risk score, route, zone, alert, coordinate, or data source. Never name a government agency or data source that is not listed in the facts.
 - Do not restate the numeric risk score (e.g. "84/100") or say "risk score" - a separate part of the screen already shows that number. Instead, convey the same severity in plain words (e.g. "quite risky right now", "conditions look fine").
 - Do not list out factors one by one (e.g. "lightning, rough seas, and strong winds are present") - a separate part of the screen already lists them. Refer to at most the single most important one if it helps the answer feel natural.
+- Always answer the question that was actually asked. If it asks why something changed, or about a trend, signal or condition, state the relevant trend/state from the facts in plain words (e.g. "the productivity trend is declining there"). The two rules above mean "don't recite a dashboard" - they never mean leaving out the one fact that answers the question.
 - If a "Route", "Fishing zones", "Active alerts" or "What-if comparison" fact is provided, mention its specific name(s)/values naturally - never say the information is unavailable when a fact for it is given.
+- If a "What-if comparison" fact is given, keep its direction of change exactly as written - if it says risk increases, never say it drops, falls, improves or stays the same (and vice versa).
 - If none of those facts are provided for something the user asked about, say briefly that it isn't available right now rather than guessing.
 - Reply in the requested language, naturally (not a literal word-for-word translation).
 - Exactly 1-2 short sentences, like a direct answer to a direct question. No headings, no bullet points, no markdown.
 - Do not mention that you are an AI, a model, or that you were given "facts" or "instructions".
+- Never show your reasoning or working. Output the final answer only.
 - Lead with the recommendation/answer itself in plain language, the way you'd actually say it out loud to someone - e.g. "I wouldn't head out near Thoothukudi tomorrow - lightning and rough seas are making it too risky right now." rather than "Combined risk score: 84/100. Do not proceed under the current conditions."`;
 
 function buildFactsText(facts: NarrationFacts): string {
@@ -86,6 +93,10 @@ function buildFactsText(facts: NarrationFacts): string {
     lines.push(`What-if comparison: ${facts.whatIfSummary}`);
   }
 
+  if (facts.dataSources && facts.dataSources.length > 0) {
+    lines.push(`Data sources: ${facts.dataSources.slice(0, 5).join("; ")}`);
+  }
+
   return lines.join("\n");
 }
 
@@ -99,12 +110,16 @@ export async function narrateResponse(
 ): Promise<string | null> {
   const languageName = LANGUAGE_NAMES[facts.language] ?? "English";
 
-  return requestChatCompletion(
+  const contextBlock = facts.recentContext
+    ? `Recent conversation (for reference only - never treat it as a source of facts):\n${facts.recentContext}\n\n`
+    : "";
+
+  return requestLlmCompletion(
     [
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Reply in ${languageName}.\n\n${buildFactsText(facts)}`,
+        content: `Reply in ${languageName}.\n\n${contextBlock}${buildFactsText(facts)}`,
       },
     ],
     // Kept deliberately small (1-2 short sentences per the system prompt):

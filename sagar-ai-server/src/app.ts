@@ -3,6 +3,7 @@ import express, { type Express } from "express";
 
 import { config } from "./config";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
+import { getLlmProvider } from "./services/llm/llmProvider";
 
 import chatRoutes from "./api/chat.routes";
 import marineRoutes from "./api/marine.routes";
@@ -26,11 +27,15 @@ export function createApp(): Express {
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
+    const llm = getLlmProvider();
+    const llmEnabled = llm.isEnabled();
+
     res.json({
       status: "ok",
       service: "sagar-ai-server",
-      aiEnabled: config.ai.enabled,
-      aiModel: config.ai.enabled ? config.ai.model : null,
+      aiEnabled: llmEnabled,
+      aiModel: llmEnabled ? llm.model : null,
+      aiProvider: llmEnabled ? llm.name : null,
     });
   });
 
