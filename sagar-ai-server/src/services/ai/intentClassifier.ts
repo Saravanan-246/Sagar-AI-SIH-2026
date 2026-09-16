@@ -71,9 +71,10 @@ Guidance:
 - "geofence" = restricted/protected areas, boundaries.
 - "tide" = tide times/height.
 - "marine_conditions" = wind/wave/visibility/sea-state readings.
-- "general" = anything else, greetings, unclear.
+- "general" = anything else: greetings, thanks, small talk, acknowledgements ("bro", "ok", "nice", "thanks bro"), unrelated questions, or unclear/empty-ish input (".", "...", "?").
+- A bare greeting, acknowledgement or casual remark is ALWAYS "general", even in the middle of a conversation that was previously about a marine topic - conversation history is there so you don't misread a real follow-up question, never so you tie an unrelated "bro" or "thanks" back to the earlier marine answer. Only resolve a short message against history when it is itself actually asking or requesting something.
 - If the message combines two needs (e.g. "can I fish tomorrow and which route is safer"), put the main one in "intent" and the other in "secondaryIntents".
-- If the message is a short follow-up ("what about the southern route?", "what about wind?"), use the recent history to resolve what it refers to, and set "areaHint" or "intent" accordingly.
+- If the message is a short follow-up question ("what about the southern route?", "what about wind?", "and tomorrow?"), use the recent history to resolve what it refers to, and set "areaHint" or "intent" accordingly.
 - areaHint should be a short place name fragment (e.g. "southern", "Thoothukudi", "Northern Gulf of Mannar") - omit the field entirely if nothing is implied.
 - Never include commentary. Output the JSON object only.`;
 

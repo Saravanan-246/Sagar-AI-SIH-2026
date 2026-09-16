@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   Bell,
   ChevronRight,
   Crosshair,
@@ -23,6 +22,11 @@ import { ROUTES } from "../constants/routes";
 import { useActiveAlerts } from "../hooks/useAlerts";
 import { useMarineData } from "../hooks/useMarineData";
 import { useAppStore } from "../store/appStore";
+import {
+  alertSeverityTone,
+  alertTypeIcon,
+  formatAlertType,
+} from "../utils/alertPresentation";
 
 import "./Map.css";
 
@@ -31,50 +35,6 @@ type Severity =
   | "moderate"
   | "high"
   | "critical";
-
-function severityTone(
-  severity: string,
-) {
-  switch (severity) {
-    case "critical":
-    case "high":
-      return "danger" as const;
-
-    case "moderate":
-      return "warning" as const;
-
-    default:
-      return "success" as const;
-  }
-}
-
-function formatType(type: string) {
-  return type
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) =>
-      letter.toUpperCase(),
-    );
-}
-
-function alertIcon(type: string) {
-  switch (type) {
-    case "lightning":
-      return AlertTriangle;
-
-    case "cyclone":
-      return ShieldAlert;
-
-    case "high_waves":
-    case "rough_sea":
-      return Waves;
-
-    case "strong_wind":
-      return Wind;
-
-    default:
-      return Bell;
-  }
-}
 
 export default function Map() {
   const navigate = useNavigate();
@@ -93,6 +53,7 @@ export default function Map() {
 
   const {
     area,
+    areas,
     loading: marineLoading,
   } = useMarineData({
     areaId: focusedAreaId,
@@ -203,16 +164,7 @@ export default function Map() {
 
               <div className="map-header-actions">
                 <Badge
-                  tone={
-                    risk === "low"
-                      ? "success"
-                      : risk === "moderate"
-                        ? "warning"
-                        : risk === "high" ||
-                            risk === "critical"
-                          ? "danger"
-                          : "neutral"
-                  }
+                  tone={alertSeverityTone(risk)}
                   size="sm"
                 >
                   {risk.toUpperCase()}
@@ -237,6 +189,8 @@ export default function Map() {
 
             <div className="map-canvas">
               <MarineMap
+                areas={areas}
+                alerts={alerts}
                 center={focusCenter}
                 zoom={hasFocusTarget ? 11 : undefined}
                 highlight={
@@ -335,16 +289,7 @@ export default function Map() {
                 </div>
 
                 <Badge
-                  tone={
-                    risk === "low"
-                      ? "success"
-                      : risk === "moderate"
-                        ? "warning"
-                        : risk === "high" ||
-                            risk === "critical"
-                          ? "danger"
-                          : "neutral"
-                  }
+                  tone={alertSeverityTone(risk)}
                   size="sm"
                 >
                   {risk}
@@ -466,7 +411,7 @@ export default function Map() {
                   {topAlerts.map(
                     (alert) => {
                       const Icon =
-                        alertIcon(
+                        alertTypeIcon(
                           alert.type,
                         );
 
@@ -497,7 +442,7 @@ export default function Map() {
                             </strong>
 
                             <span>
-                              {formatType(
+                              {formatAlertType(
                                 alert.type,
                               )}{" "}
                               ·{" "}

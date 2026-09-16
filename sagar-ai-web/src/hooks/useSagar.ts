@@ -170,13 +170,44 @@ function buildStructuredData(
 ): ChatStructuredData | undefined {
   const actions = buildStructuredActions(result, handlers);
 
+  // A zone recommendation list already conveys per-zone suitability -
+  // a generic area-wide risk score alongside it reads as contradicting
+  // that, so PFZ/zone answers never show the top-level score.
+  const hasZones = Boolean(result.zones && result.zones.length > 0);
+
   const structured: ChatStructuredData = {
-    riskLevel: result.riskLevel,
-    riskScore: result.riskScore,
+    riskLevel: hasZones ? undefined : result.riskLevel,
+    riskScore: hasZones ? undefined : result.riskScore,
     keyFactors: result.keyFactors,
     evidenceTitles: result.evidence?.map((item) => item.title),
     whatIfSummary: result.whatIf
       ? `What if ${result.whatIf.question}? ${result.whatIf.impact}`
+      : undefined,
+    whatIfComparison: result.whatIf
+      ? {
+          question: result.whatIf.question,
+          before: result.whatIf.before,
+          after: result.whatIf.after,
+          impact: result.whatIf.impact,
+          recommendation: result.whatIf.recommendation,
+        }
+      : undefined,
+    zones: hasZones
+      ? result.zones!.slice(0, 3).map((zone) => ({
+          name: zone.name,
+          recommendation: zone.recommendation,
+          suitability: zone.suitability,
+          reasons: zone.reasons,
+        }))
+      : undefined,
+    route: result.route
+      ? {
+          distanceKm: result.route.distanceKm,
+          durationHours: result.route.estimatedDurationHours,
+          riskLevel: result.route.risk?.level,
+          riskScore: result.route.risk?.score,
+          status: result.route.status,
+        }
       : undefined,
     actions: actions.length > 0 ? actions : undefined,
   };

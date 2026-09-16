@@ -122,19 +122,37 @@ export interface SagarChatResponse {
   needs?: ChatClarificationNeed;
 }
 
+/*
+ * A single /api/chat call can make up to two sequential local-LLM
+ * calls server-side (intent classification, then narration of the
+ * verified facts), each individually allowed up to the backend's own
+ * 30s Ollama timeout - comfortably longer than the shared client's
+ * default 15s. Without a longer timeout here, a real (if slow) answer
+ * gets aborted client-side and silently replaced by the offline
+ * fallback responder, which has no structured marine data at all -
+ * so a genuine PFZ/route/safety answer would render as plain text
+ * with none of its risk/zone/evidence presentation. This only widens
+ * the ceiling for chat; it never makes a fast answer wait longer.
+ */
+const CHAT_TIMEOUT_MS = 65000;
+
 export async function askSagarBackend(
   message: string,
   options: ChatRequestOptions = {}
 ): Promise<SagarChatResponse> {
-  const { data } = await apiClient.post<SagarChatResponse>("/api/chat", {
-    message,
-    language: options.language,
-    areaId: options.areaId,
-    areaName: options.areaName,
-    latitude: options.latitude,
-    longitude: options.longitude,
-    history: options.history,
-  });
+  const { data } = await apiClient.post<SagarChatResponse>(
+    "/api/chat",
+    {
+      message,
+      language: options.language,
+      areaId: options.areaId,
+      areaName: options.areaName,
+      latitude: options.latitude,
+      longitude: options.longitude,
+      history: options.history,
+    },
+    { timeout: CHAT_TIMEOUT_MS }
+  );
 
   return data;
 }

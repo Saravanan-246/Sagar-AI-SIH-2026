@@ -12,7 +12,7 @@ export interface SuggestionContext {
   language?: AppLanguage;
 }
 
-type TemplateKey = "alerts" | "safety" | "conditions" | "zone" | "route";
+type TemplateKey = "alerts" | "safety" | "conditions" | "zone" | "route" | "whatIf";
 
 type Templates = Record<
   TemplateKey,
@@ -32,6 +32,7 @@ const TEMPLATES: Partial<Record<AppLanguage, Templates>> = {
     zone: (area) => `Which fishing zone near ${area} is best right now?`,
     route: (area, destination) =>
       `Give me the safest route from ${area} to ${destination}.`,
+    whatIf: (area) => `What happens if the wind near ${area} becomes stronger?`,
   },
   ta: {
     alerts: (area) => `${area} அருகில் ஏதேனும் எச்சரிக்கைகள் உள்ளதா?`,
@@ -42,6 +43,7 @@ const TEMPLATES: Partial<Record<AppLanguage, Templates>> = {
     zone: (area) => `${area} அருகில் எந்த மீன்பிடி பகுதி நல்லது?`,
     route: (area, destination) =>
       `${area} இலிருந்து ${destination} வரை பாதுகாப்பான பாதையை காட்டு.`,
+    whatIf: (area) => `${area} அருகில் காற்று வேகமாக மாறினால் என்ன ஆகும்?`,
   },
   hi: {
     alerts: (area) => `${area} के पास कोई सक्रिय चेतावनी है?`,
@@ -51,6 +53,7 @@ const TEMPLATES: Partial<Record<AppLanguage, Templates>> = {
       `${area} के पास कौन सा मछली पकड़ने का क्षेत्र सबसे अच्छा है?`,
     route: (area, destination) =>
       `${area} से ${destination} तक सबसे सुरक्षित मार्ग बताएं।`,
+    whatIf: (area) => `${area} के पास हवा तेज़ हो जाए तो क्या होगा?`,
   },
 };
 
@@ -125,8 +128,8 @@ export function getSuggestedQuestions(
   const templates = TEMPLATES[language] ?? TEMPLATES.en!;
 
   const order: TemplateKey[] = hasNotableAlerts(area.name)
-    ? ["alerts", "safety", "conditions", "zone"]
-    : ["safety", "conditions", "zone", "route"];
+    ? ["alerts", "safety", "conditions", "zone", "whatIf"]
+    : ["safety", "conditions", "zone", "route", "whatIf"];
 
   return order.map((key) => templates[key](area.name, destination.name));
 }

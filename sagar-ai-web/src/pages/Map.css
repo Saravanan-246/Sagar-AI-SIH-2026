@@ -34,7 +34,7 @@
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
-  color: #6d28d9;
+  color: #0f6e64;
   font-size: 9px;
   line-height: 14px;
   font-weight: 800;
@@ -120,7 +120,7 @@
 }
 
 .map-location-pill svg {
-  color: #6d28d9;
+  color: #0f6e64;
 }
 
 .map-tools-pill svg {
@@ -261,7 +261,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #6d28d9;
+  color: #0f6e64;
   font-family: inherit;
   font-size: 9px;
   line-height: 14px;
@@ -271,7 +271,7 @@
 }
 
 .map-panel-link:hover {
-  color: #5b21b6;
+  color: #0b5a52;
 }
 
 .map-panel-icon-button {
@@ -288,9 +288,9 @@
 }
 
 .map-panel-icon-button:hover {
-  border-color: #ddd3ee;
-  background: #f8f4ff;
-  color: #6d28d9;
+  border-color: #bfd8d5;
+  background: #eaf3f2;
+  color: #0f6e64;
 }
 
 .map-alert-list {
@@ -320,7 +320,7 @@
 
 .map-alert-item:hover
   .map-alert-content strong {
-  color: #6d28d9;
+  color: #0f6e64;
 }
 
 .map-alert-icon {
@@ -451,7 +451,7 @@
 .map-action:hover
   .map-action > div:nth-child(2)
   strong {
-  color: #6d28d9;
+  color: #0f6e64;
 }
 
 .map-action-icon {
@@ -470,8 +470,8 @@
 }
 
 .map-action-icon.scenario {
-  background: #f3edff;
-  color: #6d28d9;
+  background: #eaf3f2;
+  color: #0f6e64;
 }
 
 .map-action-icon.fishing {

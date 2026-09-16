@@ -16,7 +16,7 @@ import {
   type ConversationTurn,
 } from "../services/ai/intentClassifier";
 import { analyzeIntent, detectQueryLanguage } from "../services/ai/intent";
-import { narrateResponse } from "../services/ai/responseNarrator";
+import { narrateResponse, narrateGeneralReply } from "../services/ai/responseNarrator";
 import { buildDeterministicAnswer } from "../services/ai/fallbackNarrator";
 import { isLlmEnabled } from "../services/llm/llmProvider";
 import { asyncHandler } from "../middleware/validate";
@@ -264,16 +264,24 @@ const UNSUPPORTED_LOCATION_MESSAGE: Record<"en" | "ta" | "hi", (from: string, to
  * QUERY GATING
  * ------------------------------------------------------------------
  * Without this, ANY message - "bro", "what is the capital of India?",
- * a follow-up with no context - still flows through the full agent
+ * a follow-up with no context, or even casual chat in the middle of an
+ * existing marine conversation - still flows through the full agent
  * pipeline, which always resolves SOME marine area (falling through
- * to the configured default, Thoothukudi Coast) and always runs the
- * risk/weather agents for it. That produces a confident-looking
- * "Combined risk score: 84/100... Thoothukudi Coast" answer for
- * questions that have nothing to do with Thoothukudi, or with marine
- * safety at all. This gate runs first and short-circuits those cases
- * before the pipeline (and its area-defaulting) ever runs, using only
- * the existing deterministic keyword/script classifier from
- * services/ai/intent.ts - no new AI call, no new dataset.
+ * to the configured default, Thoothukudi Coast, or whatever area a
+ * prior turn established) and always runs the risk/weather agents for
+ * it. That produces a confident-looking "Combined risk score:
+ * 84/100... Thoothukudi Coast" answer for questions that have nothing
+ * to do with Thoothukudi, or with marine safety at all - including a
+ * "bro" that follows a real marine answer, which would otherwise just
+ * repeat that answer. This gate runs first and short-circuits those
+ * cases before the pipeline (and its area-defaulting) ever runs,
+ * using the existing deterministic keyword classifier from
+ * services/ai/intent.ts (reconciled with the AI classifier above, when
+ * one ran) to decide intent - a stored location or prior marine turn
+ * is never, on its own, treated as reason to run marine intelligence.
+ * The "general" branch below does make its own Ollama call, but only
+ * to phrase a natural conversational reply - never to produce marine
+ * facts, which remain exclusively the deterministic services' job.
  */
 
 // A short greeting/acknowledgement never needs marine data at all.
@@ -289,6 +297,50 @@ function isCasualMessage(message: string): boolean {
     CASUAL_PATTERN.test(trimmed) ||
     CASUAL_PATTERN_TA.test(trimmed) ||
     CASUAL_PATTERN_HI.test(trimmed)
+  );
+}
+
+/*
+ * A deterministic safety net, not a response dictionary: this decides
+ * intent only, never reply text (Ollama still writes the actual
+ * answer in the "general" branch below). It exists because the AI
+ * classifier is given recent conversation history so it can resolve a
+ * genuine short follow-up ("what about tomorrow?") - but that same
+ * history can lead a smaller/local model to misread an unrelated
+ * "bro" or "thanks bro" said right after a marine answer as
+ * continuing that marine topic, which is exactly the bug this whole
+ * gate exists to prevent. A message built entirely from short
+ * filler/acknowledgement words (however many of them, whatever order)
+ * is never a marine follow-up, so it overrides the classifier here
+ * regardless of what it returned.
+ */
+const FILLER_WORDS = new Set([
+  "hi", "hello", "hey", "yo", "sup", "bro", "broo", "bruh", "bud", "buddy",
+  "dude", "man", "boss",
+  "ok", "okay", "k", "kk", "alright", "fine", "cool", "nice", "great", "sure",
+  "thanks", "thank", "thx", "ty", "pls", "please",
+  "yes", "yeah", "yep", "yup", "no", "nah", "nope",
+  "good", "morning", "afternoon", "evening", "night",
+  "bye", "goodbye", "see", "you", "later",
+]);
+
+function isFillerOnlyMessage(message: string): boolean {
+  const stripped = message
+    .trim()
+    .replace(/[.!?,…]+$/g, "")
+    .trim();
+
+  // Bare punctuation ("...", "?", "??") or nothing at all.
+  if (!/[a-zA-Z]/.test(stripped)) {
+    return stripped.length <= 5;
+  }
+
+  const words = stripped.toLowerCase().split(/\s+/).filter(Boolean);
+
+  return (
+    words.length > 0 &&
+    words.length <= 4 &&
+    words.every((word) => FILLER_WORDS.has(word))
   );
 }
 
@@ -473,12 +525,17 @@ async function handleChat(input: ChatInput) {
    * questions into the out-of-scope reply (e.g. the Tamil fishing-zone
    * phrasing "இன்று எந்த மீன்பிடி பகுதி சிறந்தது?", which the
    * deterministic classifier already scores as "pfz"). Prefer the AI
-   * label only when it actually commits to one.
+   * label only when it actually commits to one - except a message
+   * that is nothing but filler words, which is never a marine
+   * follow-up no matter how confidently the classifier tied it to the
+   * conversation's earlier marine topic.
    */
   const effectiveIntent = (
-    classification?.intent && classification.intent !== "general"
-      ? classification.intent
-      : deterministicIntent
+    isFillerOnlyMessage(input.message)
+      ? "general"
+      : classification?.intent && classification.intent !== "general"
+        ? classification.intent
+        : deterministicIntent
   ) as ChatIntent;
 
   const hasExplicitLocation = Boolean(
@@ -534,14 +591,51 @@ async function handleChat(input: ChatInput) {
     );
   }
 
-  // Nothing in the message matched any known Sagar capability, and
-  // there's no prior conversation to resolve it against - this is
-  // either small talk or genuinely out of scope. Either way, never let
-  // it fall through to the pipeline's default marine area.
-  if (effectiveIntent === "general" && history.length === 0 && !isWhatIfQuery) {
-    const reply = isCasualMessage(input.message)
-      ? (CASUAL_REPLY[gateLanguage] ?? CASUAL_REPLY.en)
-      : (UNSUPPORTED_REPLY[gateLanguage] ?? UNSUPPORTED_REPLY.en);
+  /*
+   * Nothing in this message matched any known Sagar capability - small
+   * talk, a thank-you, an unrelated question, or bare punctuation.
+   * Never let that fall through to the pipeline's default marine area,
+   * regardless of how much conversation history exists: a stored
+   * location or an earlier marine answer is context for Ollama, not a
+   * trigger to run marine intelligence again. Without the intent check
+   * running unconditionally here (previously this only fired on the
+   * very first message of a conversation), a later "bro" after "is it
+   * safe near Thoothukudi?" fell straight through into the full agent
+   * pipeline below, which always resolves an area and always runs
+   * risk/weather for it - producing a confident-looking repeat of the
+   * earlier marine answer for a message that was just small talk.
+   *
+   * Ollama - the same conversational layer used to narrate verified
+   * marine facts elsewhere in this file - answers naturally here too,
+   * with no marine facts to narrate, just the recent conversation for
+   * continuity. The static templates below are only the fallback for
+   * when Ollama is unavailable, exactly as they always have been.
+   */
+  if (effectiveIntent === "general" && !isWhatIfQuery) {
+    const recentContext =
+      history.length > 0
+        ? history
+            .slice(-4)
+            .map(
+              (turn) =>
+                `${turn.role === "user" ? "User" : "Sagar"}: ${turn.text}`
+            )
+            .join("\n")
+        : undefined;
+
+    const conversational = isLlmEnabled()
+      ? await narrateGeneralReply({
+          userMessage: input.message,
+          recentContext,
+          language: gateLanguage,
+        }).catch(() => null)
+      : null;
+
+    const reply =
+      conversational ??
+      (isCasualMessage(input.message)
+        ? (CASUAL_REPLY[gateLanguage] ?? CASUAL_REPLY.en)
+        : (UNSUPPORTED_REPLY[gateLanguage] ?? UNSUPPORTED_REPLY.en));
 
     return buildGateResponse("unsupported", "general", gateLanguage, reply);
   }

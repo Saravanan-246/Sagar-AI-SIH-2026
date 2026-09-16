@@ -1,30 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Bot,
-  Compass,
-  FolderClock,
-  Fish,
-  Mic,
-  MicOff,
-  Navigation,
-  Pause,
-  RotateCcw,
-  Save,
-  Sparkles,
-  Square,
-  Trash2,
-  Volume2,
-} from "lucide-react";
+import { AlertTriangle, Pause, Square, Volume2, VolumeX, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import AppShell from "../components/layout/AppShell";
-import PageContainer from "../components/layout/PageContainer";
-import Button from "../components/ui/Button";
+import ChatHeader from "../components/chat/ChatHeader";
+import ChatSidebar from "../components/chat/ChatSidebar";
 import ChatInput from "../components/chat/ChatInput";
 import ChatWindow from "../components/chat/ChatWindow";
 import type { ChatItem } from "../components/chat/ChatWindow";
+import Modal from "../components/ui/Modal";
 import useSagar from "../hooks/useSagar";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useVoiceInput } from "../hooks/useVoiceInput";
@@ -58,6 +41,32 @@ const VOICE_LANGUAGE_OPTIONS: Array<{ value: AppLanguage; label: string }> = [
 ];
 
 type MicState = "idle" | "listening" | "thinking" | "speaking" | "error";
+
+function getThinkingLabel(lastUserMessage: string | null): string {
+  if (!lastUserMessage) {
+    return "Sagar is checking marine conditions…";
+  }
+
+  const text = lastUserMessage.toLowerCase();
+
+  if (/\broute|path|passage|sail\b/.test(text)) {
+    return "Sagar is plotting the safest route…";
+  }
+
+  if (/\bzone|fishing|pfz\b/.test(text)) {
+    return "Sagar is scanning fishing zones…";
+  }
+
+  if (/\bwind|storm|cyclone|weather|what if\b/.test(text)) {
+    return "Sagar is modelling the scenario…";
+  }
+
+  if (/\balert|warning\b/.test(text)) {
+    return "Sagar is checking active alerts…";
+  }
+
+  return "Sagar is checking marine conditions…";
+}
 
 export default function Chat() {
   const navigate = useNavigate();
@@ -128,9 +137,10 @@ export default function Chat() {
   );
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [savedPanelOpen, setSavedPanelOpen] = useState(false);
-  const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
-  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [savedChats, setSavedChats] = useState<SavedChat[]>(() =>
+    listSavedChats(),
+  );
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const language = useAppStore((state) => state.language);
   const setLanguage = useAppStore((state) => state.setLanguage);
@@ -148,6 +158,31 @@ export default function Chat() {
   }, [requestLocation]);
 
   const voiceOutput = useVoiceOutput();
+
+  /*
+   * TTS is an optional enhancement, not a chat failure - the text
+   * answer already succeeded regardless of whether it can be read
+   * aloud. This is a small, self-dismissing toast (never the same
+   * bold banner a real send/network error gets) so a voice hiccup
+   * never reads as "the app is broken". Re-shows and restarts its
+   * timer on every new voiceOutput "error" transition; manual
+   * dismiss closes it early.
+   */
+  const [voiceToastVisible, setVoiceToastVisible] = useState(false);
+
+  useEffect(() => {
+    if (voiceOutput.status !== "error") {
+      return;
+    }
+
+    setVoiceToastVisible(true);
+
+    const timer = window.setTimeout(() => {
+      setVoiceToastVisible(false);
+    }, 5000);
+
+    return () => window.clearTimeout(timer);
+  }, [voiceOutput.status]);
 
   const locale = LOCALE_BY_LANGUAGE[language] ?? "en-IN";
 
@@ -232,6 +267,26 @@ export default function Chat() {
     }),
   );
 
+  const lastUserMessage = useMemo(() => {
+    for (let i = chatMessages.length - 1; i >= 0; i -= 1) {
+      if (chatMessages[i].role === "user") {
+        return chatMessages[i].text;
+      }
+    }
+    return null;
+  }, [chatMessages]);
+
+  const thinkingLabel = useMemo(
+    () => getThinkingLabel(lastUserMessage),
+    [lastUserMessage],
+  );
+
+  const activeChat = currentChatId
+    ? (savedChats.find((chat) => chat.id === currentChatId) ?? null)
+    : null;
+
+  const headerTitle = activeChat?.title ?? "Sagar AI";
+
   const localeForMessage = (messageLanguage?: string) =>
     LOCALE_BY_LANGUAGE[(messageLanguage as AppLanguage) ?? language] ?? locale;
 
@@ -294,34 +349,50 @@ export default function Chat() {
     void submitMessage(value);
   };
 
-  const handleNewConversation = () => {
-    // Only interrupt with a confirmation when there's actually unsaved
-    // work to lose - a chat that's already saved (or empty) can clear
-    // silently.
-    if (chatMessages.length > 0 && !currentChatId) {
-      const proceed = window.confirm(
-        "Start a new conversation? This chat hasn't been saved.",
-      );
+  // Always-current snapshot for the autosave effect below, so it never
+  // needs these values in its dependency array (which would re-fire it
+  // on every unrelated change) or reads them stale.
+  const latestRef = useRef({
+    currentChatId,
+    language,
+    selectedAreaId,
+    locationLabel,
+  });
 
-      if (!proceed) {
-        return;
-      }
+  useEffect(() => {
+    latestRef.current = {
+      currentChatId,
+      language,
+      selectedAreaId,
+      locationLabel,
+    };
+  });
+
+  // Opening a saved conversation shouldn't re-save it (that would just
+  // bump its recency for no reason) - this flag skips exactly one
+  // autosave pass right after restoreMessages runs.
+  const skipAutosaveRef = useRef(false);
+
+  /*
+   * Sagar conversations autosave as they happen, the way a modern chat
+   * app does - reusing the exact same saveChat/listSavedChats utilities
+   * the app already had for manual saving, just triggered automatically
+   * instead of via a button.
+   */
+  useEffect(() => {
+    if (skipAutosaveRef.current) {
+      skipAutosaveRef.current = false;
+      return;
     }
 
-    clearConversation();
-    setInput("");
-    setCurrentChatId(null);
-    setSaveNotice(null);
-    voiceOutput.stop();
-  };
-
-  const handleSaveChat = () => {
     if (chatMessages.length === 0) {
       return;
     }
 
+    const snapshot = latestRef.current;
+
     const saved = saveChat({
-      id: currentChatId,
+      id: snapshot.currentChatId,
       messages: chatMessages.map((message) => ({
         id: message.id,
         role: message.role,
@@ -338,27 +409,35 @@ export default function Chat() {
             }
           : undefined,
       })),
-      language,
-      areaId: selectedAreaId,
-      areaLabel: locationLabel,
+      language: snapshot.language,
+      areaId: snapshot.selectedAreaId,
+      areaLabel: snapshot.locationLabel,
     });
 
-    setCurrentChatId(saved.id);
-    setSaveNotice(`Saved as "${saved.title}"`);
-    window.setTimeout(() => setSaveNotice(null), 2500);
-  };
+    if (saved.id !== snapshot.currentChatId) {
+      setCurrentChatId(saved.id);
+    }
 
-  const handleOpenSavedChats = () => {
     setSavedChats(listSavedChats());
-    setSavedPanelOpen((open) => !open);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
+
+  const handleNewConversation = () => {
+    clearConversation();
+    setInput("");
+    setCurrentChatId(null);
+    voiceOutput.stop();
+    setMobileSidebarOpen(false);
   };
 
-  const handleLoadSavedChat = (id: string) => {
+  const handleSelectChat = (id: string) => {
     const saved = savedChats.find((chat) => chat.id === id);
 
     if (!saved) {
       return;
     }
+
+    skipAutosaveRef.current = true;
 
     restoreMessages(
       saved.messages.map((message) => ({
@@ -379,16 +458,17 @@ export default function Chat() {
     }
 
     setCurrentChatId(saved.id);
-    setSavedPanelOpen(false);
     setInput("");
     voiceOutput.stop();
+    setMobileSidebarOpen(false);
   };
 
-  const handleDeleteSavedChat = (id: string) => {
+  const handleDeleteChat = (id: string) => {
     deleteSavedChat(id);
     setSavedChats((current) => current.filter((chat) => chat.id !== id));
 
     if (id === currentChatId) {
+      clearConversation();
       setCurrentChatId(null);
     }
   };
@@ -420,6 +500,11 @@ export default function Chat() {
     }
   };
 
+  const handleOpenAreaPicker = () => {
+    setLocationNotice(null);
+    setAreaPickerOpen(true);
+  };
+
   const handleSelectArea = (areaId: string) => {
     const area = marineAreas.find((item) => item.id === areaId);
 
@@ -431,7 +516,7 @@ export default function Chat() {
     setAreaPickerOpen(false);
 
     // Only auto-retry when the picker was opened from a chat
-    // clarification - changing area from the toolbar mid-conversation
+    // clarification - changing area mid-conversation from elsewhere
     // should not silently re-send the previous question.
     if (area && retryAfterAreaSelectRef.current) {
       retryAfterAreaSelectRef.current = false;
@@ -439,384 +524,203 @@ export default function Chat() {
     }
   };
 
+  // Mobile drawer: lock background scroll and allow Escape to close.
+  useEffect(() => {
+    if (!mobileSidebarOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileSidebarOpen]);
+
   return (
-    <AppShell>
-      <PageContainer
-        className="chat-page"
-        fullHeight
-      >
-        <section className="chat-page-shell">
-          <header className="chat-page-header">
-            <div className="chat-page-heading">
-              <button
-                type="button"
-                className="chat-back-button"
-                onClick={() =>
-                  navigate(ROUTES.HOME)
-                }
-                aria-label="Back to home"
-              >
-                <ArrowLeft size={18} />
-              </button>
+    <div className="chat-shell">
+      <ChatSidebar
+        chats={savedChats}
+        activeChatId={currentChatId}
+        onSelectChat={handleSelectChat}
+        onNewChat={handleNewConversation}
+        onDeleteChat={handleDeleteChat}
+        open={mobileSidebarOpen}
+        onClose={() => setMobileSidebarOpen(false)}
+        onBackHome={() => navigate(ROUTES.HOME)}
+        locationLabel={locationStateLabel}
+        hasLocation={Boolean(locationLabel)}
+        locationBusy={locationStatus === "requesting"}
+        onUseMyLocation={handleUseMyLocation}
+        onChooseArea={handleOpenAreaPicker}
+        onClearLocation={clearLocation}
+        language={language}
+        languageOptions={VOICE_LANGUAGE_OPTIONS}
+        onSetLanguage={setLanguage}
+        voiceSupported={voiceInput.isSupported}
+        profileHref={ROUTES.PROFILE}
+      />
 
-              <div className="chat-page-avatar">
-                <Bot size={18} />
-              </div>
+      <div className="chat-main">
+        <ChatHeader
+          title={headerTitle}
+          locationLabel={locationStateLabel}
+          onMenuClick={() => setMobileSidebarOpen(true)}
+          onNewChat={handleNewConversation}
+        />
 
-              <div>
-                <div className="chat-page-title-row">
-                  <h1>Ask Sagar</h1>
-
-                  <span className="chat-online">
-                    <i />
-                    Ready
-                  </span>
-                </div>
-
-                <p>
-                  Marine intelligence for safer
-                  decisions at sea.
-                </p>
-              </div>
-            </div>
-
-            <div className="chat-page-actions">
-              {chatMessages.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleSaveChat}
-                >
-                  <Save size={14} />
-                  Save chat
-                </Button>
-              )}
-
-              <div className="chat-saved-menu">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleOpenSavedChats}
-                >
-                  <FolderClock size={14} />
-                  Saved chats
-                </Button>
-
-                {savedPanelOpen && (
-                  <div className="chat-saved-panel">
-                    {savedChats.length === 0 ? (
-                      <p className="chat-saved-empty">
-                        No saved conversations yet.
-                      </p>
-                    ) : (
-                      savedChats.map((chat) => (
-                        <div
-                          key={chat.id}
-                          className={
-                            chat.id === currentChatId
-                              ? "chat-saved-item chat-saved-item-active"
-                              : "chat-saved-item"
-                          }
-                        >
-                          <button
-                            type="button"
-                            className="chat-saved-item-main"
-                            onClick={() =>
-                              handleLoadSavedChat(chat.id)
-                            }
-                          >
-                            <span className="chat-saved-item-title">
-                              {chat.title}
-                            </span>
-                            <span className="chat-saved-item-meta">
-                              {new Date(
-                                chat.updatedAt,
-                              ).toLocaleString()}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            className="chat-saved-item-delete"
-                            onClick={() =>
-                              handleDeleteSavedChat(chat.id)
-                            }
-                            aria-label={`Delete "${chat.title}"`}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {chatMessages.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleNewConversation}
-                >
-                  <RotateCcw size={15} />
-                  New conversation
-                </Button>
-              )}
-            </div>
-          </header>
-
-          {saveNotice && (
-            <div className="chat-save-notice">{saveNotice}</div>
-          )}
-
-          <div className="chat-language-bar">
-            {VOICE_LANGUAGE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={
-                  language === option.value
-                    ? "chat-language-chip active"
-                    : "chat-language-chip"
-                }
-                onClick={() => setLanguage(option.value)}
-                aria-pressed={language === option.value}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="chat-location-bar">
-            <div className="chat-location-status">
-              <Compass size={13} />
-              <span>{locationStateLabel}</span>
-            </div>
-
-            <div className="chat-location-actions">
-              <button
-                type="button"
-                className="chat-location-chip"
-                onClick={handleUseMyLocation}
-                disabled={locationStatus === "requesting"}
-              >
-                {locationStatus === "requesting"
-                  ? "Locating…"
-                  : "Use my location"}
-              </button>
-
-              <button
-                type="button"
-                className="chat-location-chip"
-                onClick={() =>
-                  setAreaPickerOpen((open) => !open)
-                }
-              >
-                Select area
-              </button>
-
-              {locationLabel && (
-                <button
-                  type="button"
-                  className="chat-location-chip chat-location-chip-ghost"
-                  onClick={clearLocation}
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-
-            {areaPickerOpen && (
-              <div className="chat-area-picker">
-                {marineAreas.map((area) => (
-                  <button
-                    key={area.id}
-                    type="button"
-                    onClick={() =>
-                      handleSelectArea(area.id)
-                    }
-                  >
-                    {area.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {locationNotice && (
-              <p className="chat-location-notice">
-                {locationNotice}
-              </p>
-            )}
-          </div>
-
-          <div className="chat-quick-actions">
-            <button
-              type="button"
-              onClick={() => navigate(ROUTES.ALERTS)}
-            >
-              <AlertTriangle size={13} />
-              Show alerts
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                submitMessage(
-                  "Which fishing zone is best right now?",
-                )
+        <div className="chat-main-window">
+          <ChatWindow
+            messages={chatMessages}
+            loading={loading}
+            thinkingLabel={thinkingLabel}
+            suggestions={suggestions}
+            onSuggestion={handleSuggestion}
+            renderVoiceControl={(message) => {
+              if (!voiceOutput.isSupported) {
+                return null;
               }
-            >
-              <Fish size={13} />
-              Find fishing zone
-            </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                submitMessage("Give me the safest route.")
-              }
-            >
-              <Navigation size={13} />
-              Find safest route
-            </button>
-          </div>
+              const isThisSpeaking =
+                voiceOutput.speakingId === message.id &&
+                voiceOutput.status === "speaking";
 
-          <div className="chat-page-content">
-            <ChatWindow
-              messages={chatMessages}
-              loading={loading}
-              suggestions={suggestions}
-              onSuggestion={handleSuggestion}
-              renderVoiceControl={(message) => {
-                if (!voiceOutput.isSupported) {
-                  return null;
-                }
+              const isThisPaused =
+                voiceOutput.speakingId === message.id &&
+                voiceOutput.status === "paused";
 
-                const isThisSpeaking =
-                  voiceOutput.speakingId === message.id &&
-                  voiceOutput.status === "speaking";
-
-                const isThisPaused =
-                  voiceOutput.speakingId === message.id &&
-                  voiceOutput.status === "paused";
-
-                if (isThisSpeaking) {
-                  return (
-                    <button
-                      type="button"
-                      className="chat-voice-control"
-                      onClick={voiceOutput.pause}
-                      aria-label="Pause"
-                    >
-                      <Pause size={12} />
-                    </button>
-                  );
-                }
-
-                if (isThisPaused) {
-                  return (
-                    <>
-                      <button
-                        type="button"
-                        className="chat-voice-control"
-                        onClick={voiceOutput.resume}
-                        aria-label="Resume"
-                      >
-                        <Volume2 size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        className="chat-voice-control"
-                        onClick={voiceOutput.stop}
-                        aria-label="Stop"
-                      >
-                        <Square size={12} />
-                      </button>
-                    </>
-                  );
-                }
-
+              if (isThisSpeaking) {
                 return (
                   <button
                     type="button"
                     className="chat-voice-control"
-                    onClick={() =>
-                      voiceOutput.speak(message.text, {
-                        id: message.id,
-                        language: localeForMessage(message.language),
-                      })
-                    }
-                    aria-label="Speak this response"
+                    onClick={voiceOutput.pause}
+                    aria-label="Pause"
                   >
-                    <Volume2 size={12} />
-                    Speak
+                    <Pause size={12} />
                   </button>
                 );
-              }}
-            />
-          </div>
+              }
 
-          <div className="chat-page-composer">
-            {error && (
-              <div className="chat-error">
-                <AlertTriangle size={15} />
-                <span>{error}</span>
-              </div>
-            )}
+              if (isThisPaused) {
+                return (
+                  <>
+                    <button
+                      type="button"
+                      className="chat-voice-control"
+                      onClick={voiceOutput.resume}
+                      aria-label="Resume"
+                    >
+                      <Volume2 size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-voice-control"
+                      onClick={voiceOutput.stop}
+                      aria-label="Stop"
+                    >
+                      <Square size={12} />
+                    </button>
+                  </>
+                );
+              }
 
-            {voiceOutput.status === "error" && (
-              <div className="chat-error">
-                <AlertTriangle size={15} />
-                <span>
-                  Couldn't play voice reply — text-to-speech may be
-                  unavailable on this device.
-                </span>
-              </div>
-            )}
-
-            <div className="chat-composer-row">
-              <ChatInput
-                value={input}
-                onChange={setInput}
-                onSend={handleSend}
-                disabled={loading}
-                placeholder="Ask Sagar about sea conditions, alerts, fishing zones or routes..."
-              />
-
-              {voiceInput.isSupported && (
+              return (
                 <button
                   type="button"
-                  className={`chat-mic-button chat-mic-${micState}`}
-                  onClick={handleMicPress}
-                  aria-label={micLabel[micState]}
-                  title={micLabel[micState]}
+                  className="chat-voice-control"
+                  onClick={() =>
+                    voiceOutput.speak(message.text, {
+                      id: message.id,
+                      language: localeForMessage(message.language),
+                    })
+                  }
+                  aria-label="Speak this response"
                 >
-                  {micState === "error" ? (
-                    <MicOff size={20} />
-                  ) : (
-                    <Mic size={20} />
-                  )}
+                  <Volume2 size={12} />
                 </button>
-              )}
-            </div>
+              );
+            }}
+          />
+        </div>
 
-            <div className="chat-composer-footer">
-              <div className="chat-composer-hint">
-                <Sparkles size={13} />
-                <span>
-                  {voiceInput.isSupported
-                    ? micLabel[micState]
-                    : "Ask naturally. Sagar will use the available marine context."}
-                </span>
+        <div className="chat-main-composer">
+          {error && (
+            <div className="chat-banner-stack">
+              <div className="chat-banner chat-banner-error">
+                <AlertTriangle size={14} />
+                <span>{error}</span>
               </div>
-
-              <span className="chat-composer-shortcut">
-                Enter to send
-              </span>
             </div>
-          </div>
-        </section>
-      </PageContainer>
-    </AppShell>
+          )}
+
+          {voiceToastVisible && (
+            <div className="chat-voice-toast" role="status">
+              <VolumeX size={13} />
+              <span>Voice playback unavailable on this device.</span>
+              <button
+                type="button"
+                className="chat-voice-toast-dismiss"
+                onClick={() => setVoiceToastVisible(false)}
+                aria-label="Dismiss"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
+          <ChatInput
+            value={input}
+            onChange={setInput}
+            onSend={handleSend}
+            disabled={loading}
+            placeholder="Message Sagar about sea conditions, alerts, fishing zones or routes..."
+            micSupported={voiceInput.isSupported}
+            micState={micState}
+            micLabel={micLabel[micState]}
+            onMicPress={handleMicPress}
+            onUseMyLocation={handleUseMyLocation}
+            onChooseArea={handleOpenAreaPicker}
+          />
+        </div>
+      </div>
+
+      <Modal
+        open={areaPickerOpen}
+        onClose={() => {
+          setAreaPickerOpen(false);
+          setLocationNotice(null);
+        }}
+        title="Choose a marine area"
+        description={
+          locationNotice ??
+          "Sagar will use this area for marine questions until you change it."
+        }
+        size="sm"
+      >
+        <div className="chat-area-options">
+          {marineAreas.map((area) => (
+            <button
+              key={area.id}
+              type="button"
+              className="chat-area-option"
+              onClick={() => handleSelectArea(area.id)}
+            >
+              {area.name}
+            </button>
+          ))}
+        </div>
+      </Modal>
+    </div>
   );
 }

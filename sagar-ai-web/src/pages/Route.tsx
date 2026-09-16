@@ -320,7 +320,7 @@ export default function RoutePage() {
         <PageContainer className="route-page">
           <div className="route-loading">
             <LoadingState
-              label="Preparing route intelligence..."
+              label="Checking available marine routes..."
             />
           </div>
         </PageContainer>
@@ -479,6 +479,13 @@ export default function RoutePage() {
               </Button>
             </section>
 
+            {(!originLabel || !destinationLabel) && (
+              <p className="route-planner-hint">
+                Select an origin and destination to calculate a new route.
+                The options below are Sagar's currently configured routes.
+              </p>
+            )}
+
             {error && (
               <div className="route-inline-error">
                 <AlertTriangle size={14} />
@@ -510,9 +517,7 @@ export default function RoutePage() {
             <section className="route-map-card">
               <div className="route-map">
                 <MarineMap
-                  overrideRoutes={
-                    hasCalculated ? displayedOptions : undefined
-                  }
+                  overrideRoutes={displayedOptions}
                   selectedRouteId={selected.id}
                   onSelectRoute={handleSelectRouteId}
                   startPoint={selected.origin}
@@ -567,6 +572,10 @@ export default function RoutePage() {
                   <h2>
                     Select a route
                   </h2>
+
+                  <p className="route-section-caption">
+                    Ranked by Sagar's route-ranking engine, safety first.
+                  </p>
                 </div>
 
                 <span>

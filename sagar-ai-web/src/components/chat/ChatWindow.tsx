@@ -18,6 +18,7 @@ export type ChatItem = {
 type ChatWindowProps = {
   messages: ChatItem[];
   loading?: boolean;
+  thinkingLabel?: string;
   suggestions?: string[];
   onSuggestion?: (value: string) => void;
   renderVoiceControl?: (message: ChatItem) => ReactNode;
@@ -26,6 +27,7 @@ type ChatWindowProps = {
 export default function ChatWindow({
   messages,
   loading = false,
+  thinkingLabel,
   suggestions,
   onSuggestion,
   renderVoiceControl,
@@ -64,7 +66,7 @@ export default function ChatWindow({
                 </ChatMessage>
               ))}
 
-              {loading && <ThinkingState />}
+              {loading && <ThinkingState label={thinkingLabel} />}
             </div>
           )}
 

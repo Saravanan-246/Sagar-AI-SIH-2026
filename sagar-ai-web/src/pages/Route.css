@@ -34,7 +34,7 @@
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
-  color: #6d28d9;
+  color: #0f6e64;
   font-size: 9px;
   line-height: 14px;
   font-weight: 800;
@@ -109,8 +109,8 @@
 }
 
 .route-planner-field select:focus {
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.09);
+  border-color: #0f6e64;
+  box-shadow: 0 0 0 3px rgba(15, 110, 100, 0.12);
 }
 
 .route-planner-arrow {
@@ -249,8 +249,8 @@
 }
 
 .route-endpoint-dot.start {
-  background: #6d28d9;
-  box-shadow: 0 0 0 1px #6d28d9;
+  background: #0e2a43;
+  box-shadow: 0 0 0 1px #0e2a43;
 }
 
 .route-endpoint-dot.end {
@@ -328,9 +328,9 @@
 }
 
 .route-option.selected {
-  border-color: #d8caf0;
-  background: #fbf9ff;
-  box-shadow: 0 0 0 1px #e8dcfa;
+  border-color: #bfd8d5;
+  background: #f4faf9;
+  box-shadow: 0 0 0 1px #d3e6e4;
 }
 
 .route-option-top {
@@ -368,7 +368,7 @@
 }
 
 .route-radio.active {
-  border: 3px solid #6d28d9;
+  border: 3px solid #0f6e64;
 }
 
 .route-option-stats {
@@ -515,19 +515,19 @@
 }
 
 .route-risk-bar .risk-low {
-  background: #26a25b;
+  background: #159a68;
 }
 
 .route-risk-bar .risk-moderate {
-  background: #d19a2d;
+  background: #c98700;
 }
 
 .route-risk-bar .risk-high {
-  background: #d65c2d;
+  background: #d64545;
 }
 
 .route-risk-bar .risk-critical {
-  background: #c62828;
+  background: #9f1d2f;
 }
 
 .route-reason {
@@ -536,15 +536,15 @@
   gap: 8px;
   margin-top: 12px;
   padding: 10px;
-  border: 1px solid #e8e0f4;
+  border: 1px solid #d3e6e4;
   border-radius: 10px;
-  background: #fbf9ff;
+  background: #f4faf9;
 }
 
 .route-reason > svg {
   flex: 0 0 auto;
   margin-top: 2px;
-  color: #6d28d9;
+  color: #0f6e64;
 }
 
 .route-reason span {
@@ -576,17 +576,17 @@
 }
 
 .route-journey-panel {
-  border-color: #e8e0f4;
-  background: #fdfcff;
+  border-color: #e3e7eb;
+  background: #fbfcfd;
 }
 
 .route-journey-disclaimer {
   margin: 0 0 11px;
   padding: 7px 9px;
-  border: 1px dashed #d8caf0;
+  border: 1px dashed #d3dae0;
   border-radius: 8px;
-  background: #f8f4ff;
-  color: #74708a;
+  background: #f6f8fa;
+  color: #5b6b7a;
   font-size: 8px;
   line-height: 13px;
 }
@@ -746,98 +746,23 @@
   line-height: 14px;
 }
 
-.route-planner-panel {
-  padding: 0;
-  overflow: hidden;
+.route-section-caption {
+  margin: 3px 0 0;
+  color: #5b6b7a;
+  font-size: 9px;
+  line-height: 13px;
+  font-weight: 500;
 }
 
-.route-collapse {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px;
-  border: 0;
-  background: transparent;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.route-collapse:hover {
-  background: #faf9fc;
-}
-
-.route-collapse > div {
-  min-width: 0;
-}
-
-.route-collapse span {
-  display: block;
-  color: #9996a2;
-  font-size: 8px;
-  line-height: 12px;
-  font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.route-collapse strong {
-  display: block;
-  margin-top: 2px;
-  color: #3f3c47;
-  font-size: 10px;
-  line-height: 14px;
-  font-weight: 800;
-}
-
-.route-chevron {
-  flex: 0 0 auto;
-  color: #85818d;
-  transition: transform 150ms ease;
-}
-
-.route-chevron.open {
-  transform: rotate(180deg);
-}
-
-.route-selector-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 0 14px 14px;
-  border-top: 1px solid #efedf2;
-}
-
-.route-selector-body label {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  color: #797581;
-  font-size: 8px;
-  line-height: 12px;
-  font-weight: 750;
-}
-
-.route-selector-body select {
-  appearance: none;
-  width: 100%;
-  min-height: 39px;
+.route-planner-hint {
+  margin: 0 0 10px;
   padding: 8px 10px;
-  border: 1px solid #e5e3ea;
+  border: 1px dashed #d3dae0;
   border-radius: 9px;
-  outline: none;
-  background: #ffffff;
-  color: #4b4854;
-  font-family: inherit;
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.route-selector-body select:focus {
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.09);
+  background: #f6f8fa;
+  color: #5b6b7a;
+  font-size: 9px;
+  line-height: 14px;
 }
 
 .route-inline-error {

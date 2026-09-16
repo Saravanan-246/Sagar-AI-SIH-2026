@@ -42,11 +42,12 @@ STRICT RULES:
 - If a "Route", "Fishing zones", "Active alerts" or "What-if comparison" fact is provided, mention its specific name(s)/values naturally - never say the information is unavailable when a fact for it is given.
 - If a "What-if comparison" fact is given, keep its direction of change exactly as written - if it says risk increases, never say it drops, falls, improves or stays the same (and vice versa).
 - If none of those facts are provided for something the user asked about, say briefly that it isn't available right now rather than guessing.
+- The facts you are given are current conditions, never a forecast for a specific future time. If the user asked about a future time (e.g. "tomorrow", "this weekend") and no forecast-specific fact was given for it, answer using the current conditions but make clear that's what they are (e.g. "right now" / "as of the latest reading") rather than stating them as a confirmed forecast for that future time.
 - Reply in the requested language, naturally (not a literal word-for-word translation).
 - Exactly 1-2 short sentences, like a direct answer to a direct question. No headings, no bullet points, no markdown.
 - Do not mention that you are an AI, a model, or that you were given "facts" or "instructions".
 - Never show your reasoning or working. Output the final answer only.
-- Lead with the recommendation/answer itself in plain language, the way you'd actually say it out loud to someone - e.g. "I wouldn't head out near Thoothukudi tomorrow - lightning and rough seas are making it too risky right now." rather than "Combined risk score: 84/100. Do not proceed under the current conditions."`;
+- Lead with the recommendation/answer itself in plain language, the way you'd actually say it out loud to someone - e.g. "I wouldn't head out near Thoothukudi right now - lightning and rough seas are making it too risky." rather than "Combined risk score: 84/100. Do not proceed under the current conditions."`;
 
 function buildFactsText(facts: NarrationFacts): string {
   const lines: string[] = [];
@@ -127,6 +128,56 @@ export async function narrateResponse(
     // OpenRouter account has little balance left, and avoids paying for
     // output the UI would truncate anyway.
     { temperature: 0.4, maxTokens: 100 }
+  );
+}
+
+export interface GeneralChatInput {
+  userMessage: string;
+  /** Recent turns, so a casual reply still reads as part of the same
+   * conversation (e.g. after a marine answer) without treating that
+   * prior turn as a trigger to repeat marine facts here. */
+  recentContext?: string;
+  language: ChatLanguage;
+}
+
+const GENERAL_SYSTEM_PROMPT = `You are Sagar, a marine safety assistant for small-craft fishermen in Tamil Nadu, India. This particular message is casual conversation or small talk, not a marine question.
+
+STRICT RULES:
+- You have NOT been given any marine facts for this message - no risk score, wind, waves, sea state, fishing zone, route, alert or coordinate. Never state or imply a specific marine fact here. If the user asks a real marine question in this message, say you can check it and ask which place/area they mean, rather than guessing an answer.
+- Respond the way a warm, direct person would to exactly this message - match their tone (casual stays casual, a thank-you gets a brief acknowledgement, a real question gets a real answer).
+- Reply in the requested language, naturally (not a literal word-for-word translation).
+- Keep it short: one sentence, two at most.
+- Do not mention that you are an AI, a model, or that you were given instructions.
+- Never show your reasoning or working. Output the final reply only.`;
+
+/**
+ * Natural small-talk / general-conversation reply with no marine facts
+ * involved - the counterpart to narrateResponse above, which explains
+ * verified deterministic facts. Used whenever the message resolves to
+ * the "general" intent, so a greeting or thank-you (including one that
+ * follows an earlier marine answer) gets a normal conversational
+ * response instead of the marine pipeline running again. Returns
+ * `null` on any failure, exactly like narrateResponse, so the caller
+ * falls back to Sagar's existing static general-chat reply.
+ */
+export async function narrateGeneralReply(
+  input: GeneralChatInput
+): Promise<string | null> {
+  const languageName = LANGUAGE_NAMES[input.language] ?? "English";
+
+  const contextBlock = input.recentContext
+    ? `Recent conversation (for reference only):\n${input.recentContext}\n\n`
+    : "";
+
+  return requestLlmCompletion(
+    [
+      { role: "system", content: GENERAL_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Reply in ${languageName}.\n\n${contextBlock}User: ${input.userMessage}`,
+      },
+    ],
+    { temperature: 0.5, maxTokens: 100 }
   );
 }
 

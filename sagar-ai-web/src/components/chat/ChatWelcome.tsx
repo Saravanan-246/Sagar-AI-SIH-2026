@@ -1,4 +1,4 @@
-import { MessageCircle } from "lucide-react";
+import { Waves } from "lucide-react";
 
 const FALLBACK_SUGGESTIONS = [
   "Is it safe to venture into the sea tomorrow morning?",
@@ -20,16 +20,13 @@ export default function ChatWelcome({
     <section className="chat-welcome">
       <div className="chat-welcome-inner">
         <div className="chat-welcome-icon" aria-hidden="true">
-          <MessageCircle size={22} strokeWidth={2} />
+          <Waves size={22} strokeWidth={2} />
         </div>
 
-        <h1 className="chat-welcome-title">
-          How can I help?
-        </h1>
+        <h1 className="chat-welcome-title">Sagar AI</h1>
 
         <p className="chat-welcome-description">
-          Ask Sagar about marine safety, weather, ocean
-          conditions, routes, fishing areas, or hazards.
+          Marine intelligence for safer decisions at sea.
         </p>
 
         <div className="chat-suggestions">
