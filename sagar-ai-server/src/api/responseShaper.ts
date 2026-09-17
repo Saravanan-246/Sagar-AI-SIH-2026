@@ -8,7 +8,11 @@ import { getAlerts } from "../services/alerts/alertService";
 import { getRecommendedRoutes } from "../services/routes/routeService";
 import { rankFishingZones } from "../services/ocean/zoneRanking";
 import { getAllSources } from "../services/data/sourceRegistry";
+import { computeConfidence } from "../services/data/confidenceEngine";
+import { describeAge } from "../services/data/freshnessEngine";
 import { resolveArea } from "./shared";
+
+import type { ConfidenceAssessment, FreshnessStatus } from "../services/data/dataContract";
 
 import type { Alert } from "../types/alert";
 import type { MarineArea } from "../types/marine";
@@ -30,11 +34,29 @@ export interface WhatIfComparison {
   recommendation: string;
 }
 
+/** A real external reading attached to this response as supplementary
+ * evidence (see oceanAgent.ts + incoisAdapter.ts) - additive metadata
+ * only, never an input to the risk/route/zone decision itself. */
+export interface VerifiedSourceStatus {
+  name: string;
+  parameter: string;
+  observedAt: string;
+  age: string;
+  fetchedAt: string;
+  freshness: FreshnessStatus;
+  distanceFromAreaKm?: number;
+  note?: string;
+}
+
 export interface DataStatus {
   mode: "prototype";
   note: string;
   localSources: string[];
   plannedLiveSources: Array<{ name: string; provider: string }>;
+  /** Present only when a real external source actually returned data
+   * for this response - absent, never an empty array, when none did. */
+  verifiedSources?: VerifiedSourceStatus[];
+  confidence: ConfidenceAssessment;
 }
 
 /**
@@ -88,16 +110,23 @@ export interface StructuredSagarResponse {
   needs?: ChatClarificationNeed;
 }
 
-let cachedDataStatus: DataStatus | null = null;
+interface DataStatusBase {
+  mode: "prototype";
+  note: string;
+  localSources: string[];
+  plannedLiveSources: Array<{ name: string; provider: string }>;
+}
 
-export function buildDataStatus(): DataStatus {
-  if (cachedDataStatus) {
-    return cachedDataStatus;
+let cachedBase: DataStatusBase | null = null;
+
+function getDataStatusBase(): DataStatusBase {
+  if (cachedBase) {
+    return cachedBase;
   }
 
   const sources = getAllSources();
 
-  cachedDataStatus = {
+  cachedBase = {
     mode: "prototype",
     note:
       "This response is generated from local prototype/demo datasets, not a live government feed.",
@@ -112,7 +141,67 @@ export function buildDataStatus(): DataStatus {
       })),
   };
 
-  return cachedDataStatus;
+  return cachedBase;
+}
+
+/**
+ * Builds this response's data-status block: the cached static base
+ * (which local datasets exist, which live sources are planned but not
+ * connected) plus a per-response layer describing any real verified
+ * evidence this specific turn actually obtained, and an honest
+ * confidence assessment. `evidence` is the pipeline's own evidence
+ * list - never re-fetched or duplicated here, only read.
+ */
+export function buildDataStatus(
+  evidence: AgentEvidence[] = []
+): DataStatus {
+  const base = getDataStatusBase();
+
+  const verified = evidence.filter(
+    (item) => item.data?.verified === true
+  );
+
+  const verifiedSources: VerifiedSourceStatus[] = verified
+    .filter((item): item is AgentEvidence & { timestamp: string } =>
+      typeof item.timestamp === "string"
+    )
+    .map((item) => {
+      const data = item.data as Record<string, unknown>;
+
+      return {
+        name: item.source ?? item.title,
+        parameter: item.title,
+        observedAt: item.timestamp,
+        age: describeAge(item.timestamp),
+        fetchedAt:
+          typeof data.fetchedAt === "string"
+            ? data.fetchedAt
+            : new Date().toISOString(),
+        freshness: (data.freshness as FreshnessStatus) ?? "UNAVAILABLE",
+        distanceFromAreaKm:
+          typeof data.distanceFromAreaKm === "number"
+            ? data.distanceFromAreaKm
+            : undefined,
+        note: item.summary,
+      };
+    });
+
+  const primaryVerified = verifiedSources[0];
+
+  const confidence = computeConfidence({
+    coreIsPrototype: true,
+    verifiedFreshness: primaryVerified?.freshness,
+    verifiedFarFromArea:
+      typeof primaryVerified?.distanceFromAreaKm === "number"
+        ? primaryVerified.distanceFromAreaKm > 25
+        : undefined,
+  });
+
+  return {
+    ...base,
+    verifiedSources: verifiedSources.length > 0 ? verifiedSources : undefined,
+    confidence,
+  };
 }
 
 function findRiskFinding(pipeline: AgentPipelineResult) {
@@ -206,7 +295,7 @@ export function shapeChatResponse(
     recommendation: pipeline.finalRecommendation,
 
     timestamp: new Date().toISOString(),
-    dataStatus: buildDataStatus(),
+    dataStatus: buildDataStatus(pipeline.evidence),
 
     warnings: pipeline.warnings,
   };

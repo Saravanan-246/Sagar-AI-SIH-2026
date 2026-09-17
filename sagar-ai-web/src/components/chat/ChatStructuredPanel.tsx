@@ -5,6 +5,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  WifiOff,
 } from "lucide-react";
 
 import { formatDistance, formatDuration } from "../../utils/format";
@@ -58,6 +59,25 @@ export type ChatStructuredData = {
   whatIfComparison?: ChatWhatIfComparison;
   /** Compact route facts (distance/time/status) alongside a route answer. */
   route?: ChatRouteSummary;
+  /** A real external reading actually used as supplementary evidence
+   * this turn (see the backend's dataStatus.verifiedSources) - present
+   * only when one was genuinely obtained, never shown as a generic
+   * "live" badge. */
+  verifiedSource?: {
+    name: string;
+    age: string;
+    freshness: string;
+    distanceFromAreaKm?: number;
+  };
+  /** Present only when this answer was actually produced by the
+   * offline local decision engine (backend unreachable) - never shown
+   * for a normal online answer. Real snapshot age/confidence, not a
+   * generic "offline mode" label. */
+  offlineStatus?: {
+    lastSyncedAge?: string;
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    explanation: string;
+  };
 };
 
 type RiskTone = "low" | "moderate" | "high" | "critical" | "unknown";
@@ -260,6 +280,8 @@ export default function ChatStructuredPanel({
   const hasWhatIfSummary = Boolean(!hasWhatIfCompare && data.whatIfSummary);
 
   const hasActions = Boolean(data.actions && data.actions.length > 0);
+  const hasVerifiedSource = Boolean(data.verifiedSource);
+  const hasOfflineStatus = Boolean(data.offlineStatus);
 
   if (
     !hasRisk &&
@@ -269,13 +291,31 @@ export default function ChatStructuredPanel({
     !hasEvidence &&
     !hasWhatIfCompare &&
     !hasWhatIfSummary &&
-    !hasActions
+    !hasActions &&
+    !hasVerifiedSource &&
+    !hasOfflineStatus
   ) {
     return null;
   }
 
   return (
     <div className="chat-structured">
+      {hasOfflineStatus && (
+        <div className="chat-offline-banner">
+          <WifiOff size={13} strokeWidth={2.2} />
+          <div>
+            <strong>Offline</strong>
+            <span>
+              {data.offlineStatus!.lastSyncedAge
+                ? `Last synced ${data.offlineStatus!.lastSyncedAge} · `
+                : "No synced data yet · "}
+              Confidence: {data.offlineStatus!.confidence}
+            </span>
+            <p>{data.offlineStatus!.explanation}</p>
+          </div>
+        </div>
+      )}
+
       {/* A zone recommendation list already conveys per-zone
           suitability - a generic area-wide score alongside it would
           read as contradicting that, so the two never render together. */}
@@ -317,6 +357,18 @@ export default function ChatStructuredPanel({
               <li key={title}>{title}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {hasVerifiedSource && (
+        <div className="chat-verified-source">
+          <span className="chat-verified-source-dot" />
+          <span>
+            {data.verifiedSource!.name} · {data.verifiedSource!.age}
+            {typeof data.verifiedSource!.distanceFromAreaKm === "number"
+              ? ` · ~${data.verifiedSource!.distanceFromAreaKm} km away`
+              : ""}
+          </span>
         </div>
       )}
 
@@ -487,6 +539,70 @@ export default function ChatStructuredPanel({
           color: var(--chat-text-muted, #5b6b7a) !important;
           font-size: 12px !important;
           line-height: 18px !important;
+        }
+
+        /* Real external reading disclosure - deliberately muted/small:
+           this is a footnote about where one supplementary fact came
+           from, not a status dashboard. */
+        .chat-verified-source {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: var(--chat-text-faint, #8894a0);
+          font-size: 10.5px;
+          font-weight: 600;
+        }
+
+        .chat-verified-source-dot {
+          flex: 0 0 auto;
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: var(--chat-accent, #0f6e64);
+        }
+
+        /* Offline banner - a real state change (backend unreachable,
+           answer came from the local snapshot + local engine), so it
+           gets a visible banner rather than the muted verified-source
+           footnote treatment. Amber, not red: this is an honest,
+           expected degraded mode, not an error. */
+        .chat-offline-banner {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          padding: 9px 11px;
+          border: 1px solid #f0d9a8;
+          border-radius: 10px;
+          background: #fdf6e8;
+          color: #7a5b12;
+        }
+
+        .chat-offline-banner svg {
+          flex: 0 0 auto;
+          margin-top: 2px;
+          color: #a3791a;
+        }
+
+        .chat-offline-banner strong {
+          display: block;
+          font-size: 11.5px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .chat-offline-banner > div > span {
+          display: block;
+          margin-top: 1px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+
+        .chat-offline-banner p {
+          margin: 4px 0 0;
+          font-size: 11.5px;
+          line-height: 16px;
+          color: #8a6a1e;
         }
 
         /* PFZ zone rows */

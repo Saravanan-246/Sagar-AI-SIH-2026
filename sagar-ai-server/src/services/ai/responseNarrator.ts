@@ -126,8 +126,11 @@ export async function narrateResponse(
     // Kept deliberately small (1-2 short sentences per the system prompt):
     // a lower cap keeps this call affordable even when the configured
     // OpenRouter account has little balance left, and avoids paying for
-    // output the UI would truncate anyway.
-    { temperature: 0.4, maxTokens: 100 }
+    // output the UI would truncate anyway. Bounded to a tight timeout so
+    // a slow/local model falls back to Sagar's already-correct
+    // deterministic answer quickly rather than leaving the chat message
+    // waiting for the provider's full configured timeout.
+    { temperature: 0.4, maxTokens: 100, timeoutMs: 8000 }
   );
 }
 
@@ -177,7 +180,7 @@ export async function narrateGeneralReply(
         content: `Reply in ${languageName}.\n\n${contextBlock}User: ${input.userMessage}`,
       },
     ],
-    { temperature: 0.5, maxTokens: 100 }
+    { temperature: 0.5, maxTokens: 100, timeoutMs: 8000 }
   );
 }
 

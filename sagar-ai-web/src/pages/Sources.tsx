@@ -25,6 +25,12 @@ import "./Sources.css";
 type SourceStatus =
   | "available"
   | "integrated"
+  /** A real, verified connection exists and returns genuine data, but
+   * with real limitations (e.g. no coverage for Sagar's coastal areas,
+   * or data that lags real time by weeks) - shown as supplementary
+   * context, never as a source the core risk/route/zone decisions
+   * depend on. Distinct from "integrated" so it isn't overstated. */
+  | "partial"
   | "planned";
 
 type SourceCategory =
@@ -53,16 +59,13 @@ const SOURCES: DataSource[] = [
     organization:
       "Indian National Centre for Ocean Information Services",
     category: "marine",
-    status: "integrated",
+    status: "partial",
     description:
-      "Ocean information and marine decision-support inputs relevant to coastal and offshore operations.",
+      "Sagar queries INCOIS's public ERDDAP ocean-data server directly for a real sea-surface-temperature reading. Its ARGO-based analysis has no coverage in Sagar's shallow coastal operating areas, so the nearest valid reading is typically 50-150+ km offshore and used only as regional context, shown alongside - never in place of - Sagar's own local marine dataset.",
     datasets: [
-      "Ocean conditions",
-      "Potential Fishing Zone context",
-      "Marine advisories",
-      "Wave and sea information",
+      "Regional sea-surface temperature (ARGO ocean analysis)",
     ],
-    role: "Marine intelligence",
+    role: "Supplementary ocean reference",
     officialUrl:
       "https://incois.gov.in/",
   },
@@ -72,37 +75,37 @@ const SOURCES: DataSource[] = [
     organization:
       "India Meteorological Department",
     category: "weather",
-    status: "integrated",
+    status: "planned",
     description:
-      "Meteorological information used for weather-risk interpretation and adverse-condition assessment.",
+      "IMD publishes a real weather/marine-warnings API (api.imd.gov.in), but it requires a registered API key Sagar does not currently have - direct requests return \"API key missing\". Not connected; Sagar continues using its own configured weather dataset.",
     datasets: [
       "Weather forecasts",
       "Cyclone information",
       "Lightning and severe weather",
       "Wind information",
     ],
-    role: "Weather intelligence",
+    role: "Weather intelligence (not yet connected)",
     officialUrl:
       "https://mausam.imd.gov.in/",
   },
   {
     id: "isro",
-    name: "ISRO",
+    name: "ISRO / MOSDAC",
     organization:
       "Indian Space Research Organisation",
     category: "satellite",
-    status: "integrated",
+    status: "planned",
     description:
-      "Earth-observation and satellite-data context that can support marine and coastal analysis.",
+      "ISRO's MOSDAC portal offers real open ocean/atmosphere satellite products, but delivery is via a registered portal account and SFTP, not a public API - not something Sagar can safely automate without credentials. Not connected.",
     datasets: [
       "Satellite observations",
       "Ocean colour context",
       "Sea-surface observations",
       "Geospatial imagery",
     ],
-    role: "Satellite intelligence",
+    role: "Satellite intelligence (not yet connected)",
     officialUrl:
-      "https://www.isro.gov.in/",
+      "https://www.mosdac.gov.in/",
   },
   {
     id: "osm",
@@ -227,8 +230,10 @@ function statusLabel(
       return "Integrated";
     case "available":
       return "Available";
+    case "partial":
+      return "Connected (limited)";
     case "planned":
-      return "Planned";
+      return "Not connected";
     default:
       return "Unknown";
   }
@@ -244,8 +249,11 @@ function statusTone(
     case "available":
       return "violet" as const;
 
-    case "planned":
+    case "partial":
       return "warning" as const;
+
+    case "planned":
+      return "neutral" as const;
 
     default:
       return "neutral" as const;

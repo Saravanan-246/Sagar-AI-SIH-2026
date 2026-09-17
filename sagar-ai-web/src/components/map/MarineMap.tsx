@@ -73,6 +73,13 @@ type MarineMapProps = {
    * "View on map" action visibly lands somewhere, not just re-centers.
    */
   highlight?: { latitude: number; longitude: number; label?: string } | null;
+
+  /** Hides the internal "MARINE MAP" status pill - for embeddings (like
+   * the Chat map panel) that already show their own "Marine map"
+   * heading immediately above the canvas, where the pill would just
+   * repeat it. Defaults to shown, unchanged for existing standalone
+   * pages (Map, Route) that have no header of their own. */
+  showStatusPill?: boolean;
 };
 
 const DEFAULT_CENTER: LatLngExpression = APP_CONFIG.map.defaultCenter;
@@ -149,6 +156,44 @@ function MapSyncController({ center, zoom }: { center: LatLngExpression; zoom: n
   return null;
 }
 
+/**
+ * Leaflet sizes its canvas once on mount and otherwise has no way to
+ * know its container changed size - it never re-measures on its own.
+ * MapSyncController's invalidateSize only fires when center/zoom
+ * change, so a CSS-driven resize with neither (e.g. the desktop map
+ * column's clamp()-based width crossing the 1280/1440px breakpoints,
+ * or the sidebar drawer opening) would otherwise leave the map
+ * half-rendered/blank until something else happened to move it. This
+ * observes the actual container element and re-measures whenever its
+ * pixel size changes, independent of the map's own state.
+ */
+function MapResizeController() {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map?.getContainer();
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    let frame: number | undefined;
+
+    const observer = new ResizeObserver(() => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (map.getContainer()) map.invalidateSize(false);
+      });
+    });
+
+    observer.observe(container);
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [map]);
+
+  return null;
+}
+
 /** Fits the view to the currently planned route options so a short
  * corridor is actually visible, instead of a tiny sliver on the full
  * regional view. */
@@ -190,6 +235,7 @@ export default function MarineMap({
   journeyPosition,
   journeyBearingDeg = 0,
   highlight,
+  showStatusPill = true,
 }: MarineMapProps) {
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [location, setLocation] = useState<Coordinates | null>(null);
@@ -451,6 +497,7 @@ export default function MarineMap({
         />
 
         <MapSyncController center={mapCenter} zoom={zoom} />
+        <MapResizeController />
 
         {routeBoundsPoints.length > 0 && (
           <RouteBoundsController points={routeBoundsPoints} />
@@ -716,10 +763,12 @@ export default function MarineMap({
       {/* Control Overlay */}
       <div className="marine-map-overlay">
         <div className="marine-map-topbar">
-          <div className="marine-map-status">
-            <span className="marine-map-status-dot" />
-            <span>MARINE MAP</span>
-          </div>
+          {showStatusPill && (
+            <div className="marine-map-status">
+              <span className="marine-map-status-dot" />
+              <span>MARINE MAP</span>
+            </div>
+          )}
 
           <button
             type="button"

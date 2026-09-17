@@ -132,8 +132,12 @@ export async function classifyWithAi(
     // line here, and a low cap keeps this call affordable even when the
     // configured OpenRouter account has little balance left. A local
     // provider raises this to its own floor, since local tokens are free
-    // and a truncated JSON line would just fail to parse.
-    { temperature: 0, maxTokens: 100 }
+    // and a truncated JSON line would just fail to parse. This call only
+    // ever runs for messages the deterministic classifier itself could
+    // not confidently resolve, so a slow/local model still gets a fair
+    // shot without leaving the rest of the chat pipeline waiting on the
+    // provider's full configured timeout.
+    { temperature: 0, maxTokens: 100, timeoutMs: 8000 }
   );
 
   if (!raw) {

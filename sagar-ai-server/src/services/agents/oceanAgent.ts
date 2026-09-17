@@ -3,6 +3,8 @@ import productivityData from "../../data/productivity.json";
 import fishingZonesData from "../../data/fishingZones.json";
 
 import type { MarineArea } from "../../types/marine";
+import { incoisAdapter } from "../data/sourceAdapters/incoisAdapter";
+import { describeAge } from "../data/freshnessEngine";
 
 import type {
   AgentFinding,
@@ -10,6 +12,13 @@ import type {
   AgentResponse,
   OceanAgentData,
 } from "./agentTypes";
+
+// The real INCOIS lookup (a network call, even though cached/bounded)
+// only earns its cost for questions actually about ocean/productivity
+// conditions - not for "safety", where the ocean task runs alongside
+// weather/geo but nothing downstream depends on its result. Gating on
+// intent keeps the safety path exactly as fast as Phase 2 made it.
+const OCEAN_LOOKUP_INTENTS = new Set(["pfz", "productivity", "marine_conditions"]);
 
 interface ProductivityRecord {
   id?: string;
@@ -847,6 +856,53 @@ export async function runOceanAgent(
         area,
         productivityRecord
       );
+
+    /*
+     * Real, verified external data (see incoisAdapter.ts) - added ONLY
+     * as supplementary evidence, never as an input to productivityIndex/
+     * trend/drivers/risk above. The nearest INCOIS ocean-temperature
+     * reading Sagar can actually reach is typically well outside this
+     * area's own coastal water (its ARGO-based analysis has no shallow-
+     * coastal coverage), so it can only ever honestly describe regional
+     * open-ocean context - never this area's own condition.
+     */
+    if (
+      OCEAN_LOOKUP_INTENTS.has(request.intent) &&
+      typeof area.coordinates?.latitude === "number" &&
+      typeof area.coordinates?.longitude === "number"
+    ) {
+      const incoisResult = await incoisAdapter.getOceanInformation({
+        sourceId: "incois",
+        areaId: area.id,
+        areaName: area.name,
+        latitude: area.coordinates.latitude,
+        longitude: area.coordinates.longitude,
+      });
+
+      const reading = incoisResult.records[0];
+
+      if (incoisResult.status === "success" && reading?.observedAt) {
+        evidence.push({
+          id: `ocean-incois-verified-${area.id}`,
+          type: "ocean",
+          title: "Regional ocean reference (INCOIS, verified)",
+          source: "INCOIS ERDDAP (erddap.incois.gov.in)",
+          timestamp: reading.observedAt,
+          summary:
+            `Nearest available open-ocean reading: ${reading.seaSurfaceTemperatureC?.toFixed(1)}°C, ` +
+            `observed ${describeAge(reading.observedAt)}, ~${reading.distanceFromAreaKm} km from ${area.name} ` +
+            `(regional context only - not this area's own coastal reading).`,
+          data: {
+            verified: true,
+            seaSurfaceTemperatureC: reading.seaSurfaceTemperatureC,
+            observedAt: reading.observedAt,
+            fetchedAt: incoisResult.retrievedAt,
+            freshness: reading.freshness,
+            distanceFromAreaKm: reading.distanceFromAreaKm,
+          },
+        });
+      }
+    }
 
     const data: OceanAgentData = {
       productivityIndex,

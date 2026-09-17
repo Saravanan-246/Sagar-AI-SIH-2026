@@ -5,15 +5,20 @@ import { useNavigate } from "react-router-dom";
 import ChatHeader from "../components/chat/ChatHeader";
 import ChatSidebar from "../components/chat/ChatSidebar";
 import ChatInput from "../components/chat/ChatInput";
+import ChatMapPanel from "../components/chat/ChatMapPanel";
 import ChatWindow from "../components/chat/ChatWindow";
 import type { ChatItem } from "../components/chat/ChatWindow";
 import Modal from "../components/ui/Modal";
 import useSagar from "../hooks/useSagar";
+import { useConnectivity } from "../hooks/useConnectivity";
+import { useOfflineSync, describeSnapshotAge } from "../hooks/useOfflineSync";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useVoiceInput } from "../hooks/useVoiceInput";
 import { useVoiceOutput } from "../hooks/useVoiceOutput";
 import { getMarineAreas } from "../services/marine/marineData";
 import { getSuggestedQuestions } from "../utils/chatSuggestions";
+import { buildChatMapFocus } from "../utils/chatMapFocus";
 import {
   deleteSavedChat,
   listSavedChats,
@@ -110,6 +115,9 @@ export default function Chat() {
     setAreaPickerOpen(true);
   }, []);
 
+  const connectivity = useConnectivity();
+  const offlineSync = useOfflineSync();
+
   const {
     messages,
     loading,
@@ -124,7 +132,14 @@ export default function Chat() {
       void handleClarifyUseMyLocation();
     },
     onChooseArea: handleClarifyChooseArea,
+    onConnectivityChange: connectivity.reportRequestOutcome,
   });
+
+  const handleSync = useCallback(async () => {
+    connectivity.setIsSyncing(true);
+    await offlineSync.sync();
+    connectivity.setIsSyncing(false);
+  }, [connectivity, offlineSync]);
 
   useEffect(() => {
     retryRef.current = retryLastQuestion;
@@ -266,6 +281,39 @@ export default function Chat() {
       language: message.language,
     }),
   );
+
+  // The map only ever reflects the most recent answer that actually
+  // resolved something map-relevant (route/zone/alert/area) - a purely
+  // conversational reply leaves the map exactly as it was, per the
+  // requirement not to force a map update into every message.
+  const mapFocus = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+
+      if (message.role !== "assistant") {
+        continue;
+      }
+
+      const focus = buildChatMapFocus(
+        {
+          route: message.route,
+          zones: message.zones,
+          alerts: message.alerts,
+          affectedAreaId: message.affectedAreaId,
+        },
+        marineAreas,
+      );
+
+      if (focus) {
+        return focus;
+      }
+    }
+
+    return null;
+  }, [messages, marineAreas]);
+
+  const [mapModalOpen, setMapModalOpen] = useState(false);
+  const isDesktopMapLayout = useMediaQuery("(min-width: 1180px)");
 
   const lastUserMessage = useMemo(() => {
     for (let i = chatMessages.length - 1; i >= 0; i -= 1) {
@@ -569,8 +617,17 @@ export default function Chat() {
         onSetLanguage={setLanguage}
         voiceSupported={voiceInput.isSupported}
         profileHref={ROUTES.PROFILE}
+        connectivityStatus={connectivity.status}
+        snapshotAge={
+          offlineSync.snapshot
+            ? describeSnapshotAge(offlineSync.snapshot.createdAt)
+            : null
+        }
+        syncStatus={offlineSync.syncStatus}
+        onSync={handleSync}
       />
 
+      <div className="chat-content-area">
       <div className="chat-main">
         <ChatHeader
           title={headerTitle}
@@ -664,6 +721,13 @@ export default function Chat() {
             </div>
           )}
 
+          <ChatMapPanel
+            variant="card"
+            focus={mapFocus}
+            areas={marineAreas}
+            onExpand={() => setMapModalOpen(true)}
+          />
+
           {voiceToastVisible && (
             <div className="chat-voice-toast" role="status">
               <VolumeX size={13} />
@@ -694,6 +758,23 @@ export default function Chat() {
           />
         </div>
       </div>
+
+      {isDesktopMapLayout && (
+        <div className="chat-map-panel-wrapper">
+          <ChatMapPanel variant="inline" focus={mapFocus} areas={marineAreas} />
+        </div>
+      )}
+      </div>
+
+      <Modal
+        open={mapModalOpen}
+        onClose={() => setMapModalOpen(false)}
+        size="lg"
+      >
+        <div className="chat-map-modal-canvas">
+          <ChatMapPanel variant="inline" focus={mapFocus} areas={marineAreas} />
+        </div>
+      </Modal>
 
       <Modal
         open={areaPickerOpen}

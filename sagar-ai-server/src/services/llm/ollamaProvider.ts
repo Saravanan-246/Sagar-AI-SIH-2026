@@ -102,12 +102,13 @@ export async function requestOllamaCompletion(
   messages: ChatCompletionMessage[],
   options: LlmCompletionOptions = {}
 ): Promise<string | null> {
-  const { baseUrl, model, timeoutMs, enabled } = config.llm.ollama;
+  const { baseUrl, model, timeoutMs: configuredTimeoutMs, enabled } = config.llm.ollama;
 
   if (!enabled) {
     return null;
   }
 
+  const timeoutMs = options.timeoutMs ?? configuredTimeoutMs;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 

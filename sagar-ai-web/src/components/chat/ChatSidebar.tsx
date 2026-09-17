@@ -2,16 +2,19 @@ import { useMemo, useState, type ComponentType } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
   AlertTriangle,
+  CloudOff,
   Compass,
   Home,
   Map as MapIcon,
   MessagesSquare,
   Plus,
+  RefreshCw,
   Route as RouteIcon,
   Search,
   Settings,
   Sparkles,
   Trash2,
+  Wifi,
   Waves,
   X,
 } from "lucide-react";
@@ -19,6 +22,8 @@ import {
 import type { SavedChat } from "../../utils/savedChats";
 import type { AppLanguage } from "../../store/appStore";
 import { ROUTES } from "../../constants/routes";
+import type { ConnectivityStatus } from "../../hooks/useConnectivity";
+import type { SyncStatus } from "../../hooks/useOfflineSync";
 
 type LanguageOption = { value: AppLanguage; label: string };
 
@@ -66,6 +71,11 @@ type ChatSidebarProps = {
   voiceSupported: boolean;
 
   profileHref: string;
+
+  connectivityStatus: ConnectivityStatus;
+  snapshotAge: string | null;
+  syncStatus: SyncStatus;
+  onSync: () => void;
 };
 
 type ChatGroup = { label: string; chats: SavedChat[] };
@@ -123,6 +133,10 @@ export default function ChatSidebar({
   onSetLanguage,
   voiceSupported,
   profileHref,
+  connectivityStatus,
+  snapshotAge,
+  syncStatus,
+  onSync,
 }: ChatSidebarProps) {
   const [query, setQuery] = useState("");
 
@@ -314,6 +328,45 @@ export default function ChatSidebar({
                 </button>
               )}
             </div>
+          </div>
+
+          <div className="chat-sidebar-offline">
+            <div className="chat-sidebar-offline-status">
+              {connectivityStatus === "online" ? (
+                <Wifi size={13} strokeWidth={2} />
+              ) : (
+                <CloudOff size={13} strokeWidth={2} />
+              )}
+              <span>
+                {connectivityStatus === "online"
+                  ? "Online"
+                  : connectivityStatus === "syncing"
+                    ? "Syncing…"
+                    : connectivityStatus === "degraded"
+                      ? "Backend unreachable"
+                      : "Offline"}
+              </span>
+            </div>
+
+            <span className="chat-sidebar-offline-age">
+              {snapshotAge
+                ? `Last synced ${snapshotAge}`
+                : "Never synced for offline use"}
+            </span>
+
+            <button
+              type="button"
+              className="chat-sidebar-offline-sync"
+              onClick={onSync}
+              disabled={syncStatus === "syncing"}
+            >
+              <RefreshCw
+                size={13}
+                strokeWidth={2}
+                className={syncStatus === "syncing" ? "chat-sidebar-sync-spin" : ""}
+              />
+              {syncStatus === "syncing" ? "Syncing…" : "Sync for offline"}
+            </button>
           </div>
 
           <div className="chat-sidebar-language">

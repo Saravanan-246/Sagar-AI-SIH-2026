@@ -3,9 +3,13 @@ import { useNavigate } from "react-router-dom";
 
 import {
   askSagarBackend,
+  type RankedFishingZone,
   type SagarChatResponse,
 } from "../services/api/sagarApiClient";
+import type { Alert } from "../types/alert";
 import { askSagar as askSagarLocal } from "../services/ai/localSagar";
+import { getOfflineSnapshot } from "../services/offline/offlineSnapshot";
+import { describeSnapshotAge } from "./useOfflineSync";
 import { useAppStore } from "../store/appStore";
 import { ROUTES } from "../constants/routes";
 
@@ -26,6 +30,13 @@ type SagarChatMessage = {
    * language), so voice playback can match the reply instead of a static
    * app-wide setting. */
   language?: string;
+  /** Raw backend fields kept (beyond the trimmed ChatStructuredData) so
+   * the contextual map panel can resolve real coordinates - zone/alert
+   * locations and the resolved area id - without re-parsing chat text. */
+  zones?: RankedFishingZone[];
+  alerts?: Alert[];
+  affectedAreaId?: string;
+  intent?: string;
 };
 
 type SagarOptions = {
@@ -42,6 +53,12 @@ type SagarOptions = {
 type SagarHandlers = {
   onUseMyLocation?: () => void;
   onChooseArea?: () => void;
+  /** Reports whether the real backend request this turn actually
+   * succeeded - the connectivity hook uses this (alongside
+   * navigator.onLine) so "the backend is unreachable even though the
+   * device says it's online" is detected from a real request outcome,
+   * not just the browser's network-interface flag. */
+  onConnectivityChange?: (succeeded: boolean) => void;
 };
 
 /*
@@ -82,6 +99,10 @@ interface AssistantReply {
   route: RoutePlan | null;
   structured?: ChatStructuredData;
   language?: string;
+  zones?: RankedFishingZone[];
+  alerts?: Alert[];
+  affectedAreaId?: string;
+  intent?: string;
 }
 
 /**
@@ -210,6 +231,15 @@ function buildStructuredData(
         }
       : undefined,
     actions: actions.length > 0 ? actions : undefined,
+    verifiedSource: result.dataStatus?.verifiedSources?.[0]
+      ? {
+          name: result.dataStatus.verifiedSources[0].name,
+          age: result.dataStatus.verifiedSources[0].age,
+          freshness: result.dataStatus.verifiedSources[0].freshness,
+          distanceFromAreaKm:
+            result.dataStatus.verifiedSources[0].distanceFromAreaKm,
+        }
+      : undefined,
   };
 
   const hasAnyField = Object.values(structured).some(
@@ -305,6 +335,8 @@ export default function useSagar(
           })),
         });
 
+        handlersRef.current.onConnectivityChange?.(true);
+
         // Only the resolved supported area is kept - never the raw
         // coordinates that produced it.
         setResolvedAreaName(result.affectedArea?.name ?? null);
@@ -326,8 +358,14 @@ export default function useSagar(
             onChooseArea: handlersRef.current.onChooseArea,
           }),
           language: result.language,
+          zones: result.zones,
+          alerts: result.alerts,
+          affectedAreaId: result.affectedArea?.id,
+          intent: result.intent,
         };
       } catch (backendError) {
+        handlersRef.current.onConnectivityChange?.(false);
+
         console.warn(
           "Sagar backend is unavailable, using the offline responder:",
           backendError
@@ -338,7 +376,77 @@ export default function useSagar(
           areaId: options.areaId,
         });
 
-        return { text: local.text, route: null, language: options.language };
+        const snapshot = getOfflineSnapshot();
+        const lastSyncedAge = snapshot
+          ? describeSnapshotAge(snapshot.createdAt)
+          : undefined;
+
+        const snapshotAgeMs = snapshot
+          ? Date.now() - Date.parse(snapshot.createdAt)
+          : null;
+
+        // A simple, disclosed offline confidence rule (Part 4 report
+        // has the full rationale): local data is always at most MEDIUM
+        // confidence, downgraded to LOW once the last sync is old
+        // enough that marine conditions have likely moved on - never
+        // upgraded to HIGH, since no live source backs the offline path.
+        const offlineConfidence: "MEDIUM" | "LOW" =
+          snapshotAgeMs !== null && snapshotAgeMs > 6 * 60 * 60 * 1000
+            ? "LOW"
+            : "MEDIUM";
+
+        const offlineExplanation = snapshot
+          ? offlineConfidence === "LOW"
+            ? `Synced data is from ${lastSyncedAge} - more than 6 hours old, so confidence is reduced.`
+            : `Using marine data synced ${lastSyncedAge} and Sagar's local decision engine.`
+          : "No previous sync found - using Sagar's bundled prototype dataset and local decision engine.";
+
+        const structured: ChatStructuredData = {
+          riskLevel: local.zones ? undefined : local.riskLevel,
+          riskScore: local.zones ? undefined : local.riskScore,
+          keyFactors: local.keyFactors,
+          evidenceTitles: local.evidence.map((item) => item.title),
+          zones: local.zones?.map((zone) => ({
+            name: zone.name,
+            recommendation: zone.recommendation,
+            suitability: zone.suitability,
+            reasons: zone.reasons,
+          })),
+          route: local.route
+            ? {
+                distanceKm: local.route.distanceKm,
+                durationHours: local.route.estimatedDurationHours,
+                riskLevel: local.route.risk?.level,
+                riskScore: local.route.risk?.score,
+                status: local.route.status,
+              }
+            : undefined,
+          whatIfComparison: local.whatIf
+            ? {
+                question: local.whatIf.question,
+                before: local.whatIf.before,
+                after: local.whatIf.after,
+                impact: local.whatIf.impact,
+                recommendation: local.whatIf.recommendation,
+              }
+            : undefined,
+          offlineStatus: {
+            lastSyncedAge,
+            confidence: offlineConfidence,
+            explanation: offlineExplanation,
+          },
+        };
+
+        return {
+          text: local.text,
+          route: local.route ?? null,
+          structured,
+          language: local.language,
+          zones: local.zones as unknown as RankedFishingZone[] | undefined,
+          alerts: undefined,
+          affectedAreaId: local.areaId,
+          intent: local.intent,
+        };
       }
     },
     [
@@ -397,6 +505,10 @@ export default function useSagar(
           route: reply.route,
           structured: reply.structured,
           language: reply.language,
+          zones: reply.zones,
+          alerts: reply.alerts,
+          affectedAreaId: reply.affectedAreaId,
+          intent: reply.intent,
         };
 
         setMessages((current) => [

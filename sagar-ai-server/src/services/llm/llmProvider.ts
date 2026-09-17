@@ -26,6 +26,13 @@ export interface ChatCompletionMessage {
 export interface LlmCompletionOptions {
   temperature?: number;
   maxTokens?: number;
+  /** Overrides the provider's configured timeout for this call only.
+   * Narration/classification calls ask for 1-2 sentences or one small
+   * JSON object, so they set a much tighter bound than the provider
+   * default - a slow/local model degrades to the deterministic fallback
+   * quickly instead of leaving the user's chat message waiting for the
+   * provider's full configured timeout (e.g. 30s). */
+  timeoutMs?: number;
 }
 
 export interface LlmProvider {

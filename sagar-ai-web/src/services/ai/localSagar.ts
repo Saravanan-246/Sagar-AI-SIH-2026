@@ -1,9 +1,13 @@
-import marineData from "../../data/marine.json";
 import fishingZonesRaw from "../../data/fishingZones.json";
 import boundaries from "../../data/boundaries.json";
 import productivityData from "../../data/productivity.json";
 
 import { getAlerts } from "../alerts/alertService";
+import { getMarineAreas } from "../marine/marineData";
+import { assessHazards } from "../safety/hazardEngine";
+import { rankFishingZones, type RankedFishingZone } from "../ocean/zoneRanking";
+import { getSafestRoute } from "../routes/routeService";
+import { getScenarios, runScenario } from "../scenarios/scenarioEngine";
 
 import {
   analyzeIntent,
@@ -13,6 +17,28 @@ import {
 
 const alertsData = getAlerts();
 const fishingZones = fishingZonesRaw.zones;
+
+/*
+ * Offline "what if wind/waves become stronger" detection - a small,
+ * English-only subset of the backend's multi-language whatIfEngine
+ * (see Phase 4 report for the honest scope note on this). Detecting
+ * it here, deterministically, is what lets Chat's offline fallback
+ * run the SAME scenario engine used by the standalone What-If page
+ * (services/scenarios/scenarioEngine.ts) instead of a separate
+ * approximation.
+ */
+const WIND_INCREASE_PATTERN =
+  /\bwhat (?:if|happens if)\b.*\b(wind|breeze)\b.*\b(stronger|increase|higher|worse|picks? up)\b/i;
+const WAVE_INCREASE_PATTERN =
+  /\bwhat (?:if|happens if)\b.*\b(wave|waves|sea|swell)\b.*\b(stronger|increase|higher|worse|rougher)\b/i;
+
+function detectOfflineWhatIf(
+  message: string
+): "wind_increase" | "wave_increase" | null {
+  if (WIND_INCREASE_PATTERN.test(message)) return "wind_increase";
+  if (WAVE_INCREASE_PATTERN.test(message)) return "wave_increase";
+  return null;
+}
 
 type AskSagarOptions = {
   language?: string;
@@ -28,15 +54,54 @@ export type SagarEvidence = {
   status: "available" | "stale" | "unavailable";
 };
 
+export type SagarZoneSummary = {
+  /** Kept so the map panel can look up the zone's real polygon/centroid
+   * in fishingZones.json - the same lookup chatMapFocus.ts already
+   * does for the online path, no coordinates invented here. */
+  id: string;
+  name: string;
+  recommendation: "PREFER" | "MONITOR" | "AVOID";
+  suitability?: string;
+  reasons: string[];
+};
+
+export type SagarWhatIfSummary = {
+  question: string;
+  before: { riskScore: number; riskLevel: string };
+  after: { riskScore: number; riskLevel: string; operability?: string };
+  impact: string;
+  recommendation?: string;
+};
+
 export type SagarResponse = {
   text: string;
   intent: SagarIntent;
   language: SupportedLanguage;
   confidence: number;
   evidence: SagarEvidence[];
+  /** Real computed values (hazardEngine/zoneRanking/routeService/
+   * scenarioEngine) - not fabricated for the offline path, and not
+   * always present (only when the corresponding intent computed
+   * them), matching how the online structured panel already works. */
+  riskLevel?: string;
+  riskScore?: number;
+  keyFactors?: string[];
+  /** The area the offline engine actually resolved this answer for -
+   * lets the map focus on the right place, same as the online path's
+   * affectedArea.id. */
+  areaId?: string;
+  zones?: SagarZoneSummary[];
+  /** The full RoutePlan (not a stripped summary) - chatMapFocus.ts
+   * needs the real origin/destination coordinates to sync the map,
+   * exactly like the online path's result.route. */
+  route?: RoutePlan | null;
+  whatIf?: SagarWhatIfSummary;
 };
 
-type RawMarineArea = (typeof marineData.areas)[number];
+import type { MarineArea as AppMarineArea } from "../../types/marine";
+import type { RoutePlan } from "../../types/route";
+
+type RawMarineArea = AppMarineArea;
 
 /*
  * Sagar's local (offline-fallback) responder was originally written
@@ -77,6 +142,9 @@ type MarineArea = {
     overallRisk: string;
     riskScore: number;
     operatingRecommendation: string;
+    /** Real computed reasons from hazardEngine.assessHazards() -
+     * absent only if the hazard assessment itself failed. */
+    keyFactors?: string[];
   };
 };
 
@@ -93,6 +161,26 @@ type ProductivityArea =
   (typeof productivityData.areas)[number];
 
 function toDisplayArea(area: RawMarineArea): MarineArea {
+  // Real computed risk (hazardEngine.assessHazards), matching the same
+  // formula the backend uses for the online path - not a static read
+  // of the area's baked-in riskScore. Falls back to that baked value
+  // only if the assessment itself throws (should not happen offline,
+  // since it has no network dependency).
+  let overallRisk = area.safety.overallRisk;
+  let riskScore = area.safety.riskScore;
+  let operatingRecommendation = area.safety.recommendation;
+  let keyFactors: string[] | undefined;
+
+  try {
+    const assessment = assessHazards({ areaId: area.id });
+    overallRisk = assessment.riskLevel;
+    riskScore = assessment.riskScore;
+    operatingRecommendation = assessment.recommendation;
+    keyFactors = assessment.activeHazards.map((hazard) => hazard.description);
+  } catch (error) {
+    console.warn("Sagar offline: hazard assessment failed, using baseline data:", error);
+  }
+
   return {
     id: area.id,
     name: area.name,
@@ -150,9 +238,10 @@ function toDisplayArea(area: RawMarineArea): MarineArea {
       productivitySignal: area.marineIndicators.productivitySignal,
     },
     safety: {
-      overallRisk: area.safety.overallRisk,
-      riskScore: area.safety.riskScore,
-      operatingRecommendation: area.safety.recommendation,
+      overallRisk,
+      riskScore,
+      operatingRecommendation,
+      keyFactors,
     },
   };
 }
@@ -160,9 +249,11 @@ function toDisplayArea(area: RawMarineArea): MarineArea {
 function getArea(
   areaId?: string,
 ): MarineArea {
+  const areas = getMarineAreas();
+
   if (areaId) {
     const found =
-      marineData.areas.find(
+      areas.find(
         (area) => area.id === areaId,
       );
 
@@ -171,7 +262,7 @@ function getArea(
     }
   }
 
-  return toDisplayArea(marineData.areas[0]);
+  return toDisplayArea(areas[0]);
 }
 
 function getAreaByName(
@@ -180,7 +271,7 @@ function getAreaByName(
   const query =
     areaName.toLowerCase();
 
-  const found = marineData.areas.find(
+  const found = getMarineAreas().find(
     (area) =>
       area.name
         .toLowerCase()
@@ -357,10 +448,25 @@ function formatDateTime(
   ).format(date);
 }
 
+/** Adapts a real ranked zone back into the {name, suitability,
+ * chlorophyll, sst} shape every language template already reads, so
+ * only the zone SOURCE changes (naive local sort -> real ranking with
+ * chlorophyll/SST/geofence scoring) without rewriting each template. */
+function bestZoneFields(bestZone: RankedFishingZone | undefined) {
+  if (!bestZone) return undefined;
+  return {
+    name: bestZone.name,
+    suitability: bestZone.suitability,
+    chlorophyll: bestZone.chlorophyllMgM3,
+    sst: bestZone.seaSurfaceTemperatureC,
+  };
+}
+
 function generateEnglish(
   intent: SagarIntent,
   area: MarineArea,
   query: string,
+  bestZone?: RankedFishingZone,
 ): string {
   const conditions =
     area.conditions;
@@ -408,28 +514,11 @@ function generateEnglish(
     }
 
     case "pfz": {
-      const candidates =
-        fishingZones
-          .filter(
-            (zone) =>
-              typeof zone.suitability === "string",
-          )
-          .sort(
-            (a, b) =>
-              suitabilityScore(
-                b.suitability,
-              ) -
-              suitabilityScore(
-                a.suitability,
-              ),
-          )
-          .slice(0, 3);
+      const best = bestZoneFields(bestZone);
 
-      if (candidates.length === 0) {
+      if (!best) {
         return "No active fishing-zone candidates are available in the current data.";
       }
-
-      const best = candidates[0];
 
       return [
         `The strongest current fishing candidate is ${best.name}.`,
@@ -575,6 +664,7 @@ function generateEnglish(
 function generateTamil(
   intent: SagarIntent,
   area: MarineArea,
+  bestZone?: RankedFishingZone,
 ): string {
   const c = area.conditions;
   const s = area.safety;
@@ -613,21 +703,7 @@ function generateTamil(
     }
 
     case "pfz": {
-      const best =
-        fishingZones
-          .filter(
-            (zone) =>
-              typeof zone.suitability === "string",
-          )
-          .sort(
-            (a, b) =>
-              suitabilityScore(
-                b.suitability,
-              ) -
-              suitabilityScore(
-                a.suitability,
-              ),
-          )[0];
+      const best = bestZoneFields(bestZone);
 
       if (!best) {
         return "தற்போது பொருத்தமான மீன்பிடி பகுதி கிடைக்கவில்லை.";
@@ -702,6 +778,7 @@ function generateTamil(
 function generateTelugu(
   intent: SagarIntent,
   area: MarineArea,
+  bestZone?: RankedFishingZone,
 ): string {
   const c = area.conditions;
   const s = area.safety;
@@ -718,21 +795,7 @@ function generateTelugu(
       return "ప్రస్తుతం క్రియాశీల సముద్ర హెచ్చరికలను పరిశీలించాలి. తుఫాను, మెరుపు మరియు బలమైన గాలుల ప్రభావాన్ని ప్రయాణానికి ముందు తనిఖీ చేయండి.";
 
     case "pfz": {
-      const best =
-        fishingZones
-          .filter(
-            (zone) =>
-              typeof zone.suitability === "string",
-          )
-          .sort(
-            (a, b) =>
-              suitabilityScore(
-                b.suitability,
-              ) -
-              suitabilityScore(
-                a.suitability,
-              ),
-          )[0];
+      const best = bestZoneFields(bestZone);
 
       return best
         ? `${best.name} మంచి చేపల వేట అవకాశాన్ని చూపుతోంది. Chlorophyll ${cleanNumber(
@@ -767,6 +830,7 @@ function generateTelugu(
 function generateMalayalam(
   intent: SagarIntent,
   area: MarineArea,
+  bestZone?: RankedFishingZone,
 ): string {
   const c = area.conditions;
   const s = area.safety;
@@ -783,21 +847,7 @@ function generateMalayalam(
       return "നിലവിലെ സജീവ സമുദ്ര മുന്നറിയിപ്പുകൾ പരിശോധിക്കണം. ചുഴലിക്കാറ്റ്, മിന്നൽ, ശക്തമായ കാറ്റ്, ഉയർന്ന തിരമാലകൾ എന്നിവ ശ്രദ്ധിക്കുക.";
 
     case "pfz": {
-      const best =
-        fishingZones
-          .filter(
-            (zone) =>
-              typeof zone.suitability === "string",
-          )
-          .sort(
-            (a, b) =>
-              suitabilityScore(
-                b.suitability,
-              ) -
-              suitabilityScore(
-                a.suitability,
-              ),
-          )[0];
+      const best = bestZoneFields(bestZone);
 
       return best
         ? `${best.name} നല്ല മത്സ്യബന്ധന സാധ്യത കാണിക്കുന്നു. Chlorophyll ${cleanNumber(
@@ -832,6 +882,7 @@ function generateMalayalam(
 function generateKannada(
   intent: SagarIntent,
   area: MarineArea,
+  bestZone?: RankedFishingZone,
 ): string {
   const c = area.conditions;
   const s = area.safety;
@@ -848,21 +899,7 @@ function generateKannada(
       return "ಪ್ರಸ್ತುತ ಸಕ್ರಿಯ ಸಮುದ್ರ ಎಚ್ಚರಿಕೆಗಳನ್ನು ಪರಿಶೀಲಿಸಿ. ಚಂಡಮಾರುತ, ಮಿಂಚು, ಬಲವಾದ ಗಾಳಿ ಮತ್ತು ಹೆಚ್ಚಿನ ಅಲೆಗಳ ಅಪಾಯವನ್ನು ಗಮನಿಸಿ.";
 
     case "pfz": {
-      const best =
-        fishingZones
-          .filter(
-            (zone) =>
-              typeof zone.suitability === "string",
-          )
-          .sort(
-            (a, b) =>
-              suitabilityScore(
-                b.suitability,
-              ) -
-              suitabilityScore(
-                a.suitability,
-              ),
-          )[0];
+      const best = bestZoneFields(bestZone);
 
       return best
         ? `${best.name} ಉತ್ತಮ ಮೀನುಗಾರಿಕೆ ಸಾಧ್ಯತೆಯನ್ನು ತೋರಿಸುತ್ತದೆ. Chlorophyll ${cleanNumber(
@@ -897,6 +934,7 @@ function generateKannada(
 function generateHindi(
   intent: SagarIntent,
   area: MarineArea,
+  bestZone?: RankedFishingZone,
 ): string {
   const c = area.conditions;
   const s = area.safety;
@@ -913,21 +951,7 @@ function generateHindi(
       return "वर्तमान सक्रिय समुद्री चेतावनियों की जांच करें। चक्रवात, बिजली, तेज हवा और ऊंची लहरों पर विशेष ध्यान दें।";
 
     case "pfz": {
-      const best =
-        fishingZones
-          .filter(
-            (zone) =>
-              typeof zone.suitability === "string",
-          )
-          .sort(
-            (a, b) =>
-              suitabilityScore(
-                b.suitability,
-              ) -
-              suitabilityScore(
-                a.suitability,
-              ),
-          )[0];
+      const best = bestZoneFields(bestZone);
 
       return best
         ? `${best.name} बेहतर मछली पकड़ने की संभावना दिखाता है। Chlorophyll ${cleanNumber(
@@ -964,36 +988,42 @@ function generateResponse(
   language: SupportedLanguage,
   area: MarineArea,
   query: string,
+  bestZone?: RankedFishingZone,
 ): string {
   switch (language) {
     case "ta":
       return generateTamil(
         intent,
         area,
+        bestZone,
       );
 
     case "te":
       return generateTelugu(
         intent,
         area,
+        bestZone,
       );
 
     case "ml":
       return generateMalayalam(
         intent,
         area,
+        bestZone,
       );
 
     case "kn":
       return generateKannada(
         intent,
         area,
+        bestZone,
       );
 
     case "hi":
       return generateHindi(
         intent,
         area,
+        bestZone,
       );
 
     default:
@@ -1001,6 +1031,7 @@ function generateResponse(
         intent,
         area,
         query,
+        bestZone,
       );
   }
 }
@@ -1093,11 +1124,76 @@ export async function askSagar(
     options.areaId,
   );
 
+  // A real "what if wind/waves get stronger" question runs the same
+  // deterministic scenario engine the standalone What-If page uses
+  // (services/scenarios/scenarioEngine.ts) - never an LLM, and never a
+  // separate risk formula from the rest of the app.
+  const whatIfKind = detectOfflineWhatIf(query);
+
+  if (whatIfKind) {
+    const weatherScenario = getScenarios().find(
+      (scenario) => scenario.type === "weather_change",
+    );
+
+    if (weatherScenario) {
+      const scenarioInputs =
+        whatIfKind === "wind_increase"
+          ? { windSpeedIncreasePercent: 20, waveIncreasePercent: 0, areaId: area.id }
+          : { windSpeedIncreasePercent: 0, waveIncreasePercent: 20, areaId: area.id };
+
+      try {
+        const result = runScenario(weatherScenario, scenarioInputs);
+
+        const questionText =
+          whatIfKind === "wind_increase"
+            ? "wind speed increases by 20%"
+            : "wave height increases by 20%";
+
+        const impact = `Risk ${
+          result.riskScore > area.safety.riskScore ? "increases" : "changes"
+        } from ${area.safety.riskScore}/100 (${area.safety.overallRisk}) to ${result.riskScore}/100 (${result.riskLevel}) if ${questionText}.`;
+
+        return {
+          text: `${impact} ${result.recommendation}`.trim(),
+          intent: "productivity",
+          language: preferredLanguage,
+          confidence: 0.85,
+          evidence: getEvidence(area, "safety"),
+          areaId: area.id,
+          riskLevel: result.riskLevel,
+          riskScore: result.riskScore,
+          whatIf: {
+            question: questionText,
+            before: { riskScore: area.safety.riskScore, riskLevel: area.safety.overallRisk },
+            after: {
+              riskScore: result.riskScore,
+              riskLevel: result.riskLevel,
+              operability: result.operability,
+            },
+            impact,
+            recommendation: result.recommendation,
+          },
+        };
+      } catch (error) {
+        console.warn("Sagar offline: what-if scenario failed:", error);
+      }
+    }
+  }
+
+  const bestZone: RankedFishingZone | undefined =
+    analysis.intent === "pfz"
+      ? (rankFishingZones().find((zone) => zone.recommendation === "PREFER") ??
+        rankFishingZones()[0])
+      : undefined;
+
+  const safestRoute = analysis.intent === "route" ? getSafestRoute() : undefined;
+
   const text = generateResponse(
     analysis.intent,
     preferredLanguage,
     area,
     query,
+    bestZone,
   );
 
   return {
@@ -1109,6 +1205,31 @@ export async function askSagar(
       area,
       analysis.intent,
     ),
+    areaId: area.id,
+    riskLevel:
+      analysis.intent === "safety" || analysis.intent === "alerts"
+        ? area.safety.overallRisk
+        : undefined,
+    riskScore:
+      analysis.intent === "safety" || analysis.intent === "alerts"
+        ? area.safety.riskScore
+        : undefined,
+    keyFactors:
+      analysis.intent === "safety" || analysis.intent === "alerts"
+        ? area.safety.keyFactors
+        : undefined,
+    zones: bestZone
+      ? [
+          {
+            id: bestZone.id,
+            name: bestZone.name,
+            recommendation: bestZone.recommendation,
+            suitability: bestZone.suitability,
+            reasons: bestZone.reasons,
+          },
+        ]
+      : undefined,
+    route: safestRoute ?? undefined,
   };
 }
 

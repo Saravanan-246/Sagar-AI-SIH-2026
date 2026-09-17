@@ -57,6 +57,32 @@ type ChatInput = z.infer<typeof chatInputSchema>;
 
 const router = Router();
 
+/*
+ * Opt-in per-stage latency breakdown for diagnosing chat response time -
+ * classification / agent pipeline / narration each get their own
+ * measured duration, plus the orchestrator's own per-agent traces. Zero
+ * cost and zero behavior change unless a caller explicitly sends
+ * `x-debug-timing: 1`; normal chat responses are completely unaffected.
+ */
+interface DebugTimingSink {
+  marks: Array<{ label: string; ms: number }>;
+}
+
+async function timed<T>(
+  sink: DebugTimingSink | undefined,
+  label: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  if (!sink) {
+    return fn();
+  }
+
+  const start = performance.now();
+  const result = await fn();
+  sink.marks.push({ label, ms: Math.round((performance.now() - start) * 10) / 10 });
+  return result;
+}
+
 // Deterministic "safest route from A to B" parsing - cheap, no AI call needed.
 const FROM_TO_PATTERN = /\bfrom\s+(.+?)\s+to\s+(.+?)(?:[.?!]|$)/i;
 
@@ -128,11 +154,11 @@ const ROUTE_DECISION_PHRASE: Record<RoutePlan["routeDecision"], string> = {
  * own fields instead, so narration/fallback both explain the route
  * that was actually returned.
  */
-function applyRouteAnswer(shaped: StructuredSagarResponse): void {
+function applyRouteAnswer(shaped: StructuredSagarResponse): boolean {
   const route = shaped.route;
 
   if (!route) {
-    return;
+    return false;
   }
 
   shaped.riskLevel = route.risk.level;
@@ -148,6 +174,8 @@ function applyRouteAnswer(shaped: StructuredSagarResponse): void {
   shaped.recommendation = `${ROUTE_DECISION_PHRASE[route.routeDecision]} - ${route.reason}`;
 
   shaped.answer = `${shaped.situation} ${shaped.recommendation}`;
+
+  return true;
 }
 
 /*
@@ -159,11 +187,11 @@ function applyRouteAnswer(shaped: StructuredSagarResponse): void {
  * much more direct answer to "what happens if...?" than whatever
  * unrelated intent's generic summary would otherwise be shown.
  */
-function applyWhatIfAnswer(shaped: StructuredSagarResponse): void {
+function applyWhatIfAnswer(shaped: StructuredSagarResponse): boolean {
   const whatIf = shaped.whatIf;
 
   if (!whatIf) {
-    return;
+    return false;
   }
 
   shaped.riskLevel = whatIf.after.riskLevel;
@@ -177,6 +205,8 @@ function applyWhatIfAnswer(shaped: StructuredSagarResponse): void {
   shaped.situation = whatIf.impact;
   shaped.recommendation = whatIf.recommendation;
   shaped.answer = `${whatIf.impact} ${whatIf.recommendation}`.trim();
+
+  return true;
 }
 
 /*
@@ -187,11 +217,11 @@ function applyWhatIfAnswer(shaped: StructuredSagarResponse): void {
  * area can read as an identical answer. Each of these reuses fields
  * already present on the shaped response (no new data, no new call).
  */
-function applyZoneAnswer(shaped: StructuredSagarResponse): void {
+function applyZoneAnswer(shaped: StructuredSagarResponse): boolean {
   const zones = shaped.zones;
 
   if (!zones || zones.length === 0) {
-    return;
+    return false;
   }
 
   const best = zones.find((zone) => zone.recommendation === "PREFER") ?? zones[0];
@@ -215,13 +245,15 @@ function applyZoneAnswer(shaped: StructuredSagarResponse): void {
    */
   shaped.riskLevel = undefined;
   shaped.riskScore = undefined;
+
+  return true;
 }
 
-function applyAlertsAnswer(shaped: StructuredSagarResponse): void {
+function applyAlertsAnswer(shaped: StructuredSagarResponse): boolean {
   const alerts = shaped.alerts;
 
   if (!alerts || alerts.length === 0) {
-    return;
+    return false;
   }
 
   const severityOrder: Record<string, number> = { critical: 4, high: 3, moderate: 2, low: 1 };
@@ -233,21 +265,25 @@ function applyAlertsAnswer(shaped: StructuredSagarResponse): void {
   shaped.situation = `${alerts.length} active alert${alerts.length === 1 ? "" : "s"}${area ? ` near ${area}` : ""}, the most severe being "${top.title}" (${top.severity}).`;
   shaped.recommendation = top.recommendation;
   shaped.answer = `${shaped.situation} ${shaped.recommendation}`.trim();
+
+  return true;
 }
 
-function applyOceanAnswer(shaped: StructuredSagarResponse): void {
+function applyOceanAnswer(shaped: StructuredSagarResponse): boolean {
   const oceanEvidence = shaped.evidence?.find(
     (item) => item.type === "ocean" && item.summary
   );
 
   if (!oceanEvidence?.summary) {
-    return;
+    return false;
   }
 
   const area = shaped.affectedArea?.name;
 
   shaped.situation = `${oceanEvidence.summary}${area ? ` (${area})` : ""}`;
   shaped.answer = shaped.situation;
+
+  return true;
 }
 
 const UNSUPPORTED_LOCATION_MESSAGE: Record<"en" | "ta" | "hi", (from: string, to: string) => string> = {
@@ -298,6 +334,26 @@ function isCasualMessage(message: string): boolean {
     CASUAL_PATTERN_TA.test(trimmed) ||
     CASUAL_PATTERN_HI.test(trimmed)
   );
+}
+
+/*
+ * CASUAL_PATTERN only matches when the ENTIRE message is one of the
+ * fixed phrases - "Thanks, that's helpful" or "Thanks a lot!" fails it
+ * (trailing words/punctuation after "thanks") and would otherwise fall
+ * through to the slow ambiguous-"general" path (an AI classification
+ * call plus a narration call, since neither is casual-only). This
+ * checks only the opening word, so it's deliberately looser - safe
+ * ONLY when paired with a confirmed-non-marine deterministic intent
+ * (see isCasualOrFiller below): a message that also names a real marine
+ * need ("thanks, but is it safe near Chennai?") always scores a
+ * non-"general" deterministic intent from its keywords regardless of
+ * how it opens, so it never reaches this check in the first place.
+ */
+const CASUAL_OPENING_PATTERN =
+  /^(hi|hello|hey|yo|sup|bro|ok|okay|thanks|thank you|thx|bye|goodbye)\b/i;
+
+function startsWithCasualOpening(message: string): boolean {
+  return CASUAL_OPENING_PATTERN.test(message.trim());
 }
 
 /*
@@ -491,11 +547,33 @@ function buildGateResponse(
   };
 }
 
-async function handleChat(input: ChatInput) {
+async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
+  const requestStart = performance.now();
   const history: ConversationTurn[] = input.history ?? [];
 
-  const classification = isLlmEnabled()
-    ? await classifyWithAi(input.message, history).catch(() => null)
+  const deterministicIntent = analyzeIntent(input.message).intent;
+  const isCasualOrFiller =
+    isCasualMessage(input.message) ||
+    isFillerOnlyMessage(input.message) ||
+    (deterministicIntent === "general" && startsWithCasualOpening(input.message));
+
+  /*
+   * PERFORMANCE: the AI classifier is a local-LLM round-trip (multiple
+   * seconds, measured) that only ever earns its keep on a message the
+   * deterministic keyword rules genuinely could not place - a casual
+   * greeting/acknowledgement is always "general" regardless of what an
+   * AI classifier says (see effectiveIntent below), and a confident
+   * keyword match already IS the intent, no confirmation needed. Every
+   * other message - the large majority of real marine questions - skips
+   * this call entirely and goes straight to the deterministic pipeline.
+   */
+  const needsAiClassification =
+    isLlmEnabled() && !isCasualOrFiller && deterministicIntent === "general";
+
+  const classification = needsAiClassification
+    ? await timed(debugTiming, "classifyWithAi", () =>
+        classifyWithAi(input.message, history).catch(() => null)
+      )
     : null;
 
   const gateLanguage: ChatLanguage = (input.language ??
@@ -514,8 +592,6 @@ async function handleChat(input: ChatInput) {
       .reverse()
       .map((turn) => (turn.role === "user" ? findMentionedArea(turn.text) : undefined))
       .find(Boolean);
-
-  const deterministicIntent = analyzeIntent(input.message).intent;
 
   /*
    * The AI classifier is better at follow-ups and phrasing, but it also
@@ -623,21 +699,38 @@ async function handleChat(input: ChatInput) {
             .join("\n")
         : undefined;
 
-    const conversational = isLlmEnabled()
-      ? await narrateGeneralReply({
-          userMessage: input.message,
-          recentContext,
-          language: gateLanguage,
-        }).catch(() => null)
-      : null;
+    // PERFORMANCE: a plain greeting/acknowledgement has an already-good
+    // static reply and zero marine content to get wrong - paying for an
+    // LLM round-trip here only delays the one class of message a chat
+    // user sends most often. Reserve the LLM call for a genuinely
+    // unrelated question, where a natural reply is worth the wait.
+    const conversational =
+      isLlmEnabled() && !isCasualOrFiller
+        ? await timed(debugTiming, "narrateGeneralReply", () =>
+            narrateGeneralReply({
+              userMessage: input.message,
+              recentContext,
+              language: gateLanguage,
+            }).catch(() => null)
+          )
+        : null;
 
     const reply =
       conversational ??
-      (isCasualMessage(input.message)
+      (isCasualOrFiller
         ? (CASUAL_REPLY[gateLanguage] ?? CASUAL_REPLY.en)
         : (UNSUPPORTED_REPLY[gateLanguage] ?? UNSUPPORTED_REPLY.en));
 
-    return buildGateResponse("unsupported", "general", gateLanguage, reply);
+    const gateResponse = buildGateResponse("unsupported", "general", gateLanguage, reply);
+
+    if (debugTiming) {
+      (gateResponse as StructuredSagarResponse & { _timing?: unknown })._timing = {
+        totalMs: Math.round((performance.now() - requestStart) * 10) / 10,
+        marks: debugTiming.marks,
+      };
+    }
+
+    return gateResponse;
   }
 
   // "Find the safest route." with no "from X to Y" and nothing else to
@@ -710,7 +803,9 @@ async function handleChat(input: ChatInput) {
     };
   }
 
-  const pipeline = await runAgentOrchestrator(baseRequest);
+  const pipeline = await timed(debugTiming, "runAgentOrchestrator", () =>
+    runAgentOrchestrator(baseRequest)
+  );
 
   const explicitRoute = resolveExplicitRoute(input.message);
 
@@ -819,8 +914,10 @@ async function handleChat(input: ChatInput) {
   // message text regardless of how the intent classifier labelled it
   // (e.g. "Is the route safe from X to Y?" classifies as "safety" but
   // still names a real route that should drive the answer).
+  let answerFinalizedDeterministically = false;
+
   if (shaped.route) {
-    applyRouteAnswer(shaped);
+    answerFinalizedDeterministically = applyRouteAnswer(shaped);
   }
 
   // Likewise, a real what-if comparison (detected independently via
@@ -828,18 +925,37 @@ async function handleChat(input: ChatInput) {
   // it exists, regardless of which primary intent the keyword
   // classifier happened to land on for the rest of the sentence.
   if (shaped.whatIf) {
-    applyWhatIfAnswer(shaped);
+    answerFinalizedDeterministically = applyWhatIfAnswer(shaped);
   } else if (shaped.intent === "pfz") {
-    applyZoneAnswer(shaped);
+    answerFinalizedDeterministically =
+      applyZoneAnswer(shaped) || answerFinalizedDeterministically;
   } else if (shaped.intent === "alerts") {
-    applyAlertsAnswer(shaped);
+    answerFinalizedDeterministically =
+      applyAlertsAnswer(shaped) || answerFinalizedDeterministically;
   } else if (shaped.intent === "marine_conditions") {
+    // Unlike route/pfz/alerts, the Tamil/Hindi fallback template for
+    // this intent isn't specific to an ocean-conditions summary (it
+    // would fall through to a generic risk-level phrase) - so narration
+    // is still worth attempting here, same as before this optimization.
     applyOceanAnswer(shaped);
   }
 
   let narrated: string | null = null;
 
-  if (isLlmEnabled()) {
+  /*
+   * PERFORMANCE: route/what-if/zone/alerts/ocean answers above are
+   * already a complete, grounded, natural-sounding sentence built
+   * directly from the resolved facts (e.g. "The Thoothukudi Deep Sea
+   * Corridor is the safest route... risk 18/100 (low)."). Calling the
+   * LLM afterward to rephrase an already-correct answer is a
+   * multi-second local-model round-trip (measured up to ~25s) for
+   * negligible wording benefit, so it's skipped whenever one of those
+   * deterministic answers already applied. Narration still runs for
+   * "safety" and any other case that only has the generic area-wide
+   * reporting-agent text, where the LLM's plain-language phrasing (vs.
+   * "Combined risk score: 84/100...") is the whole point.
+   */
+  if (isLlmEnabled() && !answerFinalizedDeterministically) {
     const routeSummary = shaped.route
       ? `${shaped.route.name}, ${shaped.route.distanceKm.toFixed(1)} km, risk ${shaped.route.risk.score}/100 (${shaped.route.risk.level}), ${shaped.route.routeDecision} - ${shaped.route.reason}`
       : undefined;
@@ -878,22 +994,24 @@ async function handleChat(input: ChatInput) {
             .join("\n")
         : undefined;
 
-    narrated = await narrateResponse({
-      userQuestion: input.message,
-      situation: shaped.situation,
-      recommendation: shaped.recommendation,
-      riskLevel: shaped.riskLevel,
-      riskScore: shaped.riskScore,
-      keyFactors: shaped.keyFactors,
-      areaName: shaped.affectedArea?.name,
-      routeSummary,
-      zonesSummary,
-      alertsSummary,
-      whatIfSummary,
-      recentContext,
-      dataSources: shaped.dataSources,
-      language: resolvedLanguage,
-    }).catch(() => null);
+    narrated = await timed(debugTiming, "narrateResponse", () =>
+      narrateResponse({
+        userQuestion: input.message,
+        situation: shaped.situation,
+        recommendation: shaped.recommendation,
+        riskLevel: shaped.riskLevel,
+        riskScore: shaped.riskScore,
+        keyFactors: shaped.keyFactors,
+        areaName: shaped.affectedArea?.name,
+        routeSummary,
+        zonesSummary,
+        alertsSummary,
+        whatIfSummary,
+        recentContext,
+        dataSources: shaped.dataSources,
+        language: resolvedLanguage,
+      }).catch(() => null)
+    );
   }
 
   if (narrated) {
@@ -922,6 +1040,17 @@ async function handleChat(input: ChatInput) {
     }
   }
 
+  if (debugTiming) {
+    (shaped as StructuredSagarResponse & { _timing?: unknown })._timing = {
+      totalMs: Math.round((performance.now() - requestStart) * 10) / 10,
+      marks: debugTiming.marks,
+      agentTraces: pipeline.traces?.map((trace) => ({
+        agent: trace.agent,
+        durationMs: trace.durationMs,
+      })),
+    };
+  }
+
   return shaped;
 }
 
@@ -929,7 +1058,8 @@ router.post(
   "/",
   asyncHandler(async (req, res) => {
     const input = chatInputSchema.parse(req.body);
-    const result = await handleChat(input);
+    const debugTiming = req.header("x-debug-timing") === "1" ? { marks: [] } : undefined;
+    const result = await handleChat(input, debugTiming);
     res.json(result);
   })
 );
@@ -945,7 +1075,8 @@ router.get(
       latitude: req.query.latitude,
       longitude: req.query.longitude,
     });
-    const result = await handleChat(input);
+    const debugTiming = req.header("x-debug-timing") === "1" ? { marks: [] } : undefined;
+    const result = await handleChat(input, debugTiming);
     res.json(result);
   })
 );

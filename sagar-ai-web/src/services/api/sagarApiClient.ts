@@ -68,11 +68,40 @@ export interface WhatIfComparison {
   recommendation: string;
 }
 
+export type FreshnessStatus =
+  | "LIVE"
+  | "RECENT"
+  | "AGING"
+  | "STALE"
+  | "OFFLINE"
+  | "UNAVAILABLE"
+  | "PROTOTYPE";
+
+export interface VerifiedSourceStatus {
+  name: string;
+  parameter: string;
+  observedAt: string;
+  age: string;
+  fetchedAt: string;
+  freshness: FreshnessStatus;
+  distanceFromAreaKm?: number;
+  note?: string;
+}
+
+export interface ConfidenceAssessment {
+  level: "HIGH" | "MEDIUM" | "LOW";
+  explanation: string;
+}
+
 export interface DataStatus {
   mode: "prototype";
   note: string;
   localSources: string[];
   plannedLiveSources: Array<{ name: string; provider: string }>;
+  /** Present only when a real external source actually returned data
+   * for this response. */
+  verifiedSources?: VerifiedSourceStatus[];
+  confidence: ConfidenceAssessment;
 }
 
 /**

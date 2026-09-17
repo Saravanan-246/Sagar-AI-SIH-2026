@@ -1,4 +1,5 @@
 import rawMarineData from "../../data/marine.json";
+import { getOfflineSnapshot } from "../offline/offlineSnapshot";
 
 import type {
   MarineArea,
@@ -9,7 +10,7 @@ import type {
   MarineSummary,
 } from "../../types/marine";
 
-const normalizedAreas: MarineArea[] = Array.isArray(
+const bundledAreas: MarineArea[] = Array.isArray(
   (rawMarineData as { areas?: MarineArea[] }).areas
 )
   ? ((rawMarineData as { areas: MarineArea[] }).areas)
@@ -19,12 +20,28 @@ function normalizeText(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
 
+/**
+ * Prefers a synced offline snapshot's marine areas over the dataset
+ * bundled with the app, so every deterministic engine that reads
+ * through this module (hazardEngine included) reflects what was
+ * actually last synced from the backend rather than always the same
+ * static build-time file. Falls back to the bundled dataset when no
+ * snapshot exists yet - so the app has a working (if unsynced)
+ * decision baseline from first launch, never a hard failure.
+ */
+function currentAreas(): MarineArea[] {
+  const snapshot = getOfflineSnapshot();
+  return snapshot && snapshot.marineAreas.length > 0
+    ? snapshot.marineAreas
+    : bundledAreas;
+}
+
 export function getMarineAreas(): MarineArea[] {
-  return [...normalizedAreas];
+  return [...currentAreas()];
 }
 
 export function getDefaultMarineArea(): MarineArea {
-  return normalizedAreas[0];
+  return currentAreas()[0];
 }
 
 export function getMarineArea(idOrName?: string): MarineArea {
@@ -34,7 +51,7 @@ export function getMarineArea(idOrName?: string): MarineArea {
 
   const target = normalizeText(idOrName);
 
-  const matched = normalizedAreas.find(
+  const matched = currentAreas().find(
     (area) =>
       normalizeText(area.id) === target ||
       normalizeText(area.name).includes(target) ||
@@ -49,7 +66,7 @@ export function getMarineAreaById(id: string): MarineArea | undefined {
 
   const target = normalizeText(id);
 
-  return normalizedAreas.find((area) => normalizeText(area.id) === target);
+  return currentAreas().find((area) => normalizeText(area.id) === target);
 }
 
 export function getMarineAreaByName(name: string): MarineArea | undefined {
@@ -57,7 +74,7 @@ export function getMarineAreaByName(name: string): MarineArea | undefined {
 
   const target = normalizeText(name);
 
-  return normalizedAreas.find(
+  return currentAreas().find(
     (area) =>
       normalizeText(area.name) === target ||
       normalizeText(area.name).includes(target) ||

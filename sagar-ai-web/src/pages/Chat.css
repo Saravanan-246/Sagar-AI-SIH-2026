@@ -427,6 +427,82 @@
   color: var(--chat-text-faint) !important;
 }
 
+/* Offline / sync status - part of the same footer as location, kept
+   equally compact (a status line + one action), never a dashboard. */
+.chat-sidebar-offline {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 10px;
+  border-top: 1px solid var(--chat-border);
+}
+
+.chat-sidebar-offline-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--chat-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chat-sidebar-offline-status svg {
+  flex: 0 0 auto;
+  color: var(--chat-accent);
+}
+
+.chat-sidebar-offline-age {
+  color: var(--chat-text-faint);
+  font-size: 10.5px;
+}
+
+.chat-sidebar-offline-sync {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  margin-top: 2px;
+  border: 1px solid var(--chat-border);
+  border-radius: 999px;
+  background: var(--chat-surface);
+  color: var(--chat-text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.chat-sidebar-offline-sync:hover:not(:disabled) {
+  border-color: var(--chat-accent);
+  background: var(--chat-accent-soft);
+}
+
+.chat-sidebar-offline-sync:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.chat-sidebar-sync-spin {
+  animation: chat-sync-spin 900ms linear infinite;
+}
+
+@keyframes chat-sync-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-sidebar-sync-spin {
+    animation: none;
+  }
+}
+
 .chat-sidebar-language {
   display: flex;
   flex-direction: column;
@@ -503,8 +579,18 @@
 }
 
 /* ---------------------------------------------------------------- */
-/* Main chat column                                                  */
+/* Content area (chat column + desktop map column)                   */
 /* ---------------------------------------------------------------- */
+
+/* Everything to the right of the sidebar. The map column's width is
+   set as a share of THIS box (not the full window), so it scales
+   correctly regardless of sidebar width. */
+.chat-content-area {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+}
 
 .chat-main {
   flex: 1 1 auto;

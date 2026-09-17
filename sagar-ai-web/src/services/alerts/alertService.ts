@@ -1,4 +1,5 @@
 import alertsData from "../../data/alerts.json";
+import { getOfflineSnapshot } from "../offline/offlineSnapshot";
 import type { Alert, AlertSeverity, AlertType } from "../../types/alert";
 
 // Defensive array extraction
@@ -116,28 +117,39 @@ function normalizeAlert(item: any, index: number): Alert {
   };
 }
 
-const normalizedAlerts: Alert[] = rawAlertList.map(normalizeAlert);
+const bundledAlerts: Alert[] = rawAlertList.map(normalizeAlert);
+
+/** Prefers a synced offline snapshot's alerts over the bundled
+ * dataset - see marineData.ts's currentAreas() for the same rationale.
+ * An empty synced alert list is a real, honest state (no active
+ * alerts at sync time) and is used as-is, not treated as "missing". */
+function currentAlerts(): Alert[] {
+  const snapshot = getOfflineSnapshot();
+  return snapshot ? snapshot.alerts : bundledAlerts;
+}
 
 export function getAlerts(): Alert[] {
-  return [...normalizedAlerts];
+  return [...currentAlerts()];
 }
 
 export function getActiveAlerts(): Alert[] {
-  return [...normalizedAlerts];
+  return [...currentAlerts()];
 }
 
 export function getAlertsByArea(areaName?: string): Alert[] {
+  const alerts = currentAlerts();
+
   if (!areaName || !areaName.trim()) {
-    return [...normalizedAlerts];
+    return [...alerts];
   }
   const query = areaName.trim().toLowerCase();
-  const matched = normalizedAlerts.filter(
+  const matched = alerts.filter(
     (a) =>
       a.location.name.toLowerCase().includes(query) ||
       a.title.toLowerCase().includes(query) ||
       a.summary.toLowerCase().includes(query)
   );
-  return matched.length > 0 ? matched : [...normalizedAlerts];
+  return matched.length > 0 ? matched : [...alerts];
 }
 
 export function getAlertsByRegion(region: string): Alert[] {
@@ -145,32 +157,36 @@ export function getAlertsByRegion(region: string): Alert[] {
 }
 
 export function getAlertsBySeverity(severity: string): Alert[] {
+  const alerts = currentAlerts();
+
   if (!severity || !severity.trim()) {
-    return [...normalizedAlerts];
+    return [...alerts];
   }
   const target = severity.trim().toLowerCase();
-  return normalizedAlerts.filter((a) => a.severity.toLowerCase() === target);
+  return alerts.filter((a) => a.severity.toLowerCase() === target);
 }
 
 export function getAlertsByType(type: string): Alert[] {
+  const alerts = currentAlerts();
+
   if (!type || !type.trim()) {
-    return [...normalizedAlerts];
+    return [...alerts];
   }
   const target = type.trim().toLowerCase();
-  return normalizedAlerts.filter((a) => a.type.toLowerCase() === target);
+  return alerts.filter((a) => a.type.toLowerCase() === target);
 }
 
 export function getActiveAlertCount(): number {
-  return normalizedAlerts.length;
+  return currentAlerts().length;
 }
 
 export function getAlertById(id: string): Alert | undefined {
   if (!id) return undefined;
-  return normalizedAlerts.find((a) => a.id.toLowerCase() === id.trim().toLowerCase());
+  return currentAlerts().find((a) => a.id.toLowerCase() === id.trim().toLowerCase());
 }
 
 export function getCriticalAlerts(): Alert[] {
-  return normalizedAlerts.filter(
+  return currentAlerts().filter(
     (a) =>
       a.severity.toLowerCase() === "high" ||
       a.severity.toLowerCase() === "severe" ||
@@ -179,7 +195,7 @@ export function getCriticalAlerts(): Alert[] {
 }
 
 export function hasActiveWarnings(): boolean {
-  return normalizedAlerts.length > 0;
+  return currentAlerts().length > 0;
 }
 
 export default {
