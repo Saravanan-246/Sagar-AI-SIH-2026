@@ -22,6 +22,7 @@ const VALID_INTENTS: InteractionAgentData["detectedIntent"][] = [
   "productivity",
   "geofence",
   "tide",
+  "evidence",
   "general",
 ];
 
@@ -70,6 +71,7 @@ function toChatIntent(
     case "productivity":
     case "geofence":
     case "tide":
+    case "evidence":
     case "general":
       return intent;
 

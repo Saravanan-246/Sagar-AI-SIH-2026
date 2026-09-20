@@ -2,12 +2,18 @@ import fishingZonesRaw from "../../data/fishingZones.json";
 import boundaries from "../../data/boundaries.json";
 import productivityData from "../../data/productivity.json";
 
-import { getAlerts } from "../alerts/alertService";
+import { getAlerts, getAlertsByArea } from "../alerts/alertService";
 import { getMarineAreas } from "../marine/marineData";
-import { assessHazards } from "../safety/hazardEngine";
 import { rankFishingZones, type RankedFishingZone } from "../ocean/zoneRanking";
 import { getSafestRoute } from "../routes/routeService";
 import { getScenarios, runScenario } from "../scenarios/scenarioEngine";
+
+import { runMarineDataAgent } from "../agents/marineDataAgent";
+import { runWeatherAgent } from "../agents/weatherAgent";
+import { runGeoAgent } from "../agents/geoAgent";
+import { runOceanAgent } from "../agents/oceanAgent";
+import { runRiskAgent } from "../agents/riskAgent";
+import type { AgentRequest, RiskAgentData } from "../agents/agentTypes";
 
 import {
   analyzeIntent,
@@ -160,25 +166,99 @@ type Boundary =
 type ProductivityArea =
   (typeof productivityData.areas)[number];
 
-function toDisplayArea(area: RawMarineArea): MarineArea {
-  // Real computed risk (hazardEngine.assessHazards), matching the same
-  // formula the backend uses for the online path - not a static read
-  // of the area's baked-in riskScore. Falls back to that baked value
-  // only if the assessment itself throws (should not happen offline,
-  // since it has no network dependency).
+function createRequestId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `sagar-offline-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/*
+ * Runs the SAME agent pipeline the backend's /risk endpoint runs
+ * (marine-data + weather + geo + ocean feeding riskAgent) so the
+ * offline score is produced by the identical scoring formula as the
+ * online path, instead of the differently-weighted hazardEngine
+ * formula that used to live here and could diverge from the backend
+ * for the same input conditions.
+ */
+async function computeAreaRisk(area: RawMarineArea): Promise<{
+  riskLevel: RiskAgentData["riskLevel"];
+  riskScore: number;
+  recommendation: string;
+  keyFactors: string[];
+}> {
+  const baseRequest: AgentRequest = {
+    requestId: createRequestId(),
+    message: "",
+    language: "en",
+    intent: "safety",
+    context: { areaId: area.id, areaName: area.name },
+    area,
+  };
+
+  const [marineData, weather, geo, ocean] = await Promise.all([
+    runMarineDataAgent(baseRequest),
+    runWeatherAgent(baseRequest),
+    runGeoAgent(baseRequest),
+    runOceanAgent(baseRequest),
+  ]);
+
+  const risk = await runRiskAgent({
+    ...baseRequest,
+    previousFindings: [
+      ...marineData.findings,
+      ...weather.findings,
+      ...geo.findings,
+      ...ocean.findings,
+    ],
+    previousEvidence: [
+      ...marineData.evidence,
+      ...weather.evidence,
+      ...geo.evidence,
+      ...ocean.evidence,
+    ],
+    parameters: {
+      ...baseRequest.parameters,
+      agentResponses: { "marine-data": marineData, weather, geo, ocean },
+    },
+  });
+
+  const data = risk.data as RiskAgentData | undefined;
+
+  if (!data) {
+    throw new Error(risk.error ?? "Offline risk assessment failed.");
+  }
+
+  return {
+    riskLevel: data.riskLevel,
+    riskScore: data.riskScore,
+    recommendation: data.recommendation,
+    // findings[0] is the overall "X operational risk" summary; the rest
+    // are the individual contributing-factor findings.
+    keyFactors: data.factors.slice(1).map((factor) => factor.summary),
+  };
+}
+
+async function toDisplayArea(area: RawMarineArea): Promise<MarineArea> {
+  // Real computed risk, produced by the same agent pipeline/formula the
+  // backend uses for the online path (see computeAreaRisk) - not a
+  // static read of the area's baked-in riskScore. Falls back to that
+  // baked value only if the assessment itself throws (should not
+  // happen offline, since it has no network dependency).
   let overallRisk = area.safety.overallRisk;
   let riskScore = area.safety.riskScore;
   let operatingRecommendation = area.safety.recommendation;
   let keyFactors: string[] | undefined;
 
   try {
-    const assessment = assessHazards({ areaId: area.id });
+    const assessment = await computeAreaRisk(area);
     overallRisk = assessment.riskLevel;
     riskScore = assessment.riskScore;
     operatingRecommendation = assessment.recommendation;
-    keyFactors = assessment.activeHazards.map((hazard) => hazard.description);
+    keyFactors = assessment.keyFactors;
   } catch (error) {
-    console.warn("Sagar offline: hazard assessment failed, using baseline data:", error);
+    console.warn("Sagar offline: risk assessment failed, using baseline data:", error);
   }
 
   return {
@@ -246,9 +326,9 @@ function toDisplayArea(area: RawMarineArea): MarineArea {
   };
 }
 
-function getArea(
+async function getArea(
   areaId?: string,
-): MarineArea {
+): Promise<MarineArea> {
   const areas = getMarineAreas();
 
   if (areaId) {
@@ -265,9 +345,9 @@ function getArea(
   return toDisplayArea(areas[0]);
 }
 
-function getAreaByName(
+async function getAreaByName(
   areaName: string,
-): MarineArea | undefined {
+): Promise<MarineArea | undefined> {
   const query =
     areaName.toLowerCase();
 
@@ -337,7 +417,7 @@ function getEvidence(
     intent === "marine_conditions"
   ) {
     const relevantAlerts =
-      alertsData.filter(
+      getAlertsByArea(area.id).filter(
         (alert) =>
           alert.status === "active",
       );
@@ -521,7 +601,10 @@ function generateEnglish(
       }
 
       return [
-        `The strongest current fishing candidate is ${best.name}.`,
+        // "strongest current" claimed live-verified conditions; `best`
+        // is only ever the top-ranked record in Sagar's static
+        // configured PFZ dataset (see services/ocean/zoneRanking.ts).
+        `${best.name} is the highest-ranked zone in Sagar's configured PFZ dataset.`,
         `Its suitability is ${best.suitability}.`,
         typeof best.chlorophyll === "number"
           ? `Chlorophyll is ${cleanNumber(
@@ -709,7 +792,9 @@ function generateTamil(
         return "தற்போது பொருத்தமான மீன்பிடி பகுதி கிடைக்கவில்லை.";
       }
 
-      return `${best.name} தற்போது நல்ல மீன்பிடி வாய்ப்புள்ள பகுதியாக உள்ளது. Chlorophyll ${cleanNumber(
+      // "தற்போது...நல்ல" ("currently...good") claimed live-verified
+      // conditions; matches the English fix above.
+      return `${best.name} Sagar-இன் கட்டமைக்கப்பட்ட PFZ தரவுத்தொகுப்பில் அதிக மதிப்பெண் பெற்ற பகுதி. Chlorophyll ${cleanNumber(
         best.chlorophyll,
         2,
       )} mg/m3 மற்றும் SST ${cleanNumber(
@@ -1120,7 +1205,7 @@ export async function askSagar(
       ? options.language
       : analysis.language;
 
-  const area = getArea(
+  const area = await getArea(
     options.areaId,
   );
 

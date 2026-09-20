@@ -1,5 +1,6 @@
 import alertsData from "../../data/alerts.json";
 import { getOfflineSnapshot } from "../offline/offlineSnapshot";
+import { getMarineAreaById, getMarineAreaByName } from "../marine/marineData";
 import type { Alert, AlertSeverity, AlertType } from "../../types/alert";
 
 // Defensive array extraction
@@ -136,20 +137,88 @@ export function getActiveAlerts(): Alert[] {
   return [...currentAlerts()];
 }
 
+function toRadians(degrees: number): number {
+  return (degrees * Math.PI) / 180;
+}
+
+function haversineDistanceKm(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number }
+): number {
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(b.latitude - a.latitude);
+  const dLon = toRadians(b.longitude - a.longitude);
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+
+  const value =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+// Mirrors the backend alertService's same constant/rationale - kept in
+// sync so an offline answer's alert relevance matches the online one.
+const ALERT_RELEVANCE_RADIUS_KM = 75;
+
+/**
+ * Resolves `areaIdOrName` to a real configured marine area's real
+ * coordinates - by id, then by name - or `null` if it doesn't match
+ * any configured area. Never defaults to "the first configured area":
+ * doing so here would silently geo-match an unrecognised area query
+ * against the wrong place.
+ */
+function resolveAreaCoordinates(
+  areaIdOrName: string
+): { latitude: number; longitude: number } | null {
+  const area =
+    getMarineAreaById(areaIdOrName) ?? getMarineAreaByName(areaIdOrName);
+
+  return area ? area.coordinates : null;
+}
+
+/**
+ * Alerts explicitly naming the requested area (by id/name text, or by
+ * real geographic proximity to it) - never every active alert. A
+ * caller that wants everything should call getAlerts()/getActiveAlerts()
+ * directly rather than passing no area here; passing a real area that
+ * simply has no relevant alert now correctly returns an empty list
+ * instead of silently attaching unrelated alerts from elsewhere.
+ */
 export function getAlertsByArea(areaName?: string): Alert[] {
   const alerts = currentAlerts();
 
   if (!areaName || !areaName.trim()) {
     return [...alerts];
   }
+
   const query = areaName.trim().toLowerCase();
-  const matched = alerts.filter(
+
+  const textMatched = alerts.filter(
     (a) =>
       a.location.name.toLowerCase().includes(query) ||
       a.title.toLowerCase().includes(query) ||
       a.summary.toLowerCase().includes(query)
   );
-  return matched.length > 0 ? matched : [...alerts];
+
+  if (textMatched.length > 0) {
+    return textMatched;
+  }
+
+  const areaCoordinates = resolveAreaCoordinates(areaName.trim());
+
+  if (!areaCoordinates) {
+    return [];
+  }
+
+  return alerts.filter(
+    (a) =>
+      haversineDistanceKm(areaCoordinates, {
+        latitude: a.location.latitude,
+        longitude: a.location.longitude,
+      }) <= ALERT_RELEVANCE_RADIUS_KM
+  );
 }
 
 export function getAlertsByRegion(region: string): Alert[] {

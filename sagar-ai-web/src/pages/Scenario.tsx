@@ -15,13 +15,11 @@ import {
   Wind,
   XCircle,
 } from "lucide-react";
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
 
 import AppShell from "../components/layout/AppShell";
 import PageContainer from "../components/layout/PageContainer";
+import AskSagarButton from "../components/chat/AskSagarButton";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import EmptyState from "../components/ui/EmptyState";
@@ -31,7 +29,10 @@ import useScenario from "../hooks/useScenario";
 import { fetchRisk } from "../services/api/sagarApiClient";
 import { useAppStore } from "../store/appStore";
 
-import type { Scenario as ScenarioDefinition, ScenarioType } from "../types/scenario";
+import type {
+  Scenario as ScenarioDefinition,
+  ScenarioType,
+} from "../types/scenario";
 
 import "./Scenario.css";
 
@@ -62,9 +63,6 @@ interface ScenarioCategory {
   blurb: string;
 }
 
-// One human-friendly category per scenario the existing library actually
-// supports - no new scenarios, just plain-language framing of the same
-// six definitions from data/scenarios.json.
 const CATEGORIES: ScenarioCategory[] = [
   {
     id: "wind",
@@ -85,14 +83,14 @@ const CATEGORIES: ScenarioCategory[] = [
     scenarioType: "hazard_activation",
     icon: CloudLightning,
     title: "Lightning risk increases",
-    blurb: "See how increased lightning risk could change the decision.",
+    blurb: "See how increased lightning risk changes the risk posture.",
   },
   {
     id: "departure",
     scenarioType: "departure_time",
     icon: Clock3,
     title: "Departure moves to tomorrow morning",
-    blurb: "See how an early offshore departure changes the risk picture.",
+    blurb: "See how an early offshore departure shifts the risk picture.",
   },
   {
     id: "route_hazard",
@@ -106,7 +104,7 @@ const CATEGORIES: ScenarioCategory[] = [
     scenarioType: "geofence",
     icon: ShieldAlert,
     title: "Route crosses a restricted zone",
-    blurb: "See what happens if the route enters a protected boundary.",
+    blurb: "See what happens if the route approaches a protected boundary.",
   },
   {
     id: "productivity",
@@ -125,10 +123,6 @@ const CATEGORY_MAP: Record<CategoryId, ScenarioCategory> = CATEGORIES.reduce(
   {} as Record<CategoryId, ScenarioCategory>
 );
 
-// "How much" choices, mapped to the exact percentage fields the existing
-// scenario engine already accepts (see scenarioEngine.ts's own 20%/15%
-// defaults and the "Strong Wind Increase" library scenario's 40%) - no
-// new values invented, just plain labels for numbers already in use.
 const INTENSITY_LEVELS = [
   { id: "slight", label: "Slightly stronger", percent: 10 },
   { id: "moderate", label: "Moderately stronger", percent: 20 },
@@ -147,42 +141,31 @@ const LIGHTNING_LEVELS = [
   { id: "high", label: "High chance", value: "high" },
 ];
 
-function riskTone(
-  value?: string,
-) {
-  switch (value) {
+function riskTone(value?: string): "success" | "warning" | "danger" | "neutral" {
+  switch (value?.toLowerCase()) {
     case "low":
-      return "success" as const;
-
+      return "success";
     case "moderate":
-      return "warning" as const;
-
+      return "warning";
     case "high":
     case "critical":
-      return "danger" as const;
-
+      return "danger";
     default:
-      return "neutral" as const;
+      return "neutral";
   }
 }
 
-function getOperationalLabel(
-  value: string,
-) {
-  switch (value) {
+function getOperationalLabel(value: string) {
+  switch (value?.toLowerCase()) {
     case "suitable":
     case "proceed":
       return "Proceed";
-
     case "caution":
       return "Use caution";
-
     case "avoid":
       return "Avoid";
-
     case "blocked":
       return "Blocked";
-
     default:
       return value || "Review";
   }
@@ -190,11 +173,35 @@ function getOperationalLabel(
 
 function findScenarioForCategory(
   scenarios: ScenarioDefinition[],
-  category: ScenarioCategory,
+  category: ScenarioCategory
 ): ScenarioDefinition | undefined {
-  return scenarios.find(
-    (scenario) => scenario.type === category.scenarioType,
-  );
+  return scenarios.find((scenario) => scenario.type === category.scenarioType);
+}
+
+/** A real question built from the scenario actually configured on this
+ * page (category + the real slider/input values) - never a second risk
+ * calculation. Wind/wave/lightning/productivity map onto Chat's own
+ * existing deterministic what-if detector (whatIfEngine.ts) so Sagar
+ * answers with its own real comparison for the same kind of change;
+ * the remaining categories (no what-if pattern for them) fall back to
+ * asking about the current area's risk drivers instead of guessing at
+ * a what-if phrasing Sagar wouldn't recognise. */
+function buildScenarioAskSagarPrompt(
+  categoryId: CategoryId,
+  inputs: ScenarioInputValues
+): string {
+  switch (categoryId) {
+    case "wind":
+      return `What happens if wind speed increases by ${inputs.windIncrease}%?`;
+    case "waves":
+      return `What happens if wave height increases by ${inputs.waveIncrease}%?`;
+    case "lightning":
+      return "What happens if lightning risk becomes active?";
+    case "productivity":
+      return `What happens if productivity decreases by ${Math.abs(inputs.productivityChange)}%?`;
+    default:
+      return "Why is this area's current risk rated the way it is?";
+  }
 }
 
 export default function Scenario() {
@@ -210,86 +217,54 @@ export default function Scenario() {
     clearResult,
   } = useScenario();
 
-  const selectedAreaId = useAppStore(
-    (state) => state.selectedAreaId,
-  );
+  const selectedAreaId = useAppStore((state) => state.selectedAreaId);
 
-  const [inputs, setInputs] =
-    useState<ScenarioInputValues>({
-      departureTime: "06:00",
-      durationHours: 6,
-      windIncrease: 20,
-      waveIncrease: 15,
-      lightningRisk: "moderate",
-      productivityChange: -10,
-      vesselType: "small",
-    });
+  const [inputs, setInputs] = useState<ScenarioInputValues>({
+    departureTime: "06:00",
+    durationHours: 6,
+    windIncrease: 20,
+    waveIncrease: 15,
+    lightningRisk: "moderate",
+    productivityChange: -10,
+    vesselType: "small",
+  });
 
-  const [activeCategoryId, setActiveCategoryId] =
-    useState<CategoryId>("wind");
-
-  const [intensity, setIntensity] =
-    useState<string>("moderate");
-
-  const [detailsOpen, setDetailsOpen] =
-    useState(false);
-
-  const [scenarioOpen, setScenarioOpen] =
-    useState(false);
-
+  const [activeCategoryId, setActiveCategoryId] = useState<CategoryId>("wind");
+  const [intensity, setIntensity] = useState<string>("moderate");
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [scenarioOpen, setScenarioOpen] = useState(false);
   const [currentRisk, setCurrentRisk] = useState<{
     riskScore: number;
     riskLevel: string;
   } | null>(null);
 
   const activeCategory = CATEGORY_MAP[activeCategoryId];
+  const selected = selectedScenario ?? scenarios[0] ?? null;
 
-  const selected =
-    selectedScenario ??
-    scenarios[0] ??
-    null;
-
-  // Keep the friendly category selector and the underlying scenario in
-  // sync - if scenarios load after the page renders, or the user picks a
-  // scenario via the mobile/legacy selector, reflect it as a category.
   useEffect(() => {
-    if (!selected) {
-      return;
-    }
-
+    if (!selected) return;
     const matches = CATEGORIES.filter(
-      (category) => category.scenarioType === selected.type,
+      (category) => category.scenarioType === selected.type
     );
-
     if (matches.length > 0 && !matches.some((c) => c.id === activeCategoryId)) {
       setActiveCategoryId(matches[0].id);
     }
-    // Only re-sync when the underlying scenario identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id]);
 
-  // The current (no-change) baseline risk for comparison - uses the same
-  // existing /api/risk endpoint the rest of the app already relies on,
-  // never a fabricated number. If it can't be resolved, the comparison
-  // simply doesn't render rather than guessing.
   useEffect(() => {
     let cancelled = false;
 
     fetchRisk({ areaId: selectedAreaId ?? undefined })
       .then((response) => {
-        if (cancelled || !response.data) {
-          return;
-        }
-
+        if (cancelled || !response.data) return;
         setCurrentRisk({
           riskScore: response.data.riskScore,
           riskLevel: response.data.riskLevel,
         });
       })
       .catch(() => {
-        if (!cancelled) {
-          setCurrentRisk(null);
-        }
+        if (!cancelled) setCurrentRisk(null);
       });
 
     return () => {
@@ -297,11 +272,9 @@ export default function Scenario() {
     };
   }, [selectedAreaId]);
 
-  const updateInput = <
-    Key extends keyof ScenarioInputValues,
-  >(
+  const updateInput = <Key extends keyof ScenarioInputValues>(
     key: Key,
-    value: ScenarioInputValues[Key],
+    value: ScenarioInputValues[Key]
   ) => {
     setInputs((current) => ({
       ...current,
@@ -309,17 +282,11 @@ export default function Scenario() {
     }));
   };
 
-  const handleSelectCategory = (
-    category: ScenarioCategory,
-  ) => {
+  const handleSelectCategory = (category: ScenarioCategory) => {
     setActiveCategoryId(category.id);
     clearResult();
 
-    const matched = findScenarioForCategory(
-      scenarios,
-      category,
-    );
-
+    const matched = findScenarioForCategory(scenarios, category);
     if (matched) {
       selectScenario(matched);
     }
@@ -329,7 +296,7 @@ export default function Scenario() {
       const level = INTENSITY_LEVELS[1];
       updateInput(
         category.id === "wind" ? "windIncrease" : "waveIncrease",
-        level.percent,
+        level.percent
       );
     } else if (category.id === "productivity") {
       setIntensity("moderate");
@@ -342,11 +309,8 @@ export default function Scenario() {
     setScenarioOpen(false);
   };
 
-  const handleIntensitySelect = (
-    level: { id: string; percent: number },
-  ) => {
+  const handleIntensitySelect = (level: { id: string; percent: number }) => {
     setIntensity(level.id);
-
     if (activeCategoryId === "wind") {
       updateInput("windIncrease", level.percent);
     } else if (activeCategoryId === "waves") {
@@ -356,35 +320,22 @@ export default function Scenario() {
     }
   };
 
-  const handleLightningSelect = (
-    level: { id: string; value: string },
-  ) => {
+  const handleLightningSelect = (level: { id: string; value: string }) => {
     setIntensity(level.id);
     updateInput("lightningRisk", level.value);
   };
 
   const handleRun = async () => {
-    if (!selected) {
-      return;
-    }
+    if (!selected) return;
 
     await run(selected, {
-      departureTime:
-        inputs.departureTime,
-      durationHours:
-        inputs.durationHours,
-      windSpeedIncreasePercent:
-        inputs.windIncrease,
-      waveIncreasePercent:
-        inputs.waveIncrease,
-      lightningRisk:
-        inputs.lightningRisk,
-      productivityDecreasePercent:
-        Math.abs(
-          inputs.productivityChange,
-        ),
-      vesselType:
-        inputs.vesselType,
+      departureTime: inputs.departureTime,
+      durationHours: inputs.durationHours,
+      windSpeedIncreasePercent: inputs.windIncrease,
+      waveIncreasePercent: inputs.waveIncrease,
+      lightningRisk: inputs.lightningRisk,
+      productivityDecreasePercent: Math.abs(inputs.productivityChange),
+      vesselType: inputs.vesselType,
     });
   };
 
@@ -398,7 +349,6 @@ export default function Scenario() {
       productivityChange: -10,
       vesselType: "small",
     });
-
     setIntensity("moderate");
     clearResult();
   };
@@ -408,9 +358,7 @@ export default function Scenario() {
       <AppShell>
         <PageContainer className="scenario-page">
           <div className="scenario-loading">
-            <LoadingState
-              label="Loading scenario intelligence..."
-            />
+            <LoadingState label="Loading scenario intelligence..." />
           </div>
         </PageContainer>
       </AppShell>
@@ -449,43 +397,26 @@ export default function Scenario() {
     );
   }
 
-  const resultData =
-    result;
-
+  const resultData = result;
   const riskLevel =
-    resultData?.riskLevel ??
-    selected.result?.riskLevel ??
-    "unknown";
-
+    resultData?.riskLevel ?? selected.result?.riskLevel ?? "unknown";
   const riskScore =
-    typeof resultData?.riskScore ===
-    "number"
+    typeof resultData?.riskScore === "number"
       ? resultData.riskScore
-      : typeof selected.result
-            ?.riskScore === "number"
+      : typeof selected.result?.riskScore === "number"
         ? selected.result.riskScore
         : 0;
-
   const operability =
-    resultData?.operability ??
-    selected.result?.operability ??
-    "review";
-
+    resultData?.operability ?? selected.result?.operability ?? "review";
   const recommendation =
     resultData?.recommendation ??
     selected.result?.recommendation ??
     selected.description;
-
   const factors: string[] =
-    resultData?.keyFactors ??
-    selected.result?.keyFactors ??
-    [];
+    resultData?.keyFactors ?? selected.result?.keyFactors ?? [];
 
   const delta =
-    result && currentRisk
-      ? riskScore - currentRisk.riskScore
-      : null;
-
+    result && currentRisk ? riskScore - currentRisk.riskScore : null;
   const changeVerb =
     delta !== null && delta < 0 ? "decreases" : "increases";
 
@@ -494,8 +425,7 @@ export default function Scenario() {
     activeCategoryId === "waves" ||
     activeCategoryId === "productivity";
 
-  const hasLightningLevels =
-    activeCategoryId === "lightning";
+  const hasLightningLevels = activeCategoryId === "lightning";
 
   return (
     <AppShell>
@@ -503,18 +433,13 @@ export default function Scenario() {
         <header className="scenario-header">
           <div>
             <div className="scenario-eyebrow">
-              <SlidersHorizontal
-                size={14}
-              />
-              Decision simulation
+              <SlidersHorizontal size={14} />
+              <span>Decision Simulation</span>
             </div>
-
             <h1>What-If Analysis</h1>
-
             <p>
-              Choose a situation you want to
-              test - Sagar will tell you how it
-              changes the operational risk.
+              Simulate shifting sea conditions or alternative departures to measure
+              their impact on marine operational risk.
             </p>
           </div>
 
@@ -527,13 +452,8 @@ export default function Scenario() {
             >
               Refresh
             </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleReset}
-            >
-              <RotateCcw size={15} />
+            <Button variant="ghost" size="sm" onClick={handleReset}>
+              <RotateCcw size={14} />
               Reset
             </Button>
           </div>
@@ -541,56 +461,38 @@ export default function Scenario() {
 
         {error && (
           <div className="scenario-error">
-            <AlertTriangle size={16} />
+            <AlertTriangle size={15} />
             <span>{error}</span>
           </div>
         )}
 
         <div className="scenario-layout">
           <main className="scenario-main">
-            <section className="scenario-panel scenario-selection-panel">
+            {/* STEP 1: CATEGORY SELECTION */}
+            <section className="scenario-panel">
               <div className="scenario-panel-header">
                 <div>
-                  <span>
-                    Step 1
-                  </span>
-
-                  <h2>
-                    What would you like to test?
-                  </h2>
+                  <span className="scenario-step-badge">Step 1</span>
+                  <h2>Choose a scenario to test</h2>
                 </div>
               </div>
 
+              {/* Mobile selector trigger */}
               <button
                 type="button"
                 className="scenario-mobile-selector"
-                onClick={() =>
-                  setScenarioOpen(
-                    (current) => !current,
-                  )
-                }
+                onClick={() => setScenarioOpen((current) => !current)}
               >
                 <div className="scenario-mobile-selector-icon">
-                  <activeCategory.icon size={17} />
+                  <activeCategory.icon size={16} />
                 </div>
-
                 <div>
-                  <span>
-                    Selected situation
-                  </span>
-
-                  <strong>
-                    {activeCategory.title}
-                  </strong>
+                  <span>Selected situation</span>
+                  <strong>{activeCategory.title}</strong>
                 </div>
-
                 <ChevronDown
                   size={16}
-                  className={
-                    scenarioOpen
-                      ? "scenario-chevron open"
-                      : "scenario-chevron"
-                  }
+                  className={`scenario-chevron ${scenarioOpen ? "open" : ""}`}
                 />
               </button>
 
@@ -599,28 +501,17 @@ export default function Scenario() {
                   {CATEGORIES.map((category) => {
                     const Icon = category.icon;
                     const active = category.id === activeCategoryId;
-
                     return (
                       <button
                         key={category.id}
                         type="button"
-                        className={
-                          active
-                            ? "scenario-list-item active"
-                            : "scenario-list-item"
-                        }
+                        className={`scenario-list-item ${active ? "active" : ""}`}
                         onClick={() => handleSelectCategory(category)}
                       >
                         <Icon size={16} />
-
                         <div>
-                          <strong>
-                            {category.title}
-                          </strong>
-
-                          <span>
-                            {category.blurb}
-                          </span>
+                          <strong>{category.title}</strong>
+                          <span>{category.blurb}</span>
                         </div>
                       </button>
                     );
@@ -628,6 +519,7 @@ export default function Scenario() {
                 </div>
               )}
 
+              {/* Desktop category cards */}
               <div className="scenario-category-grid">
                 {CATEGORIES.map((category) => {
                   const Icon = category.icon;
@@ -637,27 +529,16 @@ export default function Scenario() {
                     <button
                       key={category.id}
                       type="button"
-                      className={
-                        active
-                          ? "scenario-category-card active"
-                          : "scenario-category-card"
-                      }
+                      className={`scenario-category-card ${active ? "active" : ""}`}
                       onClick={() => handleSelectCategory(category)}
                     >
                       <div className="scenario-category-icon">
-                        <Icon size={17} />
+                        <Icon size={18} />
                       </div>
-
                       <div className="scenario-category-content">
-                        <strong>
-                          {category.title}
-                        </strong>
-
-                        <p>
-                          {category.blurb}
-                        </p>
+                        <strong>{category.title}</strong>
+                        <p>{category.blurb}</p>
                       </div>
-
                       {active && (
                         <CheckCircle2
                           size={16}
@@ -670,18 +551,16 @@ export default function Scenario() {
               </div>
             </section>
 
+            {/* STEP 2: INTENSITY / LIKELIHOOD */}
             {(hasIntensityLevels || hasLightningLevels) && (
               <section className="scenario-panel">
                 <div className="scenario-panel-header">
                   <div>
-                    <span>
-                      Step 2
-                    </span>
-
+                    <span className="scenario-step-badge">Step 2</span>
                     <h2>
                       {hasLightningLevels
-                        ? "How likely?"
-                        : "How much stronger?"}
+                        ? "Select likelihood"
+                        : "Select change intensity"}
                     </h2>
                   </div>
                 </div>
@@ -692,11 +571,9 @@ export default function Scenario() {
                         <button
                           key={level.id}
                           type="button"
-                          className={
-                            intensity === level.id
-                              ? "scenario-intensity-pill active"
-                              : "scenario-intensity-pill"
-                          }
+                          className={`scenario-intensity-pill ${
+                            intensity === level.id ? "active" : ""
+                          }`}
                           onClick={() => handleLightningSelect(level)}
                         >
                           {level.label}
@@ -709,11 +586,9 @@ export default function Scenario() {
                         <button
                           key={level.id}
                           type="button"
-                          className={
-                            intensity === level.id
-                              ? "scenario-intensity-pill active"
-                              : "scenario-intensity-pill"
-                          }
+                          className={`scenario-intensity-pill ${
+                            intensity === level.id ? "active" : ""
+                          }`}
                           onClick={() => handleIntensitySelect(level)}
                         >
                           {level.label}
@@ -723,33 +598,22 @@ export default function Scenario() {
               </section>
             )}
 
+            {/* EXECUTION PANEL */}
             <section className="scenario-panel">
               <div className="scenario-panel-header">
                 <div>
-                  <span>
-                    Ready to test
-                  </span>
-
-                  <h2>
-                    {activeCategory.title}
-                  </h2>
+                  <span className="scenario-step-badge">Execution</span>
+                  <h2>{activeCategory.title}</h2>
                 </div>
               </div>
 
-              <p className="scenario-description">
-                {activeCategory.blurb}
-              </p>
+              <p className="scenario-description">{activeCategory.blurb}</p>
 
               {currentRisk && (
                 <div className="scenario-current-preview">
-                  <span>Current conditions</span>
-                  <strong>
-                    {currentRisk.riskScore}/100
-                  </strong>
-                  <Badge
-                    tone={riskTone(currentRisk.riskLevel)}
-                    size="sm"
-                  >
+                  <span>Current Baseline Risk:</span>
+                  <strong>{currentRisk.riskScore}/100</strong>
+                  <Badge tone={riskTone(currentRisk.riskLevel)} size="sm">
                     {currentRisk.riskLevel.toUpperCase()}
                   </Badge>
                 </div>
@@ -759,172 +623,98 @@ export default function Scenario() {
                 className="scenario-advanced"
                 open={detailsOpen}
                 onToggle={(event) =>
-                  setDetailsOpen(
-                    (event.target as HTMLDetailsElement).open,
-                  )
+                  setDetailsOpen((event.target as HTMLDetailsElement).open)
                 }
               >
                 <summary>
-                  <SlidersHorizontal size={13} />
-                  View technical inputs
+                  <SlidersHorizontal size={14} />
+                  Advanced Parameter Overrides
                 </summary>
 
                 <div className="scenario-input-grid">
                   <label className="scenario-input-field">
-                    <span>
-                      Departure time
-                    </span>
-
+                    <span>Departure Time</span>
                     <input
                       type="time"
-                      value={
-                        inputs.departureTime
-                      }
+                      value={inputs.departureTime}
                       onChange={(event) =>
-                        updateInput(
-                          "departureTime",
-                          event.target.value,
-                        )
+                        updateInput("departureTime", event.target.value)
                       }
                     />
                   </label>
 
                   <label className="scenario-input-field">
-                    <span>
-                      Duration (hours)
-                    </span>
-
+                    <span>Duration (hours)</span>
                     <input
                       type="number"
                       min="1"
                       max="24"
-                      value={
-                        inputs.durationHours
-                      }
+                      value={inputs.durationHours}
                       onChange={(event) =>
-                        updateInput(
-                          "durationHours",
-                          Number(
-                            event.target.value,
-                          ),
-                        )
+                        updateInput("durationHours", Number(event.target.value))
                       }
                     />
                   </label>
 
                   <label className="scenario-input-field">
-                    <span>
-                      Wind increase
-                    </span>
-
+                    <span>Wind Speed Increase (%)</span>
                     <div className="scenario-range-row">
                       <input
                         type="range"
                         min="0"
                         max="100"
                         step="5"
-                        value={
-                          inputs.windIncrease
-                        }
+                        value={inputs.windIncrease}
                         onChange={(event) =>
-                          updateInput(
-                            "windIncrease",
-                            Number(
-                              event.target.value,
-                            ),
-                          )
+                          updateInput("windIncrease", Number(event.target.value))
                         }
                       />
-
-                      <strong>
-                        {inputs.windIncrease}%
-                      </strong>
+                      <strong>{inputs.windIncrease}%</strong>
                     </div>
                   </label>
 
                   <label className="scenario-input-field">
-                    <span>
-                      Wave increase
-                    </span>
-
+                    <span>Wave Height Increase (%)</span>
                     <div className="scenario-range-row">
                       <input
                         type="range"
                         min="0"
                         max="100"
                         step="5"
-                        value={
-                          inputs.waveIncrease
-                        }
+                        value={inputs.waveIncrease}
                         onChange={(event) =>
-                          updateInput(
-                            "waveIncrease",
-                            Number(
-                              event.target.value,
-                            ),
-                          )
+                          updateInput("waveIncrease", Number(event.target.value))
                         }
                       />
-
-                      <strong>
-                        {inputs.waveIncrease}%
-                      </strong>
+                      <strong>{inputs.waveIncrease}%</strong>
                     </div>
                   </label>
 
                   <label className="scenario-input-field">
-                    <span>
-                      Lightning risk
-                    </span>
-
+                    <span>Lightning Risk</span>
                     <select
-                      value={
-                        inputs.lightningRisk
-                      }
+                      value={inputs.lightningRisk}
                       onChange={(event) =>
-                        updateInput(
-                          "lightningRisk",
-                          event.target.value,
-                        )
+                        updateInput("lightningRisk", event.target.value)
                       }
                     >
-                      <option value="low">
-                        Low
-                      </option>
-                      <option value="moderate">
-                        Moderate
-                      </option>
-                      <option value="high">
-                        High
-                      </option>
+                      <option value="low">Low</option>
+                      <option value="moderate">Moderate</option>
+                      <option value="high">High</option>
                     </select>
                   </label>
 
                   <label className="scenario-input-field">
-                    <span>
-                      Vessel type
-                    </span>
-
+                    <span>Vessel Type</span>
                     <select
-                      value={
-                        inputs.vesselType
-                      }
+                      value={inputs.vesselType}
                       onChange={(event) =>
-                        updateInput(
-                          "vesselType",
-                          event.target.value,
-                        )
+                        updateInput("vesselType", event.target.value)
                       }
                     >
-                      <option value="small">
-                        Small vessel
-                      </option>
-                      <option value="medium">
-                        Medium vessel
-                      </option>
-                      <option value="large">
-                        Large vessel
-                      </option>
+                      <option value="small">Small vessel (&lt; 12m)</option>
+                      <option value="medium">Medium vessel (12-24m)</option>
+                      <option value="large">Large vessel (&gt; 24m)</option>
                     </select>
                   </label>
                 </div>
@@ -933,85 +723,60 @@ export default function Scenario() {
               <div className="scenario-run-row">
                 <Button
                   variant="primary"
-                  size="md"
+                  size="sm"
                   onClick={handleRun}
                   disabled={loading}
                 >
-                  <Sparkles size={16} />
-
-                  {loading
-                    ? "Calculating..."
-                    : "Run scenario"}
+                  <Sparkles size={15} />
+                  {loading ? "Calculating..." : "Run scenario"}
                 </Button>
-
-                <span>
-                  The scenario engine evaluates
-                  the selected changes against
-                  the available marine context.
+                <span className="scenario-run-note">
+                  Calculated using Sagar's configured marine, weather and boundary datasets.
                 </span>
               </div>
             </section>
 
+            {/* SIMULATION RESULTS */}
             {result && (
               <section className="scenario-result">
-                <div className="scenario-result-header">
+                <header className="scenario-result-header">
                   <div>
-                    <span>
-                      Simulation result
-                    </span>
-
-                    <h2>
-                      {activeCategory.title}
-                    </h2>
+                    <span className="scenario-step-badge">Result Overview</span>
+                    <h2>Simulation Outcome</h2>
                   </div>
-
-                  <Badge
-                    tone={riskTone(
-                      riskLevel,
-                    )}
-                    size="md"
-                  >
+                  <Badge tone={riskTone(riskLevel)} size="sm">
                     {riskLevel.toUpperCase()}
                   </Badge>
-                </div>
+                </header>
 
                 {currentRisk && delta !== null && (
                   <div className="scenario-compare">
                     <div className="scenario-compare-col">
-                      <span>Current</span>
+                      <span>Baseline</span>
                       <strong>
                         {currentRisk.riskScore}
                         <small>/100</small>
                       </strong>
-                      <Badge
-                        tone={riskTone(currentRisk.riskLevel)}
-                        size="sm"
-                      >
+                      <Badge tone={riskTone(currentRisk.riskLevel)} size="sm">
                         {currentRisk.riskLevel.toUpperCase()}
                       </Badge>
                     </div>
 
-                    <ArrowRight
-                      size={18}
-                      className="scenario-compare-arrow"
-                    />
+                    <ArrowRight size={18} className="scenario-compare-arrow" />
 
                     <div className="scenario-compare-col">
-                      <span>Scenario</span>
+                      <span>Simulated</span>
                       <strong>
                         {riskScore}
                         <small>/100</small>
                       </strong>
-                      <Badge
-                        tone={riskTone(riskLevel)}
-                        size="sm"
-                      >
+                      <Badge tone={riskTone(riskLevel)} size="sm">
                         {riskLevel.toUpperCase()}
                       </Badge>
                     </div>
 
                     <div className="scenario-compare-change">
-                      <span>Change</span>
+                      <span>Shift</span>
                       <strong
                         className={
                           delta > 0
@@ -1031,182 +796,105 @@ export default function Scenario() {
 
                 <p className="scenario-conversational">
                   {currentRisk && delta !== null
-                    ? `Risk ${changeVerb} from ${currentRisk.riskScore}/100 to ${riskScore}/100 if the selected ${activeCategory.title.toLowerCase()} occurs.`
-                    : `Estimated risk if the selected ${activeCategory.title.toLowerCase()} occurs: ${riskScore}/100.`}
+                    ? `Operational risk ${changeVerb} from ${currentRisk.riskScore}/100 to ${riskScore}/100 under this scenario.`
+                    : `Projected operational risk score: ${riskScore}/100.`}
                 </p>
 
                 <div className="scenario-result-score">
-                  <div>
-                    <span>
-                      Risk score
-                    </span>
-
+                  <div className="scenario-score-block">
+                    <span>Simulated Risk Score</span>
                     <strong>
                       {riskScore}
-                      <small>
-                        /100
-                      </small>
+                      <small>/100</small>
                     </strong>
                   </div>
 
                   <div className="scenario-result-bar">
                     <span
-                      className={`scenario-risk-${riskLevel}`}
+                      className={`scenario-risk-${riskLevel.toLowerCase()}`}
                       style={{
-                        width: `${Math.min(
-                          100,
-                          Math.max(
-                            0,
-                            riskScore,
-                          ),
-                        )}%`,
+                        width: `${Math.min(100, Math.max(0, riskScore))}%`,
                       }}
                     />
                   </div>
 
                   <div className="scenario-operability">
-                    <span>
-                      Operating decision
-                    </span>
-
-                    <strong>
-                      {getOperationalLabel(
-                        operability,
-                      )}
-                    </strong>
+                    <span>Advisory</span>
+                    <strong>{getOperationalLabel(operability)}</strong>
                   </div>
                 </div>
 
                 <div className="scenario-recommendation">
-                  {operability ===
-                    "blocked" ||
-                  operability === "avoid" ? (
-                    <XCircle size={18} />
-                  ) : operability ===
-                    "caution" ? (
-                    <AlertTriangle
-                      size={18}
-                    />
+                  {operability === "blocked" || operability === "avoid" ? (
+                    <XCircle size={20} className="icon-avoid" />
+                  ) : operability === "caution" ? (
+                    <AlertTriangle size={20} className="icon-caution" />
                   ) : (
-                    <CheckCircle2
-                      size={18}
-                    />
+                    <CheckCircle2 size={20} className="icon-safe" />
                   )}
-
                   <div>
-                    <span>
-                      Recommendation
-                    </span>
-
-                    <p>
-                      {recommendation}
-                    </p>
+                    <span>Recommendation</span>
+                    <p>{recommendation}</p>
                   </div>
                 </div>
 
                 {factors.length > 0 && (
                   <div className="scenario-factors">
                     <div className="scenario-factors-heading">
-                      <ShieldAlert
-                        size={15}
-                      />
-
-                      <span>
-                        Key factors
-                      </span>
+                      <ShieldAlert size={14} />
+                      <span>Key Drivers &amp; Factors</span>
                     </div>
-
                     <div className="scenario-factor-list">
-                      {factors.map(
-                        (factor) => (
-                          <div
-                            key={factor}
-                            className="scenario-factor"
-                          >
-                            <CheckCircle2
-                              size={13}
-                            />
-                            <span>
-                              {factor}
-                            </span>
-                          </div>
-                        ),
-                      )}
+                      {factors.map((factor) => (
+                        <div key={factor} className="scenario-factor">
+                          <CheckCircle2 size={13} />
+                          <span>{factor}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
+
+                <AskSagarButton
+                  prompt={buildScenarioAskSagarPrompt(activeCategoryId, inputs)}
+                  label="Ask Sagar: what changed?"
+                  className="scenario-ask-sagar-btn"
+                  fullWidth
+                />
               </section>
             )}
           </main>
 
+          {/* SIDEBAR */}
           <aside className="scenario-sidebar">
             <section className="scenario-side-panel">
               <div className="scenario-side-icon">
-                <Sparkles size={18} />
+                <Sparkles size={16} />
               </div>
-
-              <h3>
-                How Sagar reasons
-              </h3>
-
+              <h3>How Sagar Reasons</h3>
               <p>
-                The scenario engine compares the
-                selected change with marine
-                conditions, hazards, operational
-                constraints and route context.
+                The scenario engine evaluates condition changes against physical
+                bathymetric data, localized hazards, and vessel-specific seaworthiness limits.
               </p>
-
               <div className="scenario-flow">
-                <FlowStep
-                  icon={SlidersHorizontal}
-                  label="Situation chosen"
-                />
-
-                <ArrowRight
-                  size={13}
-                />
-
-                <FlowStep
-                  icon={Waves}
-                  label="Marine context"
-                />
-
-                <ArrowRight
-                  size={13}
-                />
-
-                <FlowStep
-                  icon={ShieldAlert}
-                  label="Risk assessment"
-                />
-
-                <ArrowRight
-                  size={13}
-                />
-
-                <FlowStep
-                  icon={Navigation}
-                  label="Recommendation"
-                />
+                <FlowStep icon={SlidersHorizontal} label="Scenario" />
+                <ArrowRight size={13} />
+                <FlowStep icon={Waves} label="Marine Context" />
+                <ArrowRight size={13} />
+                <FlowStep icon={ShieldAlert} label="Risk Model" />
+                <ArrowRight size={13} />
+                <FlowStep icon={Navigation} label="Advisory" />
               </div>
             </section>
 
             <section className="scenario-side-panel scenario-help-panel">
               <div className="scenario-side-icon">
-                <AlertTriangle
-                  size={18}
-                />
+                <AlertTriangle size={16} />
               </div>
-
-              <h3>
-                Decision support
-              </h3>
-
+              <h3>Operational Guidance</h3>
               <p>
-                A simulated result should be used
-                to compare choices. It should not
-                override current official marine
-                warnings.
+                What-if projections are designed for planning and risk comparison only.
+                Always prioritize real-time broadcast warnings over simulated outputs.
               </p>
             </section>
           </aside>
@@ -1225,7 +913,7 @@ function FlowStep({
 }) {
   return (
     <div className="scenario-flow-step">
-      <Icon size={14} />
+      <Icon size={13} />
       <span>{label}</span>
     </div>
   );

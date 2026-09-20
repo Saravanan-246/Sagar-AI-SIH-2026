@@ -14,7 +14,8 @@ export type FreshnessDomain =
   | "weather_observation"
   | "marine_observation"
   | "pfz_advisory"
-  | "ocean_composite";
+  | "ocean_composite"
+  | "marine_forecast";
 
 interface Thresholds {
   liveMinutes: number;
@@ -37,6 +38,12 @@ const THRESHOLDS: Record<FreshnessDomain, Thresholds> = {
   // INCOIS ERDDAP datasets Sagar can actually reach update roughly
   // every 10 days. "AGING" only kicks in well past that normal cadence.
   ocean_composite: { liveMinutes: 60, recentMinutes: 14 * 24 * 60, agingMinutes: 45 * 24 * 60 },
+  // Open-Meteo's marine/weather "current" value is the nearest hourly
+  // forecast-model timestep to now (models refresh on an hourly-ish
+  // cadence) - age is normally minutes, not days. AGING/STALE here
+  // would mean Sagar's own backend failed to refresh its cache for a
+  // while, not that the model itself is unusually old.
+  marine_forecast: { liveMinutes: 90, recentMinutes: 6 * 60, agingMinutes: 24 * 60 },
 };
 
 /**

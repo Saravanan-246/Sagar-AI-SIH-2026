@@ -15,6 +15,7 @@ export type SagarIntent =
   | "productivity"
   | "geofence"
   | "tide"
+  | "evidence"
   | "general";
 
 export type IntentResult = {
@@ -261,6 +262,15 @@ const rules: IntentRule[] = [
       "wave",
       "waves",
       "wind",
+      "weather",
+      "forecast",
+      // Bare "sea" (no qualifier) - verified live that "How is the sea
+      // tomorrow?" otherwise matched no keyword at all and fell through
+      // to general conversation instead of a real marine-conditions
+      // question. Safe as an exact-word keyword in this narrowly
+      // marine/fishing-scoped app (unlike the collapsed/fuzzy paths
+      // above, which stay guarded against short candidates).
+      "sea",
       "sea state",
       "visibility",
       "rain",
@@ -286,6 +296,38 @@ const rules: IntentRule[] = [
       "समुद्र की स्थिति",
       "लहर",
       "हवा",
+    ],
+  },
+  {
+    intent: "evidence",
+    keywords: [
+      "what data",
+      "what data are you using",
+      "what sources",
+      "which sources",
+      "why is this",
+      "why this area",
+      "why is this risky",
+      "why is this area risky",
+      "show me the evidence",
+      "show the evidence",
+      "the evidence",
+      "how did you decide",
+      "how do you know",
+      "what evidence",
+      "which data",
+      "data sources",
+      "where is this",
+      "which area is this",
+      "which location",
+      "ஏன் இது",
+      "என்ன தரவு",
+      "ஆதாரம் காட்டு",
+      "எந்த பகுதி இது",
+      "क्यों ऐसा",
+      "क्या डेटा",
+      "सबूत दिखाओ",
+      "यह कहाँ है",
     ],
   },
 ];
@@ -323,6 +365,28 @@ const normalized = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/** Strips the punctuation a phone keyboard/autocomplete routinely adds
+ * around a word ("safe?", "tomorrow!!!", "weather....") without
+ * touching internal characters - never used for phrase keywords, only
+ * per-word comparisons, so it can't accidentally merge two words. */
+const stripPunctuation = (value: string) =>
+  value.replace(/[.,!?;:"'`()[\]{}]+/g, "");
+
+/**
+ * Collapses any run of 2+ identical characters down to one
+ * ("weatherrr" -> "weather", "hellooo" -> "helo", "fisshing" ->
+ * "fishing") - applied identically to BOTH the message and the keyword
+ * before comparing, so a keyword with a genuine double letter (e.g. a
+ * hypothetical "chlorophyll") still matches correctly against itself
+ * post-collapse. This targets emphatic/typo character repetition
+ * specifically (a distinct, very common typing pattern) rather than
+ * relying on edit-distance budgets that would otherwise have to grow
+ * without bound to tolerate "tomorrowwwww". Works for whole phrases
+ * too, since spaces are left untouched.
+ */
+const collapseRepeats = (value: string) =>
+  value.replace(/(.)\1+/g, "$1");
+
 function detectLanguage(
   message: string,
 ): SupportedLanguage {
@@ -335,21 +399,104 @@ function detectLanguage(
   return "en";
 }
 
+/**
+ * Plain Levenshtein edit distance, used only to tolerate a real typo in
+ * an otherwise-recognizable single word (see fuzzyWordMatches below) -
+ * fishermen typing on a phone routinely drop/swap a letter ("wether",
+ * "fshing", "condisn"), and the exact-substring matching above would
+ * otherwise misroute the whole message to "general".
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const dp: number[] = new Array(rows * cols);
+
+  for (let i = 0; i < rows; i += 1) dp[i * cols] = i;
+  for (let j = 0; j < cols; j += 1) dp[j] = j;
+
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+
+      dp[i * cols + j] = Math.min(
+        dp[(i - 1) * cols + j] + 1,
+        dp[i * cols + (j - 1)] + 1,
+        dp[(i - 1) * cols + (j - 1)] + cost,
+      );
+    }
+  }
+
+  return dp[rows * cols - 1];
+}
+
+/**
+ * Whether `word` is a plausible typo of `keyword` - deliberately
+ * conservative: only single, real words (never a multi-word phrase,
+ * which would risk matching on a fragment of an unrelated sentence),
+ * a minimum length so short words like "sst" or "eta" never fuzz-match
+ * something unrelated, and a distance budget that grows slowly with
+ * word length so a short word still needs a near-exact match.
+ */
+function fuzzyWordMatches(word: string, keyword: string): boolean {
+  if (keyword.includes(" ") || keyword.length < 5) {
+    return false;
+  }
+
+  if (Math.abs(word.length - keyword.length) > 2) {
+    return false;
+  }
+
+  const maxDistance = keyword.length <= 6 ? 1 : 2;
+
+  return levenshteinDistance(word, keyword) <= maxDistance;
+}
+
 function scoreIntent(
   message: string,
   rule: IntentRule,
 ): number {
   const text = normalized(message);
+  const words = text
+    .split(" ")
+    .map(stripPunctuation)
+    .filter(Boolean);
+
+  const collapsedText = collapseRepeats(text);
 
   let score = 0;
 
   for (const keyword of rule.keywords) {
     const candidate = normalized(keyword);
+    const isPhrase = candidate.includes(" ");
 
     if (text.includes(candidate)) {
-      score += candidate.includes(" ")
-        ? 3
-        : 1;
+      score += isPhrase ? 3 : 1;
+      continue;
+    }
+
+    // Emphatic/typo character repetition ("weatherrr", "sea
+    // conditiontodayyy") - collapsed identically on both sides, so a
+    // legitimate double letter in the keyword itself still lines up.
+    // Guarded to real-length keywords only: collapsing a short
+    // technical abbreviation like "sst" or "pfz" down to 1-2 chars
+    // ("st") would turn it into a near-universal substring that
+    // matches almost any message by accident. A short keyword never
+    // needs this anyway - a repeated-letter typo of it ("windddd")
+    // already contains the real keyword as a literal prefix, so the
+    // plain substring check above already covers it.
+    if (
+      candidate.length >= 5 &&
+      collapsedText.includes(collapseRepeats(candidate))
+    ) {
+      score += isPhrase ? 3 : 1;
+      continue;
+    }
+
+    if (
+      !isPhrase &&
+      words.some((word) => fuzzyWordMatches(word, candidate))
+    ) {
+      score += 1;
     }
   }
 

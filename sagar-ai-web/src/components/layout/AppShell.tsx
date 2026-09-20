@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import "./AppShell.css";
+
 import Header from "./Header";
 import Sidebar from "./Sidebar";
 import BottomNav from "./BottomNav";

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -18,6 +19,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
 import PageContainer from "../components/layout/PageContainer";
+import AskSagarButton from "../components/chat/AskSagarButton";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import EmptyState from "../components/ui/EmptyState";
@@ -27,6 +29,7 @@ import MarineMetric from "../components/marine/MarineMetric";
 import RiskIndicator from "../components/marine/RiskIndicator";
 import SituationPanel from "../components/marine/SituationPanel";
 import { useMarineArea } from "../hooks/useMarineData";
+import { fetchRisk } from "../services/api/sagarApiClient";
 import { ROUTES } from "../constants/routes";
 
 import "./Area.css";
@@ -111,6 +114,36 @@ export default function Area() {
     refresh,
   } = useMarineArea(id);
 
+  // The same live, deterministic risk result Chat/Map/What-If already
+  // use (via /api/risk - see riskAgent.ts), so this page never shows a
+  // different score for the same area than Sagar just gave in Chat.
+  // Falls back to the area's own static safety.riskScore fixture field
+  // (unchanged) while loading, offline, or on error.
+  const [liveRisk, setLiveRisk] = useState<{ riskScore: number; riskLevel: string } | null>(null);
+
+  useEffect(() => {
+    if (!area?.id) {
+      setLiveRisk(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLiveRisk(null);
+
+    fetchRisk({ areaId: area.id })
+      .then((response) => {
+        if (cancelled || !response.data) return;
+        setLiveRisk({ riskScore: response.data.riskScore, riskLevel: response.data.riskLevel });
+      })
+      .catch(() => {
+        if (!cancelled) setLiveRisk(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [area?.id]);
+
   if (loading) {
     return (
       <AppShell>
@@ -159,10 +192,10 @@ export default function Area() {
   }
 
   const riskScore =
-    area.safety?.riskScore ?? 0;
+    liveRisk?.riskScore ?? area.safety?.riskScore ?? 0;
 
   const riskLevel =
-    area.safety?.overallRisk ?? "unknown";
+    liveRisk?.riskLevel ?? area.safety?.overallRisk ?? "unknown";
 
   const conditions =
     area.conditions;
@@ -650,6 +683,13 @@ export default function Area() {
             <Navigation size={16} />
             Plan a safer route
           </Button>
+
+          <AskSagarButton
+            prompt={`Is it safe to fish near ${area.name} right now?`}
+            label="Ask Sagar about this area"
+            variant="secondary"
+            size="md"
+          />
         </div>
       </PageContainer>
     </AppShell>

@@ -113,16 +113,28 @@ const SOURCE_NAME = "Indian National Centre for Ocean Information Services";
  * Deliberately NOT claiming this is "live": every dataset on this
  * server is a satellite/ocean-model composite. The one used here
  * (incois_argo_10day_McCreary, a real INCOIS-maintained ARGO-based
- * temperature analysis) updates roughly every 10 days, and - verified
- * by directly querying a grid of points around Tamil Nadu - has NO
- * data coverage in the shallow coastal Gulf of Mannar/Palk Bay area
- * itself (ARGO floats don't operate in shallow coastal water). The
- * nearest valid grid cell is typically 100+ km offshore. This adapter
- * never substitutes that distant reading as if it were the requested
- * coastal area's own condition - it always reports the real distance,
- * and callers must present it as regional open-ocean context only,
- * never as the area's own reading and never feed it into risk/route/
- * zone scoring (which remain exclusively local-dataset-driven).
+ * temperature analysis) is *intended* to update on a ~10-day cadence
+ * per its own name, but re-verified live (2026-09-19): its actual
+ * latest analysis time was 2026-07-30 - roughly 7 weeks old, not 10
+ * days - so the real cadence cannot be assumed from the dataset's name.
+ * Never hardcode an assumed age here; computeFreshness() (below, via
+ * the real `observedAt` this adapter returns) is the only source of
+ * truth for how old a given reading actually is, and correctly
+ * reports STALE once it exceeds ocean_composite's 45-day threshold -
+ * exactly what a 7-week-old reading now gets. Also verified by
+ * directly querying a grid of points around Tamil Nadu: this dataset
+ * has NO data coverage in the shallow coastal Gulf of Mannar/Palk Bay
+ * area itself (ARGO floats don't operate in shallow coastal water).
+ * The nearest valid grid cell is typically 100+ km offshore. This
+ * adapter never substitutes that distant reading as if it were the
+ * requested coastal area's own condition - it always reports the real
+ * distance, and callers must present it as regional open-ocean context
+ * only, never as the area's own reading and never feed it into
+ * risk/route/zone scoring (which remain exclusively local-dataset-
+ * driven). Given both the real staleness and the offshore-only
+ * coverage, this is deliberately never rendered as a map layer/marker
+ * either - only as a disclosed supplementary text citation in chat
+ * evidence, where the caveats are legible next to the number.
  * ------------------------------------------------------------------
  */
 
@@ -131,8 +143,10 @@ const SURFACE_DEPTH_M = 5.0;
 const SEARCH_RADIUS_DEG = 2.5;
 const FETCH_TIMEOUT_MS = 5000;
 
-// The source refreshes roughly every 10 days - re-querying more often
-// than this would only ever hammer the server for an identical answer.
+// Re-querying more often than this would only ever hammer the server
+// for an identical answer - this dataset changes at most every few
+// days even when it IS updating normally. Not a claim about how fresh
+// the data actually is; see computeFreshness()/the block comment above.
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
 interface CacheEntry {

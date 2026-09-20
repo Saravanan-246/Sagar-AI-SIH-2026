@@ -371,6 +371,19 @@ function assessVisibility(
   );
 }
 
+// Names assessWind/assessWaves add for a wind/wave reading that is
+// itself already at "moderate" severity or worse. roughSea/strongWind
+// below are boolean restatements of that same underlying wind-speed/
+// wave-height reading in every area currently configured (never an
+// independently-sourced hazard the numeric reading missed) - counting
+// both is double-counting the same phenomenon, not two risks. Verified
+// 2026-09-20: Central Gulf of Mannar (wind 19kn, wave 2.1m, both flags
+// true) scored 80/100 this way vs. 70/100 once counted once, while
+// every other configured area has both flags false, so this only
+// silently inflated that one area's score today.
+const WIND_FACTOR_NAMES = new Set(["Very strong wind", "Strong wind", "Moderate wind"]);
+const WAVE_FACTOR_NAMES = new Set(["Very high waves", "High waves", "Moderate waves"]);
+
 function assessHazards(
   hazards:
     | WeatherData["hazards"]
@@ -402,7 +415,12 @@ function assessHazards(
     );
   }
 
-  if (hazards.roughSea) {
+  // Only add these when assessWind/assessWaves (which already ran)
+  // found no comparable wind/wave factor from the numeric reading -
+  // i.e. the flag is the only signal available for that phenomenon,
+  // not a second one layered on top of an already-scored reading.
+  const hasWaveFactor = factors.some((factor) => WAVE_FACTOR_NAMES.has(factor.name));
+  if (hazards.roughSea && !hasWaveFactor) {
     addFactor(
       factors,
       "Rough sea",
@@ -412,7 +430,8 @@ function assessHazards(
     );
   }
 
-  if (hazards.strongWind) {
+  const hasWindFactor = factors.some((factor) => WIND_FACTOR_NAMES.has(factor.name));
+  if (hazards.strongWind && !hasWindFactor) {
     addFactor(
       factors,
       "Strong wind hazard",

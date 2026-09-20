@@ -53,9 +53,15 @@ async function testChatSafety() {
   ok("has evidence", Array.isArray(body?.evidence) && body.evidence.length > 0);
   ok("has dataStatus.mode=prototype", body?.dataStatus?.mode === "prototype");
   ok(
-    "dataStatus lists INCOIS/IMD/ISRO as planned (not live)",
+    "dataStatus lists INCOIS as connected (not merely planned)",
+    Array.isArray(body?.dataStatus?.connectedExternalSources) &&
+      body.dataStatus.connectedExternalSources.some((s) => s.name === "INCOIS")
+  );
+  ok(
+    "dataStatus lists IMD/ISRO as not yet connected",
     Array.isArray(body?.dataStatus?.plannedLiveSources) &&
-      body.dataStatus.plannedLiveSources.some((s) => s.name === "INCOIS")
+      body.dataStatus.plannedLiveSources.some((s) => s.name === "IMD") &&
+      body.dataStatus.plannedLiveSources.some((s) => s.name === "ISRO")
   );
 }
 

@@ -5,6 +5,8 @@ import {
   Info,
 } from "lucide-react";
 
+import "./EvidencePanel.css";
+
 export type EvidenceItem = {
   id: string;
   source: string;

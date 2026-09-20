@@ -229,7 +229,12 @@ function applyZoneAnswer(shaped: StructuredSagarResponse): boolean {
   const reason = best.reasons[0];
 
   shaped.keyFactors = best.reasons.slice(0, 3);
-  shaped.situation = `${best.name} looks like the best fishing zone right now${area ? ` near ${area}` : ""}.`;
+  // "Looks like the best... right now" claimed live-verified current
+  // conditions; `best` is only ever the top-ranked record in Sagar's
+  // static configured PFZ dataset (suitability/chlorophyll/SST are
+  // configured values, not a live reading - see zoneRanking.ts), so the
+  // wording must say that plainly instead.
+  shaped.situation = `${best.name} is the highest-ranked zone in Sagar's configured PFZ dataset${area ? ` near ${area}` : ""}.`;
   shaped.recommendation = reason ?? `This zone is currently rated "${best.recommendation}".`;
   shaped.answer = `${shaped.situation} ${shaped.recommendation}`.trim();
 
@@ -247,6 +252,36 @@ function applyZoneAnswer(shaped: StructuredSagarResponse): boolean {
   shaped.riskScore = undefined;
 
   return true;
+}
+
+/*
+ * Unlike its siblings above/below, this never rebuilds shaped.answer -
+ * for "safety" the reporting agent (reportingAgent.ts's
+ * buildHumanResponse) has already assembled a complete, correct,
+ * real answer straight from the risk agent's own
+ * riskScore/riskLevel/keyFactors/recommendation before this function
+ * ever runs (shapeChatResponse sets shaped.answer from
+ * pipeline.finalResponse unconditionally). "Is it safe to fish...?"
+ * is the single most common Sagar question, and that existing text
+ * was already being silently thrown away and re-phrased by an LLM
+ * call that measured several seconds locally (up to ~30s) for a
+ * sentence that says the same thing - this only recognises that a
+ * real risk assessment already exists so the narration call below can
+ * be skipped for it, the same way applyRouteAnswer et al. already skip
+ * it for their intents. Tamil/Hindi are unaffected: skipping narration
+ * routes them through the exact same buildDeterministicAnswer
+ * RISK_PHRASE templates (fallbackNarrator.ts) they already fall back
+ * to whenever narration fails today - no new translation, no changed
+ * language path.
+ *
+ * Also reused as the "marine_conditions" branch's fallback sufficiency
+ * check (below) for the rare case applyOceanAnswer's own, more
+ * specific ocean-evidence answer isn't available yet - the same real
+ * riskScore/riskLevel sufficiency test applies regardless of which of
+ * those two intents is asking.
+ */
+function applySafetyAnswer(shaped: StructuredSagarResponse): boolean {
+  return typeof shaped.riskScore === "number" && Boolean(shaped.riskLevel);
 }
 
 function applyAlertsAnswer(shaped: StructuredSagarResponse): boolean {
@@ -282,6 +317,56 @@ function applyOceanAnswer(shaped: StructuredSagarResponse): boolean {
 
   shaped.situation = `${oceanEvidence.summary}${area ? ` (${area})` : ""}`;
   shaped.answer = shaped.situation;
+
+  return true;
+}
+
+/*
+ * "What data are you using?" / "Why is this risky?" / "Where is this?" -
+ * answered directly from fields the pipeline already computed for the
+ * resolved area (evidence, dataSources, keyFactors, dataStatus), never a
+ * fresh lookup and never an LLM call. Mirrors applyZoneAnswer/
+ * applyAlertsAnswer: a false return leaves the generic reporting-agent
+ * answer + narration path untouched, it never fabricates a "no data"
+ * claim.
+ */
+function applyEvidenceAnswer(shaped: StructuredSagarResponse): boolean {
+  const dataSources = shaped.dataSources ?? [];
+  const keyFactors = shaped.keyFactors ?? [];
+
+  if (dataSources.length === 0 && keyFactors.length === 0) {
+    return false;
+  }
+
+  const area = shaped.affectedArea?.name;
+  const confidence = shaped.dataStatus.confidence;
+  const verified = shaped.dataStatus.verifiedSources?.[0];
+
+  const parts: string[] = [];
+
+  parts.push(
+    area
+      ? `This assessment is for ${area}.`
+      : "This assessment is not tied to a specific configured area."
+  );
+
+  if (dataSources.length > 0) {
+    parts.push(`Data sources: ${dataSources.join(", ")}.`);
+  }
+
+  if (keyFactors.length > 0) {
+    parts.push(`Key factors: ${keyFactors.slice(0, 3).join(" ")}`);
+  }
+
+  parts.push(
+    `Confidence: ${confidence.level.toLowerCase()} - ${confidence.explanation}${
+      verified ? ` Most recent verified reading (${verified.name}): ${verified.age}.` : ""
+    }`
+  );
+
+  shaped.situation = parts[0];
+  shaped.recommendation = confidence.explanation;
+  shaped.answer = parts.join(" ");
 
   return true;
 }
@@ -400,6 +485,27 @@ function isFillerOnlyMessage(message: string): boolean {
   );
 }
 
+/*
+ * "What is PFZ?" / "what does AIS mean?" asks for a definition of a
+ * term, not for Sagar to act on it - but several of these terms
+ * (pfz, tide, geofence...) are also configured intent keywords, so
+ * without this check the question fell straight into that intent's
+ * operational answer (e.g. "what is PFZ?" returned today's specific
+ * recommended fishing zone instead of explaining what PFZ means -
+ * verified live). Deliberately a small, fixed list of the exact
+ * domain acronyms/terms this app's own spec names as proper
+ * nouns/technical terms (never damage these), not a general spelling
+ * dictionary - a real operational question ("what is the risk near
+ * Chennai?") never matches this pattern since it isn't just asking to
+ * define a bare term.
+ */
+const DEFINITIONAL_QUESTION_PATTERN =
+  /^(?:what\s*(?:'s|is)|what\s+does)\s+(?:a\s+|an\s+|the\s+)?(pfz|sst|ais|incois|imd|isro|geofence|eta)\b(?:\s+(?:mean|stand\s+for))?\s*\??$/i;
+
+function isDefinitionalQuestion(message: string): boolean {
+  return DEFINITIONAL_QUESTION_PATTERN.test(message.trim());
+}
+
 // Intents that only mean something for a specific place - "is it
 // safe?" or "ocean indicators?" with no place named anywhere is not
 // answerable without guessing which of Sagar's configured areas the
@@ -411,25 +517,75 @@ const LOCATION_REQUIRED_INTENTS = new Set<ChatIntent>([
   "tide",
   "geofence",
   "productivity",
+  "evidence",
 ]);
 
-/** A configured marine area named (by full name or its first
- * significant word, e.g. "Thoothukudi" for "Thoothukudi Coast")
- * anywhere in the given text - used only to decide whether a location
- * was actually specified, never to invent one. */
+/*
+ * Native-script aliases for a configured area's English name - the
+ * English word-match below never matches a Tamil/Hindi message that
+ * names the area only in its own script (verified live: "தூத்துக்குடி
+ * அருகே மீன்பிடிக்க பாதுகாப்பாக இருக்கிறதா?" fell through to a location
+ * clarification even though it names Thoothukudi, while the identical
+ * English phrasing resolved correctly). These are transliterations of
+ * the same proper nouns, not translated meaning, covering all four
+ * configured marine areas (src/data/marine.json) - never a place
+ * outside that set.
+ *
+ * The three Gulf of Mannar areas share "Mannar" in their English name,
+ * so a bare Tamil/Hindi "Mannar" is deliberately NOT aliased here: it
+ * would be genuinely ambiguous between them (same as a bare English
+ * "Mannar" mention already is, resolved only by array order below) and
+ * could misresolve "தெற்கு மன்னார்" (southern) to central. Only the
+ * directional phrase that actually disambiguates the specific area is
+ * aliased, so each one resolves to the area it names.
+ */
+const AREA_NAME_ALIASES: Record<string, string[]> = {
+  "thoothukudi-coast": ["தூத்துக்குடி", "थूथुकुडी"],
+  "central-gulf-mannar": ["மத்திய மன்னார்", "मध्य मन्नार"],
+  "southern-gulf-mannar": ["தெற்கு மன்னார்", "दक्षिण मन्नार"],
+  "north-gulf-mannar": ["வடக்கு மன்னார்", "उत्तर मन्नार"],
+};
+
+/** A configured marine area named (by full name, its first significant
+ * word, e.g. "Thoothukudi" for "Thoothukudi Coast", or a known native-
+ * script alias) anywhere in the given text - used only to decide
+ * whether a location was actually specified, never to invent one.
+ *
+ * Two passes, not one combined check per area: the three Gulf of
+ * Mannar areas all share the generic words "Gulf"/"Mannar", so a
+ * single-pass per-area scan stopped at whichever of them was checked
+ * FIRST as soon as its own word-fallback matched one of those shared
+ * words - even when a LATER area in the list was actually named in
+ * full ("Northern Gulf of Mannar" resolved to "Central Gulf of
+ * Mannar" purely by array order, verified live). An exact full-name
+ * match is checked for every area before any area's weaker word
+ * fallback is even consulted, so the specific area actually named
+ * always wins over an earlier area's generic-word coincidence.
+ */
 function findMentionedArea(text: string) {
   const normalized = text.toLowerCase();
+  const areas = getMarineAreas();
 
-  return getMarineAreas().find((area) => {
-    const nameLower = area.name.toLowerCase();
+  const exactMatch = areas.find((area) =>
+    normalized.includes(area.name.toLowerCase())
+  );
 
-    if (normalized.includes(nameLower)) {
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  return areas.find((area) => {
+    if (
+      area.name
+        .split(" ")
+        .some((word) => word.length > 3 && normalized.includes(word.toLowerCase()))
+    ) {
       return true;
     }
 
-    return area.name
-      .split(" ")
-      .some((word) => word.length > 3 && normalized.includes(word.toLowerCase()));
+    const aliases = AREA_NAME_ALIASES[area.id];
+
+    return aliases ? aliases.some((alias) => normalized.includes(alias)) : false;
   });
 }
 
@@ -449,6 +605,25 @@ const UNSUPPORTED_REPLY: Record<ChatLanguage, string> = {
   te: "That's outside Sagar's marine decision-support scope. I can help with marine safety, weather, ocean conditions, alerts, fishing zones, routes or what-if analysis.",
   ml: "That's outside Sagar's marine decision-support scope. I can help with marine safety, weather, ocean conditions, alerts, fishing zones, routes or what-if analysis.",
   kn: "That's outside Sagar's marine decision-support scope. I can help with marine safety, weather, ocean conditions, alerts, fishing zones, routes or what-if analysis.",
+};
+
+/*
+ * Reserved for input the AI classifier itself flagged as genuine
+ * noise (see AiClassification.clarity) - not typo'd, not
+ * ungrammatical, not Tanglish, not a short fragment with context to
+ * resolve it: actually unintelligible ("xyzabc"). This is deliberately
+ * a plain "please rephrase", never a guess at meaning - the one place
+ * in this gate where Sagar admits it could not understand the message
+ * at all, rather than answering (or rejecting) a message it did
+ * understand.
+ */
+const UNCLEAR_REPLY: Record<ChatLanguage, string> = {
+  en: "Sorry, I didn't catch that - could you say it a different way?",
+  ta: "மன்னிக்கவும், அது எனக்குப் புரியவில்லை - வேறு விதமாகச் சொல்ல முடியுமா?",
+  hi: "माफ़ कीजिए, मुझे यह समझ नहीं आया - क्या आप इसे दूसरे तरीके से कह सकते हैं?",
+  te: "Sorry, I didn't catch that - could you say it a different way?",
+  ml: "Sorry, I didn't catch that - could you say it a different way?",
+  kn: "Sorry, I didn't catch that - could you say it a different way?",
 };
 
 /*
@@ -551,24 +726,61 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
   const requestStart = performance.now();
   const history: ConversationTurn[] = input.history ?? [];
 
-  const deterministicIntent = analyzeIntent(input.message).intent;
+  const deterministicAnalysis = analyzeIntent(input.message);
+  const deterministicIntent = deterministicAnalysis.intent;
   const isCasualOrFiller =
     isCasualMessage(input.message) ||
     isFillerOnlyMessage(input.message) ||
     (deterministicIntent === "general" && startsWithCasualOpening(input.message));
 
   /*
+   * A long message that only barely won on ONE keyword (e.g. "route"
+   * inside "...sea epdi iruku wind romba hig ah any alret and whch
+   * route sfe?") is a real signal that there is more in the sentence
+   * than the deterministic rules found - they score each intent
+   * independently and report only the single top scorer, so a
+   * multi-part question can "confidently" resolve to just one of its
+   * parts while silently dropping the rest. Verified live: without
+   * this, that whole message reduced to a bare "route" clarification
+   * question, discarding the weather/wind/alert/safety content
+   * entirely. A short, clearly single-topic message never has enough
+   * words to trip this, so the common fast path is unaffected.
+   */
+  const isLikelyMultiTopic =
+    deterministicIntent !== "general" &&
+    deterministicAnalysis.confidence <= 0.6 &&
+    input.message.trim().split(/\s+/).filter(Boolean).length >= 10;
+
+  /*
    * PERFORMANCE: the AI classifier is a local-LLM round-trip (multiple
    * seconds, measured) that only ever earns its keep on a message the
-   * deterministic keyword rules genuinely could not place - a casual
+   * deterministic keyword rules genuinely could not place (or placed
+   * only weakly, see isLikelyMultiTopic) - a casual
    * greeting/acknowledgement is always "general" regardless of what an
    * AI classifier says (see effectiveIntent below), and a confident
    * keyword match already IS the intent, no confirmation needed. Every
    * other message - the large majority of real marine questions - skips
    * this call entirely and goes straight to the deterministic pipeline.
    */
+  /*
+   * A genuine "what happens if...?" hypothetical (detectWhatIf's own
+   * regex - Tamil/Hindi/etc. included) needs no AI classification: its
+   * answer comes entirely from the deterministic what-if comparison
+   * built further down, which runs regardless of which primary intent
+   * gets attached to it. Verified live that without this check, "What
+   * happens if the wind near Thoothukudi Coast becomes stronger?" (11
+   * words, a weak single-keyword "wind" match) tripped isLikelyMultiTopic
+   * and paid for a ~30s local-model classification call for an answer
+   * that came out identical without it - the exact "what-if stays fast"
+   * case this file's own PERFORMANCE comments elsewhere call out.
+   */
+  const isDeterministicWhatIf = Boolean(detectWhatIf(input.message));
+
   const needsAiClassification =
-    isLlmEnabled() && !isCasualOrFiller && deterministicIntent === "general";
+    isLlmEnabled() &&
+    !isCasualOrFiller &&
+    !isDeterministicWhatIf &&
+    (deterministicIntent === "general" || isLikelyMultiTopic);
 
   const classification = needsAiClassification
     ? await timed(debugTiming, "classifyWithAi", () =>
@@ -607,7 +819,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
    * conversation's earlier marine topic.
    */
   const effectiveIntent = (
-    isFillerOnlyMessage(input.message)
+    isFillerOnlyMessage(input.message) || isDefinitionalQuestion(input.message)
       ? "general"
       : classification?.intent && classification.intent !== "general"
         ? classification.intent
@@ -631,7 +843,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
   // below purely because its keyword-classified intent happens to be
   // "productivity" (a pre-existing classifier quirk), not because the
   // question is actually ambiguous.
-  const isWhatIfQuery = Boolean(detectWhatIf(input.message) || classification?.isWhatIf);
+  const isWhatIfQuery = isDeterministicWhatIf || Boolean(classification?.isWhatIf);
 
   /*
    * Device coordinates that sit outside Sagar's configured marine areas
@@ -704,6 +916,14 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     // LLM round-trip here only delays the one class of message a chat
     // user sends most often. Reserve the LLM call for a genuinely
     // unrelated question, where a natural reply is worth the wait.
+    // Only ever set when the AI classifier actually ran (deterministic
+    // intent was "general" and the message wasn't casual/filler) AND it
+    // explicitly flagged the message as genuine noise - never for an
+    // ordinary typo'd/ungrammatical/Tanglish message, which the
+    // classifier is instructed to mark "clear" whenever it can infer a
+    // meaning at all.
+    const isUnclear = classification?.clarity === "unclear";
+
     const conversational =
       isLlmEnabled() && !isCasualOrFiller
         ? await timed(debugTiming, "narrateGeneralReply", () =>
@@ -711,6 +931,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
               userMessage: input.message,
               recentContext,
               language: gateLanguage,
+              isUnclear,
             }).catch(() => null)
           )
         : null;
@@ -719,7 +940,9 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
       conversational ??
       (isCasualOrFiller
         ? (CASUAL_REPLY[gateLanguage] ?? CASUAL_REPLY.en)
-        : (UNSUPPORTED_REPLY[gateLanguage] ?? UNSUPPORTED_REPLY.en));
+        : isUnclear
+          ? (UNCLEAR_REPLY[gateLanguage] ?? UNCLEAR_REPLY.en)
+          : (UNSUPPORTED_REPLY[gateLanguage] ?? UNSUPPORTED_REPLY.en));
 
     const gateResponse = buildGateResponse("unsupported", "general", gateLanguage, reply);
 
@@ -821,13 +1044,22 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
 
   const whatIfDetection = detectWhatIf(input.message);
 
-  if (whatIfDetection || classification?.isWhatIf) {
-    const detection =
-      whatIfDetection ??
-      // AI flagged this as a what-if but couldn't be matched to a
-      // specific deterministic kind - default to a wind-increase
-      // scenario, the most common case, rather than guessing further.
-      { kind: "wind_increase" as const, percent: 20 };
+  /*
+   * Gated on the deterministic detector alone (never on
+   * classification?.isWhatIf by itself) - verified live that the AI
+   * classifier can flag isWhatIf=true for an ordinary, non-hypothetical
+   * question it simply found grammatically confusing (e.g. "tomorrow
+   * fishing go can?"), and previously falling back to a guessed
+   * "wind increases 20%" scenario for those fabricated an answer to a
+   * question the user never asked, in place of actually answering the
+   * question they did ask (their real intent's normal answer below).
+   * detectWhatIf's own regex (WHAT_IF_PATTERN, incl. Tamil/Hindi/etc.
+   * phrasing) already covers genuine hypotheticals on its own; a
+   * classifier isWhatIf=true with no deterministic corroboration is
+   * discarded rather than guessed at.
+   */
+  if (whatIfDetection) {
+    const detection = whatIfDetection;
 
     const area = resolveArea({
       areaId,
@@ -920,40 +1152,78 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     answerFinalizedDeterministically = applyRouteAnswer(shaped);
   }
 
-  // Likewise, a real what-if comparison (detected independently via
-  // whatIfEngine's own pattern match) should drive the answer whenever
-  // it exists, regardless of which primary intent the keyword
-  // classifier happened to land on for the rest of the sentence.
-  if (shaped.whatIf) {
+  /*
+   * Each `else if` branch below is guarded on `!answerFinalizedDeterministically`
+   * (not just OR'd into it afterward) - verified live that without this,
+   * a route resolved above from a SECONDARY intent (e.g. a long,
+   * multi-topic message primarily about marine_conditions that also
+   * mentions a route) had its route-specific answer silently clobbered
+   * by whichever of these ran next for the PRIMARY intent, which also
+   * skipped Ollama narration entirely (the flag was already marked
+   * "finalized" by the route answer, so the real final answer ended up
+   * being neither the route text nor a narrated one - an unlabelled
+   * ocean-indicator sentence unrelated to what was actually asked).
+   * Once any higher-priority branch has already set a grounded answer,
+   * none of the later ones may override it - same reasoning applies
+   * between whatIf and the intent-specific branches beneath it.
+   */
+  if (!answerFinalizedDeterministically && shaped.whatIf) {
     answerFinalizedDeterministically = applyWhatIfAnswer(shaped);
-  } else if (shaped.intent === "pfz") {
+  } else if (!answerFinalizedDeterministically && shaped.intent === "safety") {
+    answerFinalizedDeterministically =
+      applySafetyAnswer(shaped) || answerFinalizedDeterministically;
+  } else if (!answerFinalizedDeterministically && shaped.intent === "pfz") {
     answerFinalizedDeterministically =
       applyZoneAnswer(shaped) || answerFinalizedDeterministically;
-  } else if (shaped.intent === "alerts") {
+  } else if (!answerFinalizedDeterministically && shaped.intent === "alerts") {
     answerFinalizedDeterministically =
       applyAlertsAnswer(shaped) || answerFinalizedDeterministically;
-  } else if (shaped.intent === "marine_conditions") {
-    // Unlike route/pfz/alerts, the Tamil/Hindi fallback template for
-    // this intent isn't specific to an ocean-conditions summary (it
-    // would fall through to a generic risk-level phrase) - so narration
-    // is still worth attempting here, same as before this optimization.
-    applyOceanAnswer(shaped);
+  } else if (!answerFinalizedDeterministically && shaped.intent === "marine_conditions") {
+    // ROOT CAUSE (fixed here): applyOceanAnswer already built a
+    // correct, grounded answer from real local ocean-indicator
+    // evidence (SST/chlorophyll - buildEvidence's first entry,
+    // unconditional whenever the ocean agent runs, which
+    // plannerAgent.ts now schedules non-blocking for this intent) -
+    // but its result was never captured into
+    // answerFinalizedDeterministically, so narration ran anyway and
+    // silently overwrote it on every single marine_conditions request,
+    // at a measured ~10-30s cost for zero benefit. Falls back to the
+    // same generic risk-based sufficiency check applySafetyAnswer uses
+    // (real riskScore/riskLevel, always present once an area is
+    // resolved) for the rare case the non-blocking ocean task didn't
+    // complete in time - still real, still grounded, never a reason to
+    // wait on the LLM. Tamil/Hindi: skipping narration routes them
+    // through buildDeterministicAnswer's existing RISK_PHRASE
+    // templates (fallbackNarrator.ts) - the same fallback they already
+    // get whenever narration fails today, not a new/changed language
+    // path.
+    answerFinalizedDeterministically =
+      applyOceanAnswer(shaped) || applySafetyAnswer(shaped);
+  } else if (!answerFinalizedDeterministically && shaped.intent === "evidence") {
+    answerFinalizedDeterministically =
+      applyEvidenceAnswer(shaped) || answerFinalizedDeterministically;
   }
 
   let narrated: string | null = null;
 
   /*
-   * PERFORMANCE: route/what-if/zone/alerts/ocean answers above are
-   * already a complete, grounded, natural-sounding sentence built
-   * directly from the resolved facts (e.g. "The Thoothukudi Deep Sea
-   * Corridor is the safest route... risk 18/100 (low)."). Calling the
-   * LLM afterward to rephrase an already-correct answer is a
-   * multi-second local-model round-trip (measured up to ~25s) for
-   * negligible wording benefit, so it's skipped whenever one of those
-   * deterministic answers already applied. Narration still runs for
-   * "safety" and any other case that only has the generic area-wide
-   * reporting-agent text, where the LLM's plain-language phrasing (vs.
-   * "Combined risk score: 84/100...") is the whole point.
+   * PERFORMANCE: route/what-if/safety/zone/alerts/marine_conditions/
+   * evidence answers above are already a complete, grounded, natural-
+   * sounding sentence built directly from the resolved facts (e.g.
+   * "The Thoothukudi Deep Sea Corridor is the safest route... risk
+   * 18/100 (low)."). Calling the LLM afterward to rephrase an already-
+   * correct answer is a multi-second local-model round-trip (measured
+   * up to ~30s) for negligible wording benefit, so it's skipped
+   * whenever one of those deterministic answers already applied -
+   * "safety" and "marine_conditions" included, since
+   * reportingAgent.ts's buildHumanResponse / applyOceanAnswer already
+   * compose their answer from the same real riskScore/riskLevel/
+   * keyFactors/ocean-indicator fields the LLM would otherwise just be
+   * rephrasing. Narration still runs for "general"/ambiguous requests
+   * and any other case that only has the generic area-wide reporting-
+   * agent text without a dedicated apply*Answer above, where the LLM's
+   * plain-language phrasing (vs. "Combined risk score: 84/100...") is
+   * the whole point.
    */
   if (isLlmEnabled() && !answerFinalizedDeterministically) {
     const routeSummary = shaped.route

@@ -8,6 +8,11 @@
   background: #f1f5f9;
 }
 
+.marine-map:fullscreen {
+  border-radius: 0;
+  min-height: 100vh;
+}
+
 .marine-map-canvas {
   position: absolute !important;
   inset: 0 !important;
@@ -37,6 +42,31 @@
 .marine-map-boat-icon {
   background: transparent;
   border: none;
+}
+
+/* Wind/current vector arrows (marine model grid) - a simple rotated
+   triangle, same construction as the boat glyph, so rotation via
+   transform stays crisp at any angle. Wind uses navy, current uses
+   teal, to stay visually distinct at a glance. */
+.marine-map-vector-icon {
+  background: transparent;
+  border: none;
+}
+
+.marine-map-vector-glyph {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.marine-map-vector-glyph-wind {
+  border-bottom: 12px solid #0e2a43;
+}
+
+.marine-map-vector-glyph-current {
+  border-bottom: 12px solid #0f6e64;
 }
 
 .marine-map-boat-glyph {
@@ -103,57 +133,171 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
-  padding: 0 13px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
-  color: #1e293b;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  min-height: 32px;
+  max-width: min(60vw, 320px);
+  padding: 0 10px;
+  border-radius: 7px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 2px rgba(14, 32, 43, 0.08);
+  color: #14202b;
 }
 
 .marine-map-status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   flex: 0 0 auto;
   border-radius: 50%;
   background: #16a34a;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.18);
+}
+
+.marine-map-status-dot-offline {
+  background: #8894a0;
+  box-shadow: 0 0 0 2px rgba(136, 148, 160, 0.18);
+}
+
+.marine-map-status-dot-simulation {
+  background: #c98700;
+  box-shadow: 0 0 0 2px rgba(201, 135, 0, 0.18);
+}
+
+.marine-map-status-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.marine-map-status-title {
+  color: #14202b;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.marine-map-status-context {
+  max-width: 100%;
+  overflow: hidden;
+  color: #5b6b7a;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marine-map-status-badge {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #eef2f6;
+  color: #5b6b7a;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.marine-map-status-badge-offline {
+  background: #eef1f4;
+  color: #5b6b7a;
+}
+
+.marine-map-status-badge-simulation {
+  background: #fff4da;
+  color: #93650a;
+}
+
+.marine-map-status-badge-prototype {
+  background: #eef2f6;
+  color: #5b6b7a;
+}
+
+/* Secondary "Marine Model Data" pill - shown only while at least one
+   Open-Meteo-backed layer (Wind/Waves/Current/SST/Tide) is active, so
+   it never clutters the default local-dataset view. */
+.marine-map-model-status {
+  position: absolute;
+  top: 54px;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(70vw, 320px);
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 2px rgba(14, 32, 43, 0.08);
+  color: #14202b;
+  font-size: 10.5px;
+  font-weight: 700;
+  z-index: 510;
+}
+
+.marine-map-model-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #0f6e64;
+  box-shadow: 0 0 0 2px rgba(15, 110, 100, 0.18);
+}
+
+.marine-map-model-status-unavailable .marine-map-model-status-dot {
+  background: #d64545;
+  box-shadow: 0 0 0 2px rgba(214, 69, 69, 0.18);
+}
+
+.marine-map-model-status-loading .marine-map-model-status-dot {
+  background: #c98700;
+  box-shadow: 0 0 0 2px rgba(201, 135, 0, 0.18);
+}
+
+.marine-map-model-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marine-map-model-status-time {
+  color: #5b6b7a;
+  font-weight: 600;
 }
 
 .marine-map-layer-button {
-  min-height: 34px;
-  padding: 0 14px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  min-height: 32px;
+  padding: 0 13px;
+  border-radius: 7px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 2px rgba(14, 32, 43, 0.08);
   color: #334155;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 .marine-map-layer-button:hover {
-  background: #ffffff;
-  border-color: #cbd5e1;
+  background: #f8fafc;
+  border-color: #94a3b8;
 }
 
 .marine-map-layer-panel {
   position: absolute;
-  top: 56px;
+  top: 54px;
   right: 14px;
   width: min(280px, calc(100% - 28px));
   max-height: calc(100% - 80px);
   overflow-y: auto;
   padding: 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 6px 20px -4px rgba(14, 32, 43, 0.16);
   z-index: 520;
 }
 
@@ -164,18 +308,42 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid #e2e8f0;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  padding: 5px 11px;
+  border-radius: 7px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #5b6b7a;
+  font-size: 10.5px;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(14, 32, 43, 0.08);
 }
 
 .marine-map-location-live {
   color: #16a34a;
+}
+
+/* Real GPS-fix accuracy pulse - subtle, not flashy: a slow single
+   breathing cycle on the existing static accuracy ring, not a new
+   marker. Respects reduced-motion. */
+.marine-map-location-pulse {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: marine-location-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes marine-location-pulse {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marine-map-location-pulse {
+    animation: none;
+  }
 }
 
 .marine-map-location-dot {
@@ -187,16 +355,42 @@
 }
 
 .marine-map-popup {
+  min-width: 200px;
+  max-width: 260px;
   font-size: 12px;
-  line-height: 1.5;
-  color: #1e293b;
+  line-height: 1.55;
+  color: #384652;
+}
+
+.marine-map-popup-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .marine-map-popup-title {
   font-weight: 700;
   font-size: 13px;
-  margin-bottom: 4px;
-  color: #0f172a;
+  color: #14202b;
+}
+
+/* Restrained severity/status communication - reused for hazard
+   severity, PFZ recommendation and route decision, so the whole map
+   speaks one visual language for "how urgent/favourable is this". */
+.marine-map-badge {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .marine-map-popup-note {
@@ -208,6 +402,26 @@
   margin-top: 4px;
   font-size: 11px;
   color: #475569;
+}
+
+.marine-map-badge-simulation {
+  background: #c98700;
+}
+
+/* Honest per-object data provenance - a plain footnote, never a "LIVE"
+   claim. Present on every popup so the map never implies live data it
+   doesn't have. */
+.marine-map-popup-data-status {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #f1f5f9;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.marine-map-popup-ask {
+  margin-top: 8px;
 }
 
 /* Position native Leaflet attribution cleanly */
@@ -296,4 +510,460 @@
 
 .map-legend-swatch-line-dashed {
   border-top-style: dashed;
+}
+
+.map-legend-attribution {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+  color: #94a3b8;
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.map-legend-attribution a {
+  color: #5b6b7a;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Map Hazard Popup, Pulse Location Marker & Floating Controls
+   ========================================================================== */
+
+/* Leaflet Wrapper Reset - used by every Popup rendered inside this map
+   (HazardLayer, PFZLayer, RouteLayer), not just this file's own markup. */
+.leaflet-popup-content-wrapper {
+  padding: 0;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.12), 0 4px 8px -2px rgba(15, 23, 42, 0.04);
+}
+
+.leaflet-popup-content {
+  margin: 14px 16px;
+  line-height: 1.5;
+}
+
+.leaflet-popup-tip {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: none;
+}
+
+/* Hazard Details (HazardLayer.tsx) */
+.hazard-popup {
+  min-width: 220px;
+  max-width: 280px;
+  color: #0f172a;
+}
+
+.hazard-popup-title {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+.hazard-popup-severity {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fee2e2;
+  color: #dc2626;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hazard-popup-description {
+  margin-top: 8px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.hazard-popup-radius {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #f1f5f9;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 15px;
+  font-weight: 500;
+}
+
+/* Location Pulse Marker (LocationMarker.tsx) */
+.location-marker {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.location-marker-pulse {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(15, 118, 110, 0.22);
+  border: 1px solid rgba(15, 118, 110, 0.35);
+}
+
+.location-marker-core {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #0f766e;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.3);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .location-marker-pulse {
+    animation: location-pulse 1.8s ease-out infinite;
+  }
+}
+
+@keyframes location-pulse {
+  0% {
+    transform: scale(0.65);
+    opacity: 0.85;
+  }
+  70% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+/* Floating Zoom & Tool Controls (MapControls.tsx) */
+.map-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-control-group,
+.map-control-single {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(14, 32, 43, 0.1);
+}
+
+.map-control-group {
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.map-control-single {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #384652;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.map-control-button {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #384652;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.map-control-button:hover,
+.map-control-single:hover {
+  background: #f1f5f9;
+  color: #0e2a43;
+}
+
+.map-control-button:active,
+.map-control-single:active {
+  background: #e2e8f0;
+  transform: scale(0.96);
+}
+
+.map-control-divider {
+  height: 1px;
+  background: #e2e8f0;
+}
+
+/* A live GPS fix reads as "on" - teal, matching the app's live/active
+   accent everywhere else, rather than the neutral slate of zoom/layers. */
+.map-control-single-live {
+  color: #0f766e;
+  border-color: #99d8d0;
+}
+
+.map-control-single-live:hover {
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+@media (max-width: 700px) {
+  .map-controls {
+    right: 12px;
+    bottom: 12px;
+    gap: 6px;
+  }
+
+  .map-control-button,
+  .map-control-single {
+    width: 34px;
+    height: 34px;
+  }
+}
+
+@media (max-width: 420px) {
+  .map-controls {
+    right: 10px;
+    bottom: 10px;
+  }
+}
+
+/* ==========================================================================
+   Map Layers Panel & Switch Toggles (MapLayers.tsx)
+   ========================================================================== */
+
+.map-layers {
+  width: min(290px, calc(100vw - 28px));
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
+}
+
+.map-layers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.map-layers-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.map-layers-count {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #f0fdfa;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.map-layers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.map-layer-item {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #475569;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.map-layer-item:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.map-layer-item-active {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.map-layer-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #64748b;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.map-layer-item-active .map-layer-icon {
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.map-layer-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-layer-switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 34px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transition: background-color 160ms ease;
+}
+
+.map-layer-switch-active {
+  background: #0f766e;
+}
+
+.map-layer-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+  transition: transform 160ms ease;
+}
+
+.map-layer-switch-active .map-layer-switch-knob {
+  transform: translateX(14px);
+}
+
+@media (max-width: 700px) {
+  .map-layers {
+    width: min(100%, 300px);
+    padding: 10px;
+  }
+
+  .map-layer-item {
+    min-height: 42px;
+    padding: 6px;
+  }
+
+  .map-layer-icon {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+
+  .map-layer-label {
+    font-size: 12px;
+  }
+}
+
+/* ==========================================================================
+   Marine Map Popups (PFZLayer.tsx & RouteLayer.tsx)
+   ========================================================================== */
+
+.pfz-popup {
+  min-width: 210px;
+  max-width: 280px;
+  color: #0f172a;
+}
+
+.pfz-popup-title {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+.pfz-popup-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pfz-popup-favourable {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.pfz-popup-moderate {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.pfz-popup-low {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.pfz-popup-description {
+  margin-top: 8px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.route-popup {
+  min-width: 120px;
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
 }

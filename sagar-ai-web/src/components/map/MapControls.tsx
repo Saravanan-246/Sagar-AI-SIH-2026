@@ -1,8 +1,11 @@
 import {
   LocateFixed,
   Layers3,
+  Maximize,
+  Minimize,
   Minus,
   Plus,
+  Route,
 } from "lucide-react";
 
 type MapControlsProps = {
@@ -10,6 +13,14 @@ type MapControlsProps = {
   onZoomOut?: () => void;
   onLocate?: () => void;
   onLayers?: () => void;
+  /** Whether a device position has actually been acquired - shows the
+   * locate button as "live" rather than idle. */
+  isLocated?: boolean;
+  /** Present only when a real route is currently on screen to fit to -
+   * omit the button entirely rather than showing it disabled. */
+  onFitRoute?: () => void;
+  onFullscreen?: () => void;
+  isFullscreen?: boolean;
 };
 
 export default function MapControls({
@@ -17,6 +28,10 @@ export default function MapControls({
   onZoomOut,
   onLocate,
   onLayers,
+  isLocated = false,
+  onFitRoute,
+  onFullscreen,
+  isFullscreen = false,
 }: MapControlsProps) {
   return (
     <div className="map-controls">
@@ -44,11 +59,24 @@ export default function MapControls({
         </button>
       </div>
 
+      {onFitRoute && (
+        <button
+          type="button"
+          className="map-control-single"
+          onClick={onFitRoute}
+          aria-label="Fit route in view"
+          title="Fit route"
+        >
+          <Route size={17} strokeWidth={2} />
+        </button>
+      )}
+
       <button
         type="button"
-        className="map-control-single"
+        className={`map-control-single${isLocated ? " map-control-single-live" : ""}`}
         onClick={onLocate}
         aria-label="Center map on my location"
+        aria-pressed={isLocated}
         title="My location"
       >
         <LocateFixed size={18} strokeWidth={2} />
@@ -63,6 +91,23 @@ export default function MapControls({
       >
         <Layers3 size={18} strokeWidth={2} />
       </button>
+
+      {onFullscreen && (
+        <button
+          type="button"
+          className="map-control-single"
+          onClick={onFullscreen}
+          aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          aria-pressed={isFullscreen}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        >
+          {isFullscreen ? (
+            <Minimize size={17} strokeWidth={2} />
+          ) : (
+            <Maximize size={17} strokeWidth={2} />
+          )}
+        </button>
+      )}
     </div>
   );
 }

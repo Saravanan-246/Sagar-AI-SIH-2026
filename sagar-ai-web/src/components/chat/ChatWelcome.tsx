@@ -1,5 +1,7 @@
 import { Waves } from "lucide-react";
 
+import "./ChatWelcome.css";
+
 const FALLBACK_SUGGESTIONS = [
   "Is it safe to venture into the sea tomorrow morning?",
   "Are there any lightning or cyclone alerts in my area?",

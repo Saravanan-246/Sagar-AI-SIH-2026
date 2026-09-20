@@ -1,13 +1,23 @@
 import {
+  Compass,
+  Droplets,
   Fish,
+  Gauge,
   Layers3,
   Navigation,
   ShieldAlert,
+  Thermometer,
   Waves,
+  Wind,
   type LucideIcon,
 } from "lucide-react";
 
 export type MapLayerKey =
+  | "wind"
+  | "waves"
+  | "current"
+  | "sst"
+  | "tide"
   | "conditions"
   | "pfz"
   | "boundaries"
@@ -26,7 +36,16 @@ interface LayerItem {
 }
 
 const LAYERS: LayerItem[] = [
-  { key: "conditions", label: "Marine areas", icon: Waves },
+  // Marine model layers (Open-Meteo) - off by default, fetched only
+  // when the user actually turns one on.
+  { key: "wind", label: "Wind", icon: Wind },
+  { key: "waves", label: "Waves", icon: Waves },
+  { key: "current", label: "Current", icon: Compass },
+  { key: "sst", label: "Sea surface temp", icon: Thermometer },
+  { key: "tide", label: "Tide", icon: Droplets },
+
+  // Existing local-dataset layers, unchanged.
+  { key: "conditions", label: "Marine areas (Risk)", icon: Gauge },
   { key: "pfz", label: "Fishing zones", icon: Fish },
   { key: "alerts", label: "Active alerts", icon: ShieldAlert },
   { key: "boundaries", label: "Boundaries", icon: Layers3 },

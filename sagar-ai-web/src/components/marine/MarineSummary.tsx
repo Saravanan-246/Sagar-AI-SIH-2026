@@ -8,6 +8,8 @@ import {
   Wind,
 } from "lucide-react";
 
+import "./MarineSummary.css";
+
 export type MarineSummaryStatus =
   | "favourable"
   | "caution"

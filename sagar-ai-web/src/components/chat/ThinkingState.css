@@ -1,0 +1,161 @@
+/* ==========================================================================
+   Thinking State - "Sagar is processing marine information"
+
+   Deliberately calm: same avatar identity as a real Sagar message, no
+   color-cycling gradients or shimmering text. The only motion is a
+   slow, low-amplitude dot pulse signalling work in progress.
+   ========================================================================== */
+
+.thinking-state {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+
+.thinking-avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--chat-navy, #0e2a43);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.thinking-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 14px;
+  background: var(--chat-surface, #ffffff);
+  border: 1px solid var(--chat-border, #e3e7eb);
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(14, 32, 43, 0.05);
+}
+
+.thinking-content.thinking-content-stages {
+  flex-direction: column;
+  align-items: flex-start;
+  height: auto;
+  min-width: 172px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  gap: 6px;
+}
+
+.thinking-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.thinking-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.thinking-stage-marker {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  border: 1.5px solid var(--chat-text-faint, #8894a0);
+  background: transparent;
+}
+
+.thinking-stage-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--chat-text-secondary, #384652);
+}
+
+.thinking-content-stages .thinking-dots {
+  align-self: flex-end;
+  margin-top: 2px;
+}
+
+.thinking-label {
+  color: var(--chat-text-secondary, #384652);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.thinking-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--chat-accent, #0f6e64);
+  opacity: 0.35;
+  animation: thinking-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.thinking-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes thinking-dot-pulse {
+  0%, 100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dot {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+@media (max-width: 700px) {
+  .thinking-state {
+    gap: 10px;
+    margin: 8px 0 16px;
+  }
+
+  .thinking-avatar {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+
+  .thinking-content {
+    height: 32px;
+    padding: 0 12px;
+  }
+
+  .thinking-label {
+    font-size: 12px;
+  }
+
+  .thinking-dot {
+    width: 4px;
+    height: 4px;
+  }
+}

@@ -1,3 +1,5 @@
+import React from "react";
+
 type BadgeProps = {
   children: React.ReactNode;
   tone?: "neutral" | "success" | "warning" | "danger" | "violet";
@@ -10,9 +12,7 @@ export default function Badge({
   size = "md",
 }: BadgeProps) {
   return (
-    <span
-      className={`sagar-badge sagar-badge-${tone} sagar-badge-${size}`}
-    >
+    <span className={`sagar-badge sagar-badge-${tone} sagar-badge-${size}`}>
       {children}
 
       <style>{`
@@ -20,54 +20,68 @@ export default function Badge({
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          gap: 5px;
           width: fit-content;
-          border: 1px solid transparent;
-          border-radius: 999px;
+          border-radius: 9999px;
           font-family: inherit;
-          font-weight: 700;
+          font-weight: 600;
+          letter-spacing: 0.025em;
+          text-transform: capitalize;
           white-space: nowrap;
           line-height: 1;
+          vertical-align: middle;
+          user-select: none;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          border: 1px solid transparent;
+          transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         }
 
+        /* Sizes calibrated for touch and high-DPI desktop viewports */
         .sagar-badge-sm {
-          min-height: 24px;
+          height: 22px;
           padding: 0 8px;
-          font-size: 10px;
-        }
-
-        .sagar-badge-md {
-          min-height: 29px;
-          padding: 0 10px;
           font-size: 11px;
         }
 
+        .sagar-badge-md {
+          height: 26px;
+          padding: 0 10px;
+          font-size: 12px;
+        }
+
+        /* Neutral: balanced slate tone */
         .sagar-badge-neutral {
-          background: #f2f1f8;
-          border-color: #e6e4ec;
-          color: #676572;
+          background-color: #f1f5f9;
+          border-color: #e2e8f0;
+          color: #475569;
         }
 
+        /* Success: crisp maritime emerald */
         .sagar-badge-success {
-          background: #e8f7f0;
-          border-color: #d7eee4;
-          color: #159a68;
+          background-color: #ecfdf5;
+          border-color: #a7f3d0;
+          color: #047857;
         }
 
+        /* Warning: high-contrast amber */
         .sagar-badge-warning {
-          background: #fff4da;
-          border-color: #f0e2b9;
-          color: #a56f00;
+          background-color: #fffbeb;
+          border-color: #fde68a;
+          color: #b45309;
         }
 
+        /* Danger: crisp signal red */
         .sagar-badge-danger {
-          background: #fcebec;
-          border-color: #f0c9cc;
-          color: #c23b3b;
+          background-color: #fef2f2;
+          border-color: #fecaca;
+          color: #b91c1c;
         }
 
+        /* Violet: vibrant digital accent */
         .sagar-badge-violet {
-          background: #f0eafe;
-          border-color: #e3d8fb;
+          background-color: #f5f3ff;
+          border-color: #ddd6fe;
           color: #6d28d9;
         }
       `}</style>

@@ -1,6 +1,7 @@
-import type {
-  InputHTMLAttributes,
-  ReactNode,
+import {
+  useId,
+  type InputHTMLAttributes,
+  type ReactNode,
 } from "react";
 
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
@@ -19,17 +20,13 @@ export default function Input({
   className = "",
   ...props
 }: InputProps) {
-  const inputId = id ?? `sagar-input-${Math.random()
-    .toString(36)
-    .slice(2, 9)}`;
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
 
   return (
     <div className="sagar-input-field">
       {label && (
-        <label
-          htmlFor={inputId}
-          className="sagar-input-label"
-        >
+        <label htmlFor={inputId} className="sagar-input-label">
           {label}
         </label>
       )}
@@ -44,7 +41,7 @@ export default function Input({
           .join(" ")}
       >
         {leading && (
-          <span className="sagar-input-leading">
+          <span className="sagar-input-leading" aria-hidden="true">
             {leading}
           </span>
         )}
@@ -65,19 +62,13 @@ export default function Input({
       </div>
 
       {error && (
-        <p
-          id={`${inputId}-error`}
-          className="sagar-input-error"
-        >
+        <p id={`${inputId}-error`} className="sagar-input-error" role="alert">
           {error}
         </p>
       )}
 
       {!error && hint && (
-        <p
-          id={`${inputId}-hint`}
-          className="sagar-input-hint"
-        >
+        <p id={`${inputId}-hint`} className="sagar-input-hint">
           {hint}
         </p>
       )}
@@ -86,107 +77,141 @@ export default function Input({
         .sagar-input-field {
           width: 100%;
           min-width: 0;
+          display: flex;
+          flex-direction: column;
+          text-align: left;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
 
         .sagar-input-label {
           display: block;
-          margin-bottom: 7px;
-          color: #676572;
-          font-size: 11px;
-          line-height: 15px;
-          font-weight: 700;
+          margin-bottom: 6px;
+          color: #334155;
+          font-size: 13px;
+          font-weight: 600;
+          line-height: 1.3;
+          letter-spacing: -0.01em;
+          user-select: none;
         }
 
         .sagar-input-wrap {
           width: 100%;
-          min-height: 44px;
+          min-height: 42px;
           display: flex;
           align-items: center;
           box-sizing: border-box;
-          border: 1px solid #e6e4ec;
-          border-radius: 13px;
           background: #ffffff;
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
+          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
           transition:
-            border-color 160ms ease,
-            box-shadow 160ms ease;
+            border-color 140ms cubic-bezier(0.4, 0, 0.2, 1),
+            box-shadow 140ms cubic-bezier(0.4, 0, 0.2, 1),
+            background-color 140ms ease;
         }
 
         .sagar-input-wrap:focus-within {
-          border-color: #8b5cf6;
-          box-shadow:
-            0 0 0 3px rgba(109, 40, 217, 0.10);
+          border-color: #7c3aed;
+          box-shadow: 0 0 0 1px #7c3aed, 0 0 0 4px rgba(124, 58, 237, 0.12);
         }
 
         .sagar-input-wrap-error {
-          border-color: #d64545;
+          border-color: #ef4444;
+          background: #fffcfc;
         }
 
         .sagar-input-wrap-error:focus-within {
-          border-color: #d64545;
-          box-shadow:
-            0 0 0 3px rgba(214, 69, 69, 0.10);
+          border-color: #dc2626;
+          box-shadow: 0 0 0 1px #dc2626, 0 0 0 4px rgba(220, 38, 38, 0.12);
         }
 
         .sagar-input-leading {
           flex: 0 0 auto;
-          display: flex;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          margin-left: 11px;
-          color: #9795a2;
+          padding-left: 12px;
+          color: #64748b;
+          pointer-events: none;
         }
 
         .sagar-input {
           width: 100%;
           min-width: 0;
-          min-height: 42px;
-          padding: 10px 12px;
+          height: 40px;
+          padding: 0 13px;
           border: 0;
           outline: 0;
           background: transparent;
-          color: #16151d;
+          color: #0f172a;
           font-family: inherit;
-          font-size: 13px;
-          line-height: 20px;
+          font-size: 14px;
+          line-height: 1.5;
+          letter-spacing: -0.01em;
+          -webkit-appearance: none;
         }
 
         .sagar-input-leading + .sagar-input {
-          padding-left: 8px;
+          padding-left: 9px;
         }
 
         .sagar-input::placeholder {
-          color: #9795a2;
+          color: #94a3b8;
         }
 
         .sagar-input:disabled {
           cursor: not-allowed;
-          opacity: 0.55;
+          color: #94a3b8;
+        }
+
+        .sagar-input-wrap:has(.sagar-input:disabled) {
+          background: #f8fafc;
+          border-color: #e2e8f0;
+          box-shadow: none;
         }
 
         .sagar-input-hint,
         .sagar-input-error {
           margin: 6px 2px 0;
-          font-size: 10px;
-          line-height: 14px;
+          font-size: 12px;
+          line-height: 1.4;
+          letter-spacing: -0.005em;
         }
 
         .sagar-input-hint {
-          color: #9795a2;
+          color: #64748b;
         }
 
         .sagar-input-error {
-          color: #d64545;
+          color: #dc2626;
+          font-weight: 500;
         }
 
-        @media (max-width: 700px) {
+        /* Prevent iOS Safari auto-zoom on focus by keeping font-size >= 16px */
+        @media (max-width: 640px) {
           .sagar-input-wrap {
-            min-height: 46px;
-            border-radius: 12px;
+            min-height: 44px;
+            border-radius: 10px;
           }
 
           .sagar-input {
-            min-height: 44px;
-            font-size: 14px;
+            height: 42px;
+            font-size: 16px;
+            padding: 0 12px;
+          }
+
+          .sagar-input-leading + .sagar-input {
+            padding-left: 8px;
+          }
+
+          .sagar-input-label {
+            font-size: 12.5px;
+          }
+
+          .sagar-input-hint,
+          .sagar-input-error {
+            font-size: 11.5px;
           }
         }
       `}</style>

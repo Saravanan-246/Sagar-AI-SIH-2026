@@ -53,88 +53,145 @@ export default function EmptyState({
     <>
       <section className="sagar-empty-state">
         <div className="sagar-empty-icon" aria-hidden="true">
-          <Icon size={21} strokeWidth={1.9} />
+          <Icon size={22} strokeWidth={1.8} />
         </div>
 
-        <h2 className="sagar-empty-title">
-          {title}
-        </h2>
+        <h2 className="sagar-empty-title">{title}</h2>
 
         {description && (
-          <p className="sagar-empty-description">
-            {description}
-          </p>
+          <p className="sagar-empty-description">{description}</p>
         )}
 
         {action && (
-          <div className="sagar-empty-action">
-            {resolvedAction}
-          </div>
+          <div className="sagar-empty-action">{resolvedAction}</div>
         )}
       </section>
 
       <style>{`
         .sagar-empty-state {
           width: 100%;
-          min-height: 260px;
+          min-height: 240px;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
           box-sizing: border-box;
-          padding: 32px 20px;
+          padding: 36px 20px;
           text-align: center;
-          border: 1px dashed #dcd9e4;
-          border-radius: 18px;
-          background: #faf9fc;
+          border: 1px dashed #cbd5e1;
+          border-radius: 14px;
+          background: #f8fafc;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
 
         .sagar-empty-icon {
           width: 48px;
           height: 48px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          border-radius: 15px;
-          background: #f0eafe;
-          color: #6d28d9;
+          border-radius: 12px;
+          background: #f1f5f9;
+          border: 1px solid #e2e8f0;
+          color: #64748b;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
         }
 
         .sagar-empty-title {
-          margin: 15px 0 0;
-          color: #16151d;
-          font-size: 16px;
-          line-height: 22px;
-          font-weight: 800;
-          letter-spacing: -0.1px;
+          margin: 14px 0 0;
+          color: #0f172a;
+          font-size: 15px;
+          font-weight: 600;
+          line-height: 1.4;
+          letter-spacing: -0.01em;
         }
 
         .sagar-empty-description {
-          max-width: 430px;
-          margin: 7px 0 0;
-          color: #676572;
-          font-size: 12px;
-          line-height: 19px;
+          max-width: 380px;
+          margin: 6px 0 0;
+          color: #64748b;
+          font-size: 13px;
+          line-height: 1.5;
+          text-wrap: balance;
         }
 
         .sagar-empty-action {
-          margin-top: 16px;
+          margin-top: 18px;
         }
 
-        @media (max-width: 700px) {
+        .sagar-empty-action-button {
+          appearance: none;
+          -webkit-appearance: none;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          height: 38px;
+          padding: 0 16px;
+          border: 1px solid #5b21b6;
+          border-radius: 8px;
+          background: #6d28d9;
+          color: #ffffff;
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 600;
+          line-height: 1;
+          letter-spacing: -0.01em;
+          white-space: nowrap;
+          cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          box-shadow: 0 1px 2px rgba(109, 40, 217, 0.16);
+          transition:
+            background-color 140ms ease,
+            border-color 140ms ease,
+            transform 100ms ease,
+            box-shadow 140ms ease;
+        }
+
+        .sagar-empty-action-button:hover {
+          background: #5b21b6;
+          border-color: #4c1d95;
+          box-shadow: 0 2px 6px rgba(109, 40, 217, 0.22);
+        }
+
+        .sagar-empty-action-button:active {
+          transform: scale(0.985);
+        }
+
+        .sagar-empty-action-button:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #7c3aed;
+        }
+
+        @media (max-width: 640px) {
           .sagar-empty-state {
-            min-height: 220px;
-            padding: 26px 16px;
-            border-radius: 16px;
+            min-height: 200px;
+            padding: 28px 16px;
+            border-radius: 12px;
+          }
+
+          .sagar-empty-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
           }
 
           .sagar-empty-title {
-            font-size: 15px;
+            font-size: 14px;
           }
 
           .sagar-empty-description {
-            font-size: 11px;
-            line-height: 18px;
+            font-size: 12.5px;
+            max-width: 320px;
+          }
+
+          .sagar-empty-action-button {
+            height: 42px;
+            padding: 0 18px;
+            font-size: 13.5px;
           }
         }
       `}</style>

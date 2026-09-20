@@ -7,9 +7,11 @@
  *    tiles, icons) AS THEY ARE FETCHED, network-first with a cache
  *    fallback - no hardcoded precache manifest, so it needs no changes
  *    when Vite's build output hashes change between builds.
- *  - Falls back to the cached page shell (index.html) for a failed
- *    navigation while offline, so a hard refresh with no network still
- *    loads Sagar's UI instead of the browser's own "no internet" page.
+ *  - Precaches the root document ("/") on install and falls back to it
+ *    for a failed navigation while offline, so a hard refresh of any
+ *    route (including one never visited before, e.g. "/area/123")
+ *    still loads Sagar's UI instead of the browser's own "no internet"
+ *    page.
  *  - NEVER intercepts /api/* requests - those must always reach the
  *    real network (or fail loudly) so the app's own online/offline
  *    decision logic (useConnectivity, the local snapshot fallback)
@@ -21,7 +23,29 @@
 
 const CACHE_NAME = "sagar-shell-v1";
 
+// The app shell document. Every navigation the browser makes goes to
+// the *route's own* path ("/chat", "/area/123", ...), never literally
+// to "/index.html" - static hosts (see vercel.json) rewrite any path
+// to index.html's content, but the Request/cache key the browser (and
+// this worker) sees is still the original route path. Precaching the
+// root document here - and matching against it in the fetch handler's
+// offline fallback below - gives every route a real, guaranteed cache
+// hit to fall back to, instead of relying on "/chat" or "/area/123"
+// having already been individually visited and cached before going
+// offline.
+const APP_SHELL_URL = "/";
+
 self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.add(APP_SHELL_URL))
+      .catch(() => {
+        // Best-effort: if the shell can't be fetched right now, normal
+        // per-request caching in the fetch handler below still applies
+        // once the app is used online.
+      })
+  );
   self.skipWaiting();
 });
 
@@ -72,7 +96,7 @@ self.addEventListener("fetch", (event) => {
         }
 
         if (request.mode === "navigate") {
-          const shell = await caches.match("/index.html");
+          const shell = await caches.match(APP_SHELL_URL);
           if (shell) {
             return shell;
           }

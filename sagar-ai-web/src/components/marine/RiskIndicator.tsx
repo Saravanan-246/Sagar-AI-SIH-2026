@@ -5,6 +5,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import "./RiskIndicator.css";
+
 export type RiskLevel =
   | "low"
   | "moderate"

@@ -1,0 +1,167 @@
+/* ==========================================================================
+   Marine Metric Component Cards
+   ========================================================================== */
+
+.marine-metric {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.marine-metric:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  transform: translateY(-1px);
+}
+
+.marine-metric-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.marine-metric-label-wrap {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.marine-metric-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.marine-metric-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.marine-metric-trend {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.marine-metric-trend-up {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.marine-metric-trend-down {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.marine-metric-trend-stable {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.marine-metric-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.marine-metric-value {
+  color: #0f172a;
+  font-size: 24px;
+  line-height: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.marine-metric-unit {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.marine-metric-detail {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.marine-metric-normal .marine-metric-value {
+  color: #0f172a;
+}
+
+.marine-metric-warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.marine-metric-warning .marine-metric-icon {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.marine-metric-warning .marine-metric-value {
+  color: #92400e;
+}
+
+.marine-metric-danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.marine-metric-danger .marine-metric-icon {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.marine-metric-danger .marine-metric-value {
+  color: #991b1b;
+}
+
+.marine-metric-muted {
+  background: #f8fafc;
+}
+
+.marine-metric-muted .marine-metric-icon {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.marine-metric-muted .marine-metric-value {
+  color: #94a3b8;
+}
+
+@media (max-width: 700px) {
+  .marine-metric {
+    padding: 14px;
+  }
+
+  .marine-metric-value {
+    font-size: 20px;
+    line-height: 24px;
+  }
+}

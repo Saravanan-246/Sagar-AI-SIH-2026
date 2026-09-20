@@ -1,4 +1,4 @@
-import type { Coordinates } from "../types/marine";
+import type { Coordinates, MarineArea } from "../types/marine";
 import type { RoutePoint } from "../types/route";
 
 const EARTH_RADIUS_KM = 6371;
@@ -220,4 +220,28 @@ export function isPointWithinRadius(
   }
 
   return haversineDistanceKm(point, center) <= radiusKm;
+}
+
+/** The configured marine area nearest a real coordinate (e.g. a route
+ * waypoint or an alert's own location) - never the name of a place
+ * that isn't one of Sagar's configured areas, so a chat question built
+ * from it always resolves through Chat's existing area-name matching
+ * instead of silently going unrecognised. */
+export function nearestMarineAreaName(
+  point: Coordinates,
+  areas: MarineArea[]
+): string | null {
+  let nearest: MarineArea | null = null;
+  let nearestDistanceKm = Infinity;
+
+  for (const area of areas) {
+    const distance = haversineDistanceKm(point, area.coordinates);
+
+    if (distance < nearestDistanceKm) {
+      nearestDistanceKm = distance;
+      nearest = area;
+    }
+  }
+
+  return nearest?.name ?? null;
 }

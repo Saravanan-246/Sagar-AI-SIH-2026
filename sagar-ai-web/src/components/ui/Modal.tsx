@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   type ReactNode,
 } from "react";
 import { X } from "lucide-react";
@@ -23,6 +24,10 @@ export default function Modal({
   footer,
   size = "md",
 }: ModalProps) {
+  const generatedId = useId();
+  const titleId = `sagar-modal-title-${generatedId}`;
+  const descId = `sagar-modal-desc-${generatedId}`;
+
   useEffect(() => {
     if (!open) return;
 
@@ -59,20 +64,19 @@ export default function Modal({
           className={`sagar-modal sagar-modal-${size}`}
           role="dialog"
           aria-modal="true"
-          aria-labelledby={
-            title ? "sagar-modal-title" : undefined
-          }
+          aria-labelledby={title ? titleId : undefined}
+          aria-describedby={description ? descId : undefined}
         >
           <div className="sagar-modal-header">
             <div className="sagar-modal-heading">
               {title && (
-                <h2 id="sagar-modal-title">
+                <h2 id={titleId}>
                   {title}
                 </h2>
               )}
 
               {description && (
-                <p>{description}</p>
+                <p id={descId}>{description}</p>
               )}
             </div>
 
@@ -106,33 +110,36 @@ export default function Modal({
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
-          background: rgba(22, 21, 29, 0.42);
-          backdrop-filter: blur(4px);
-          -webkit-backdrop-filter: blur(4px);
+          padding: 24px;
+          background: rgba(15, 23, 42, 0.55);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          animation: sagar-fade-in 140ms ease-out;
         }
 
         .sagar-modal {
           width: 100%;
-          max-height: min(760px, calc(100vh - 40px));
+          max-height: min(780px, calc(100vh - 48px));
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          border: 1px solid #e6e4ec;
-          border-radius: 20px;
           background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
           box-shadow:
-            0 24px 70px rgba(22, 21, 29, 0.18),
-            0 5px 20px rgba(22, 21, 29, 0.08);
-          animation: sagar-modal-in 160ms ease-out;
+            0 20px 25px -5px rgba(0, 0, 0, 0.1),
+            0 8px 10px -6px rgba(0, 0, 0, 0.1);
+          animation: sagar-modal-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
 
         .sagar-modal-sm {
-          max-width: 420px;
+          max-width: 440px;
         }
 
         .sagar-modal-md {
-          max-width: 560px;
+          max-width: 580px;
         }
 
         .sagar-modal-lg {
@@ -143,119 +150,151 @@ export default function Modal({
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          gap: 20px;
-          padding: 20px 20px 16px;
-          border-bottom: 1px solid #eceaf1;
+          gap: 16px;
+          padding: 20px 24px;
+          border-bottom: 1px solid #f1f5f9;
         }
 
         .sagar-modal-heading {
           min-width: 0;
+          flex: 1;
         }
 
         .sagar-modal-heading h2 {
           margin: 0;
-          color: #16151d;
-          font-size: 18px;
-          line-height: 24px;
-          font-weight: 800;
-          letter-spacing: -0.2px;
+          color: #0f172a;
+          font-size: 17px;
+          font-weight: 600;
+          line-height: 1.4;
+          letter-spacing: -0.015em;
         }
 
         .sagar-modal-heading p {
-          margin: 5px 0 0;
-          color: #676572;
-          font-size: 12px;
-          line-height: 19px;
+          margin: 4px 0 0;
+          color: #64748b;
+          font-size: 13px;
+          line-height: 1.5;
         }
 
         .sagar-modal-close {
-          width: 36px;
-          height: 36px;
-          flex: 0 0 36px;
-          display: flex;
+          appearance: none;
+          -webkit-appearance: none;
+          width: 32px;
+          height: 32px;
+          flex: 0 0 32px;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          border: 1px solid #e6e4ec;
-          border-radius: 11px;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
           background: #ffffff;
-          color: #676572;
+          color: #64748b;
           cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
           transition:
-            background-color 160ms ease,
-            color 160ms ease,
-            border-color 160ms ease,
-            transform 160ms ease;
+            background-color 140ms ease,
+            border-color 140ms ease,
+            color 140ms ease,
+            transform 100ms ease;
         }
 
         .sagar-modal-close:hover {
-          background: #f3edff;
-          color: #6d28d9;
-          border-color: #e0d5f7;
+          background: #f8fafc;
+          border-color: #cbd5e1;
+          color: #0f172a;
         }
 
         .sagar-modal-close:active {
-          transform: scale(0.96);
+          transform: scale(0.95);
         }
 
         .sagar-modal-close:focus-visible {
           outline: none;
-          box-shadow:
-            0 0 0 3px rgba(109, 40, 217, 0.12);
+          box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #7c3aed;
         }
 
         .sagar-modal-body {
           min-height: 0;
+          flex: 1 1 auto;
           overflow-y: auto;
-          padding: 20px;
+          overscroll-behavior: contain;
+          padding: 24px;
+          color: #334155;
+          font-size: 14px;
+          line-height: 1.6;
         }
 
         .sagar-modal-body::-webkit-scrollbar {
-          width: 6px;
+          width: 5px;
+        }
+
+        .sagar-modal-body::-webkit-scrollbar-track {
+          background: transparent;
         }
 
         .sagar-modal-body::-webkit-scrollbar-thumb {
-          background: #dcd9e4;
-          border-radius: 999px;
+          background: #cbd5e1;
+          border-radius: 9999px;
+        }
+
+        .sagar-modal-body::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
 
         .sagar-modal-footer {
           display: flex;
           align-items: center;
           justify-content: flex-end;
-          gap: 8px;
-          padding: 14px 20px;
-          border-top: 1px solid #eceaf1;
-          background: #faf9fc;
+          gap: 10px;
+          padding: 16px 24px;
+          border-top: 1px solid #f1f5f9;
+          background: #f8fafc;
+        }
+
+        @keyframes sagar-fade-in {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
         }
 
         @keyframes sagar-modal-in {
           from {
             opacity: 0;
-            transform: translateY(8px) scale(0.99);
+            transform: scale(0.97) translateY(4px);
           }
-
           to {
             opacity: 1;
-            transform: translateY(0) scale(1);
+            transform: scale(1) translateY(0);
           }
         }
 
         @media (prefers-reduced-motion: reduce) {
+          .sagar-modal-backdrop,
           .sagar-modal {
             animation: none;
           }
         }
 
-        @media (max-width: 700px) {
+        /* Responsive Bottom-Sheet Presentation for Mobile */
+        @media (max-width: 640px) {
           .sagar-modal-backdrop {
             align-items: flex-end;
             padding: 0;
           }
 
           .sagar-modal {
-            max-height: calc(100dvh - 20px);
-            border-radius: 20px 20px 0 0;
+            max-height: calc(100dvh - 32px);
+            border-radius: 18px 18px 0 0;
             border-bottom: 0;
+            border-left: 0;
+            border-right: 0;
+            animation: sagar-sheet-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
           }
 
           .sagar-modal-sm,
@@ -265,15 +304,40 @@ export default function Modal({
           }
 
           .sagar-modal-header {
-            padding: 17px 16px 14px;
+            padding: 16px 18px 14px;
+          }
+
+          .sagar-modal-heading h2 {
+            font-size: 16px;
+          }
+
+          .sagar-modal-heading p {
+            font-size: 12.5px;
+          }
+
+          .sagar-modal-close {
+            width: 36px;
+            height: 36px;
+            flex: 0 0 36px;
           }
 
           .sagar-modal-body {
-            padding: 16px;
+            padding: 18px;
+            font-size: 13.5px;
           }
 
           .sagar-modal-footer {
-            padding: 12px 16px;
+            padding: 14px 18px;
+            gap: 8px;
+          }
+        }
+
+        @keyframes sagar-sheet-in {
+          from {
+            transform: translateY(100%);
+          }
+          to {
+            transform: translateY(0);
           }
         }
       `}</style>

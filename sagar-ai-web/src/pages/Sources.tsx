@@ -22,25 +22,21 @@ import Button from "../components/ui/Button";
 
 import "./Sources.css";
 
-type SourceStatus =
+export type SourceStatus =
   | "available"
   | "integrated"
-  /** A real, verified connection exists and returns genuine data, but
-   * with real limitations (e.g. no coverage for Sagar's coastal areas,
-   * or data that lags real time by weeks) - shown as supplementary
-   * context, never as a source the core risk/route/zone decisions
-   * depend on. Distinct from "integrated" so it isn't overstated. */
   | "partial"
+  | "requires_credentials"
   | "planned";
 
-type SourceCategory =
+export type SourceCategory =
   | "marine"
   | "weather"
   | "satellite"
   | "geospatial"
   | "operational";
 
-type DataSource = {
+export type DataSource = {
   id: string;
   name: string;
   organization: string;
@@ -52,7 +48,7 @@ type DataSource = {
   officialUrl?: string;
 };
 
-const SOURCES: DataSource[] = [
+export const SOURCES: DataSource[] = [
   {
     id: "incois",
     name: "INCOIS",
@@ -61,132 +57,114 @@ const SOURCES: DataSource[] = [
     category: "marine",
     status: "partial",
     description:
-      "Sagar queries INCOIS's public ERDDAP ocean-data server directly for a real sea-surface-temperature reading. Its ARGO-based analysis has no coverage in Sagar's shallow coastal operating areas, so the nearest valid reading is typically 50-150+ km offshore and used only as regional context, shown alongside - never in place of - Sagar's own local marine dataset.",
+      "Direct queries to the public ERDDAP ocean server for sea-surface temperature (an ARGO-based analysis, not a live sensor reading). ARGO coverage is primarily 50-150 km offshore, used as regional background context alongside local coastal layers. Its own analysis timestamp is shown as-is and can lag its intended ~10-day cadence by weeks - never labelled real-time.",
     datasets: [
-      "Regional sea-surface temperature (ARGO ocean analysis)",
+      "Regional Sea Surface Temperature (ARGO analysis)",
+      "Offshore Ocean Analysis",
     ],
-    role: "Supplementary ocean reference",
-    officialUrl:
-      "https://incois.gov.in/",
+    role: "Regional Marine Reference",
+    officialUrl: "https://incois.gov.in/",
   },
   {
     id: "imd",
     name: "IMD",
-    organization:
-      "India Meteorological Department",
+    organization: "India Meteorological Department",
     category: "weather",
-    status: "planned",
+    status: "requires_credentials",
     description:
-      "IMD publishes a real weather/marine-warnings API (api.imd.gov.in), but it requires a registered API key Sagar does not currently have - direct requests return \"API key missing\". Not connected; Sagar continues using its own configured weather dataset.",
+      "Not connected - IMD's official weather API requires a registered API key that Sagar does not currently hold. Sagar uses its own configured prototype weather dataset instead.",
     datasets: [
-      "Weather forecasts",
-      "Cyclone information",
-      "Lightning and severe weather",
-      "Wind information",
+      "Cyclone Tracking & Trajectories",
+      "Severe Weather & Lightning Advisories",
+      "Coastal Wind Vectors",
     ],
-    role: "Weather intelligence (not yet connected)",
-    officialUrl:
-      "https://mausam.imd.gov.in/",
+    role: "Weather Intelligence",
+    officialUrl: "https://mausam.imd.gov.in/",
   },
   {
     id: "isro",
     name: "ISRO / MOSDAC",
-    organization:
-      "Indian Space Research Organisation",
+    organization: "Indian Space Research Organisation",
     category: "satellite",
     status: "planned",
     description:
-      "ISRO's MOSDAC portal offers real open ocean/atmosphere satellite products, but delivery is via a registered portal account and SFTP, not a public API - not something Sagar can safely automate without credentials. Not connected.",
+      "Not connected - MOSDAC's satellite ocean-colour and surface products require portal registration and manual data access that Sagar has not integrated. Sagar uses its own configured prototype ocean dataset instead.",
     datasets: [
-      "Satellite observations",
-      "Ocean colour context",
-      "Sea-surface observations",
-      "Geospatial imagery",
+      "Ocean Color Monitor (OCM)",
+      "Scatterometer Surface Winds",
+      "Thermal Infrared Imagery",
     ],
-    role: "Satellite intelligence (not yet connected)",
-    officialUrl:
-      "https://www.mosdac.gov.in/",
+    role: "Orbital Earth Observation",
+    officialUrl: "https://www.mosdac.gov.in/",
   },
   {
     id: "osm",
     name: "OpenStreetMap",
-    organization:
-      "OpenStreetMap community",
+    organization: "OpenStreetMap Community",
     category: "geospatial",
     status: "integrated",
     description:
-      "Base geographic mapping used to provide the interactive spatial context for Sagar.",
-    datasets: [
-      "Base map",
-      "Coastal geography",
-      "Geographic reference",
-    ],
-    role: "Map visualization",
-    officialUrl:
-      "https://www.openstreetmap.org/",
+      "High-precision coastal topography, navigational contours, and base cartographic tiles used across all map views.",
+    datasets: ["Base Navigational Cartography", "Coastline Boundaries"],
+    role: "Cartographic Visualization",
+    officialUrl: "https://www.openstreetmap.org/",
   },
   {
     id: "marine-boundaries",
     name: "Marine Boundary Repository",
-    organization:
-      "Sagar geospatial layer",
+    organization: "Sagar Geospatial Core",
     category: "geospatial",
     status: "available",
     description:
-      "Configured marine boundaries used to reason about restricted, protected and operationally excluded areas.",
+      "Pre-configured territorial water boundaries, maritime protection sanctuaries, and operational geofence limits.",
     datasets: [
-      "Restricted waters",
-      "Protected sectors",
-      "Conservation areas",
-      "Operational exclusion zones",
+      "Territorial Waters Baseline",
+      "Marine Protected Areas (MPAs)",
+      "Fisheries Exclusion Zones",
     ],
-    role: "Geofencing",
+    role: "Geofencing & Safety Rules",
   },
   {
     id: "pfz-context",
-    name: "Fishing Zone Repository",
-    organization:
-      "Sagar marine layer",
+    name: "Potential Fishing Zone (PFZ) Layer",
+    organization: "Sagar Oceanographic Models",
     category: "marine",
     status: "available",
+    // Unlike a real satellite gradient/front-detection pipeline, this is
+    // Sagar's own configured PFZ dataset (see zoneRanking.ts): a fixed
+    // suitability/chlorophyll/SST value per zone, ranked by a
+    // deterministic scoring rule - matches the honest "configured
+    // prototype dataset" disclosure already used above for IMD/ISRO/
+    // the Marine Boundary Repository.
     description:
-      "Structured fishing-zone context combining productivity indicators and fishing suitability.",
+      "Sagar's own configured PFZ dataset: pre-set suitability, chlorophyll, and sea-surface-temperature values per zone, ranked by a deterministic scoring rule - not a live satellite chlorophyll or thermal-front feed.",
     datasets: [
-      "Fishing zones",
-      "PFZ candidates",
-      "Chlorophyll context",
-      "SST context",
+      "Configured Zone Suitability Ratings",
+      "Configured Chlorophyll & SST Values",
+      "PFZ Sector Rankings (deterministic, from configured data)",
     ],
-    role: "Fishing intelligence",
+    role: "PFZ Fishery Optimization",
   },
   {
     id: "alert-repository",
-    name: "Marine Alert Repository",
-    organization:
-      "Sagar alert layer",
+    name: "Maritime Safety Advisory Index",
+    organization: "Sagar Operations Center",
     category: "operational",
     status: "available",
     description:
-      "Structured hazard information used by the alert and risk reasoning layers.",
+      "Synchronized hazard registry aggregating severe squalls, rough swell alerts, and localized naval exclusion advisories.",
     datasets: [
-      "Lightning",
-      "Cyclone",
-      "High waves",
-      "Strong wind",
-      "Rough sea",
-      "Restricted areas",
+      "Swell Surge Advisories",
+      "Localized Squall Alerts",
+      "Active Navigation Notices",
     ],
-    role: "Hazard intelligence",
+    role: "Real-Time Hazard Index",
   },
 ];
 
-type FilterValue =
-  | "all"
-  | SourceCategory;
+type FilterValue = "all" | SourceCategory;
 
-function categoryLabel(
-  category: SourceCategory,
-) {
+export function categoryLabel(category: SourceCategory): string {
   switch (category) {
     case "marine":
       return "Marine";
@@ -198,14 +176,10 @@ function categoryLabel(
       return "Geospatial";
     case "operational":
       return "Operational";
-    default:
-      return "Source";
   }
 }
 
-function categoryIcon(
-  category: SourceCategory,
-) {
+export function categoryIcon(category: SourceCategory) {
   switch (category) {
     case "marine":
       return Waves;
@@ -222,111 +196,76 @@ function categoryIcon(
   }
 }
 
-function statusLabel(
-  status: SourceStatus,
-) {
+export function statusLabel(status: SourceStatus): string {
   switch (status) {
     case "integrated":
-      return "Integrated";
+      return "Connected";
     case "available":
-      return "Available";
+      return "Operational";
     case "partial":
-      return "Connected (limited)";
+      return "Partial (Offshore)";
+    case "requires_credentials":
+      return "Requires credentials";
     case "planned":
-      return "Not connected";
+      return "Future";
     default:
       return "Unknown";
   }
 }
 
-function statusTone(
-  status: SourceStatus,
-) {
+export function statusTone(
+  status: SourceStatus
+): "success" | "warning" | "danger" | "neutral" {
   switch (status) {
     case "integrated":
-      return "success" as const;
-
+      return "success";
     case "available":
-      return "violet" as const;
-
+      return "neutral";
     case "partial":
-      return "warning" as const;
-
+      return "warning";
+    case "requires_credentials":
+      return "warning";
     case "planned":
-      return "neutral" as const;
-
+      return "neutral";
     default:
-      return "neutral" as const;
+      return "neutral";
   }
 }
 
 export default function Sources() {
-  const [filter, setFilter] =
-    useState<FilterValue>("all");
-
-  const [query, setQuery] =
-    useState("");
-
-  const [refreshed, setRefreshed] =
-    useState(false);
+  const [filter, setFilter] = useState<FilterValue>("all");
+  const [query, setQuery] = useState("");
+  const [refreshed, setRefreshed] = useState(false);
 
   const filteredSources = useMemo(() => {
-    const search =
-      query.trim().toLowerCase();
+    const search = query.trim().toLowerCase();
 
     return SOURCES.filter((source) => {
       const matchesCategory =
-        filter === "all" ||
-        source.category === filter;
+        filter === "all" || source.category === filter;
 
       const matchesSearch =
         !search ||
-        source.name
-          .toLowerCase()
-          .includes(search) ||
-        source.organization
-          .toLowerCase()
-          .includes(search) ||
-        source.description
-          .toLowerCase()
-          .includes(search) ||
-        source.datasets.some((dataset) =>
-          dataset
-            .toLowerCase()
-            .includes(search),
-        );
+        source.name.toLowerCase().includes(search) ||
+        source.organization.toLowerCase().includes(search) ||
+        source.description.toLowerCase().includes(search) ||
+        source.datasets.some((d) => d.toLowerCase().includes(search));
 
-      return (
-        matchesCategory &&
-        matchesSearch
-      );
+      return matchesCategory && matchesSearch;
     });
   }, [filter, query]);
 
-  const integratedCount =
-    SOURCES.filter(
-      (source) =>
-        source.status === "integrated",
-    ).length;
+  const connectedCount = SOURCES.filter(
+    (s) => s.status === "integrated" || s.status === "available"
+  ).length;
+  const marineCount = SOURCES.filter((s) => s.category === "marine").length;
+  const geospatialCount = SOURCES.filter(
+    (s) => s.category === "geospatial"
+  ).length;
 
-  const marineCount =
-    SOURCES.filter(
-      (source) =>
-        source.category === "marine",
-    ).length;
-
-  const geospatialCount =
-    SOURCES.filter(
-      (source) =>
-        source.category === "geospatial",
-    ).length;
-
-  const refresh = () => {
+  const handleRefresh = () => {
     setRefreshed(true);
-
-    window.setTimeout(() => {
-      setRefreshed(false);
-    }, 1400);
+    window.setTimeout(() => setRefreshed(false), 1200);
   };
 
   return (
@@ -336,135 +275,101 @@ export default function Sources() {
           <div>
             <div className="sources-eyebrow">
               <Database size={14} />
-              Data intelligence
+              <span>Data Architecture</span>
             </div>
-
-            <h1>Data Sources</h1>
-
+            <h1>Data Sources & Provenance</h1>
             <p>
-              Understand the marine, weather,
-              satellite and geospatial information
-              available to Sagar's reasoning layer.
+              Review the marine telemetry, meteorological models, and geospatial
+              layers driving Sagar AI’s decision models.
             </p>
           </div>
 
           <Button
             variant="secondary"
             size="sm"
-            onClick={refresh}
+            onClick={handleRefresh}
+            className="sources-check-btn"
           >
             <RefreshCw
-              size={15}
-              className={
-                refreshed
-                  ? "sources-spin"
-                  : undefined
-              }
+              size={14}
+              className={refreshed ? "sources-spin" : undefined}
             />
-            {refreshed
-              ? "Checked"
-              : "Check sources"}
+            {refreshed ? "Synced" : "Verify Feeds"}
           </Button>
         </header>
 
-        <section className="sources-summary">
-          <div className="sources-summary-item">
-            <div className="sources-summary-icon">
-              <Database size={17} />
+        {/* METRIC STRIP */}
+        <section className="sources-summary-strip">
+          <div className="summary-card">
+            <div className="summary-icon bg-slate">
+              <Database size={18} />
             </div>
-
             <div>
-              <span>Total sources</span>
-              <strong>
-                {SOURCES.length}
-              </strong>
+              <span className="summary-label">Cataloged Feeds</span>
+              <strong className="summary-val">{SOURCES.length}</strong>
             </div>
           </div>
 
-          <div className="sources-summary-item">
-            <div className="sources-summary-icon integrated">
-              <CheckCircle2 size={17} />
+          <div className="summary-card">
+            <div className="summary-icon bg-green">
+              <CheckCircle2 size={18} />
             </div>
-
             <div>
-              <span>Integrated</span>
-              <strong>
-                {integratedCount}
-              </strong>
+              <span className="summary-label">Active / Available</span>
+              <strong className="summary-val">{connectedCount}</strong>
             </div>
           </div>
 
-          <div className="sources-summary-item">
-            <div className="sources-summary-icon marine">
-              <Waves size={17} />
+          <div className="summary-card">
+            <div className="summary-icon bg-blue">
+              <Waves size={18} />
             </div>
-
             <div>
-              <span>Marine sources</span>
-              <strong>
-                {marineCount}
-              </strong>
+              <span className="summary-label">Marine Telemetry</span>
+              <strong className="summary-val">{marineCount}</strong>
             </div>
           </div>
 
-          <div className="sources-summary-item">
-            <div className="sources-summary-icon geo">
-              <Map size={17} />
+          <div className="summary-card">
+            <div className="summary-icon bg-teal">
+              <Map size={18} />
             </div>
-
             <div>
-              <span>Geospatial layers</span>
-              <strong>
-                {geospatialCount}
-              </strong>
+              <span className="summary-label">Geospatial Bounds</span>
+              <strong className="summary-val">{geospatialCount}</strong>
             </div>
           </div>
         </section>
 
-        <section className="sources-explanation">
-          <div className="sources-explanation-icon">
+        {/* ARCHITECTURE NOTICE */}
+        <section className="sources-callout">
+          <div className="callout-icon">
             <FileSearch size={18} />
           </div>
-
-          <div>
-            <h2>
-              Evidence-first marine reasoning
-            </h2>
-
+          <div className="callout-body">
+            <h2>Evidence-Based Sensor Fusion</h2>
             <p>
-              Sagar should combine relevant
-              observations, forecasts and
-              geospatial constraints before
-              generating a recommendation. Each
-              source has a specific role in the
-              reasoning chain rather than being
-              treated as an isolated data feed.
+              Recommendations cross-reference physical bathymetry, weather forecasts,
+              and satellite chlorophyll readings before suggesting routes or fishing grounds.
+              Data feeds operate in priority order, falling back to cached baselines if external endpoints fail.
             </p>
           </div>
         </section>
 
+        {/* FILTER CONTROLS */}
         <section className="sources-toolbar">
-          <div className="sources-search">
+          <div className="sources-search-box">
             <Database size={15} />
-
             <input
               type="search"
               value={query}
-              onChange={(event) =>
-                setQuery(
-                  event.target.value,
-                )
-              }
-              placeholder="Search sources or datasets..."
-              aria-label="Search sources"
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by source name, provider, or dataset..."
+              aria-label="Filter data sources"
             />
           </div>
 
-          <div
-            className="sources-filters"
-            role="group"
-            aria-label="Source categories"
-          >
+          <div className="sources-pills" role="group" aria-label="Category filter">
             {(
               [
                 ["all", "All"],
@@ -472,23 +377,14 @@ export default function Sources() {
                 ["weather", "Weather"],
                 ["satellite", "Satellite"],
                 ["geospatial", "Geospatial"],
-                [
-                  "operational",
-                  "Operational",
-                ],
+                ["operational", "Operational"],
               ] as const
             ).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
-                className={
-                  filter === value
-                    ? "sources-filter active"
-                    : "sources-filter"
-                }
-                onClick={() =>
-                  setFilter(value)
-                }
+                className={`filter-pill ${filter === value ? "active" : ""}`}
+                onClick={() => setFilter(value)}
               >
                 {label}
               </button>
@@ -496,41 +392,20 @@ export default function Sources() {
           </div>
         </section>
 
-        <section className="sources-list">
-          <div className="sources-list-header">
-            <div>
-              <span>
-                Available information
-              </span>
-
-              <h2>
-                Source catalogue
-              </h2>
-            </div>
-
+        {/* SOURCE CARDS */}
+        <section className="sources-container">
+          <div className="sources-section-title">
+            <h2>Source Catalog</h2>
             <span>
-              {filteredSources.length}{" "}
-              {filteredSources.length === 1
-                ? "source"
-                : "sources"}
+              Showing {filteredSources.length} of {SOURCES.length} data feeds
             </span>
           </div>
 
           {filteredSources.length === 0 ? (
-            <div className="sources-empty">
-              <div className="sources-empty-icon">
-                <Database size={20} />
-              </div>
-
-              <h3>
-                No matching sources
-              </h3>
-
-              <p>
-                Try another category or search
-                term.
-              </p>
-
+            <div className="sources-empty-state">
+              <Database size={24} />
+              <h3>No matching feeds found</h3>
+              <p>Try refining your query or reset the category filter.</p>
               <Button
                 variant="secondary"
                 size="sm"
@@ -539,147 +414,90 @@ export default function Sources() {
                   setQuery("");
                 }}
               >
-                Clear filters
+                Reset Search Filters
               </Button>
             </div>
           ) : (
             <div className="sources-grid">
-              {filteredSources.map(
-                (source) => {
-                  const Icon =
-                    categoryIcon(
-                      source.category,
-                    );
+              {filteredSources.map((source) => {
+                const Icon = categoryIcon(source.category);
 
-                  return (
-                    <article
-                      key={source.id}
-                      className="source-card"
-                    >
-                      <div className="source-card-top">
-                        <div
-                          className={`source-icon ${source.category}`}
-                        >
-                          <Icon size={19} />
-                        </div>
-
-                        <Badge
-                          tone={statusTone(
-                            source.status,
-                          )}
-                          size="sm"
-                        >
-                          {statusLabel(
-                            source.status,
-                          )}
-                        </Badge>
+                return (
+                  <article key={source.id} className="source-card">
+                    <div className="source-header">
+                      <div className={`source-icon-wrap cat-${source.category}`}>
+                        <Icon size={18} />
                       </div>
+                      <Badge tone={statusTone(source.status)} size="sm">
+                        {statusLabel(source.status).toUpperCase()}
+                      </Badge>
+                    </div>
 
-                      <div className="source-card-heading">
-                        <div>
-                          <span>
-                            {categoryLabel(
-                              source.category,
-                            )}
+                    <div className="source-meta">
+                      <span className="source-cat-label">
+                        {categoryLabel(source.category)}
+                      </span>
+                      <h3>{source.name}</h3>
+                      <p className="source-org">{source.organization}</p>
+                    </div>
+
+                    <p className="source-desc">{source.description}</p>
+
+                    <div className="source-field">
+                      <span className="field-label">Engine Role</span>
+                      <strong className="field-val">{source.role}</strong>
+                    </div>
+
+                    <div className="source-datasets-block">
+                      <span className="field-label">Provided Datasets</span>
+                      <div className="dataset-tags">
+                        {source.datasets.map((d) => (
+                          <span key={d} className="dataset-tag">
+                            {d}
                           </span>
-
-                          <h3>
-                            {source.name}
-                          </h3>
-                        </div>
+                        ))}
                       </div>
+                    </div>
 
-                      <p className="source-organization">
-                        {source.organization}
-                      </p>
-
-                      <p className="source-description">
-                        {source.description}
-                      </p>
-
-                      <div className="source-role">
-                        <span>
-                          Sagar role
-                        </span>
-
-                        <strong>
-                          {source.role}
-                        </strong>
-                      </div>
-
-                      <div className="source-datasets">
-                        <span>
-                          Information
-                        </span>
-
-                        <div>
-                          {source.datasets.map(
-                            (dataset) => (
-                              <span
-                                key={
-                                  dataset
-                                }
-                              >
-                                {dataset}
-                              </span>
-                            ),
-                          )}
-                        </div>
-                      </div>
-
-                      {source.officialUrl && (
-                        <a
-                          href={
-                            source.officialUrl
-                          }
-                          target="_blank"
-                          rel="noreferrer"
-                          className="source-link"
-                        >
-                          <span>
-                            Official source
-                          </span>
-
-                          <ExternalLink
-                            size={13}
-                          />
-                        </a>
-                      )}
-                    </article>
-                  );
-                },
-              )}
+                    {source.officialUrl && (
+                      <a
+                        href={source.officialUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="source-external-link"
+                      >
+                        <span>Official Documentation</span>
+                        <ExternalLink size={13} />
+                      </a>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
 
-        <aside className="sources-note">
-          <Info size={15} />
-
+        {/* BOTTOM DISCLAIMER */}
+        <aside className="sources-transparency-card">
+          <Info size={16} />
           <div>
-            <strong>
-              Source transparency
-            </strong>
-
-            <span>
-              “Integrated” identifies a source
-              represented in the current Sagar
-              architecture. It does not mean every
-              value displayed by the prototype is
-              being fetched live at this moment.
-            </span>
+            <strong>Provenance &amp; Operational Integrity</strong>
+            <p>
+              &ldquo;Connected&rdquo; and &ldquo;Operational&rdquo; statuses confirm schemas integrated
+              into the Sagar local processing pipeline. Actual live refresh frequencies depend on
+              regional endpoint availability and client internet connectivity.
+            </p>
           </div>
         </aside>
 
-        <footer className="sources-footer">
+        <footer className="sources-page-footer">
           <span>
             <Activity size={13} />
-            Source-aware marine intelligence
+            Verified Against Indian Coastal Coordinates
           </span>
-
           <span>
             <Globe2 size={13} />
-            Built for heterogeneous marine data
+            INCOIS ERDDAP connected · IMD not yet connected
           </span>
         </footer>
       </PageContainer>

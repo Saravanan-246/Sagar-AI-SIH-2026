@@ -1,0 +1,121 @@
+/* ==========================================================================
+   Chat Welcome Screen & Presets
+   ========================================================================== */
+
+.chat-welcome {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 48px 16px 24px;
+}
+
+.chat-welcome-inner {
+  width: min(100%, 600px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.chat-welcome-icon {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--chat-accent-soft, rgba(15, 110, 100, 0.1));
+  color: var(--chat-accent, #0f6e64);
+  margin-bottom: 16px;
+}
+
+.chat-welcome-title {
+  margin: 0;
+  color: var(--chat-text, #14202b);
+  font-size: 26px;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.chat-welcome-description {
+  max-width: 460px;
+  margin: 6px 0 0;
+  color: var(--chat-text-muted, #5b6b7a);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.chat-suggestions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.chat-suggestion {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--chat-border, #e3e7eb);
+  border-radius: 12px;
+  background: var(--chat-surface, #ffffff);
+  color: var(--chat-text-secondary, #384652);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.chat-suggestion:hover {
+  border-color: var(--chat-border-strong, #d3dae0);
+  background: var(--chat-surface-alt, #f6f8fa);
+  box-shadow: 0 4px 10px rgba(14, 32, 43, 0.06);
+  transform: translateY(-1px);
+}
+
+.chat-suggestion:active {
+  transform: translateY(0);
+}
+
+.chat-suggestion span:first-child {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.chat-suggestion-arrow {
+  flex: 0 0 auto;
+  color: var(--chat-text-faint, #8894a0);
+  font-size: 15px;
+  line-height: 1;
+}
+
+@media (max-width: 700px) {
+  .chat-welcome {
+    padding: 36px 12px 20px;
+  }
+
+  .chat-welcome-title {
+    font-size: 22px;
+  }
+
+  .chat-welcome-description {
+    max-width: 320px;
+    font-size: 13px;
+  }
+
+  .chat-suggestions {
+    margin-top: 18px;
+  }
+}
+
+@media (max-width: 420px) {
+  .chat-suggestion span:first-child {
+    font-size: 12px;
+  }
+}

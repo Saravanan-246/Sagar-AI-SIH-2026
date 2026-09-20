@@ -15,9 +15,29 @@ import type { MarineArea } from "../../types/marine";
 import type { RoutePlan } from "../../types/route";
 import type { Scenario, ScenarioResult } from "../../types/scenario";
 
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
-  "http://localhost:4000";
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL as
+  | string
+  | undefined;
+
+/*
+ * A production build must never silently talk to http://localhost:4000 -
+ * that's only ever reachable from the machine that built/served the
+ * bundle, never from a real user's browser, so a missing config would
+ * otherwise fail in a confusing, hard-to-diagnose way (every request
+ * quietly rejected) instead of a clear one. Development keeps the
+ * localhost fallback (the committed .env already sets
+ * VITE_API_BASE_URL explicitly, so this only matters as a safety net
+ * when running outside that setup, e.g. `vite dev` with no .env file).
+ */
+if (import.meta.env.PROD && !configuredApiBaseUrl) {
+  throw new Error(
+    "Sagar AI configuration error: VITE_API_BASE_URL is not set for this production build. " +
+      "Refusing to fall back to http://localhost:4000, which is not reachable from a deployed app. " +
+      "Set VITE_API_BASE_URL to the deployed backend's URL and rebuild."
+  );
+}
+
+const API_BASE_URL = configuredApiBaseUrl ?? "http://localhost:4000";
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -97,6 +117,10 @@ export interface DataStatus {
   mode: "prototype";
   note: string;
   localSources: string[];
+  /** External sources with a genuinely working adapter (e.g. INCOIS's
+   * public ERDDAP server) - distinct from plannedLiveSources, which are
+   * not connected at all yet. */
+  connectedExternalSources: Array<{ name: string; provider: string }>;
   plannedLiveSources: Array<{ name: string; provider: string }>;
   /** Present only when a real external source actually returned data
    * for this response. */
@@ -354,6 +378,168 @@ export async function runScenarioRemote(
   );
 
   return data.result;
+}
+
+/**
+ * Open-Meteo-sourced marine model grid (waves/current/SST/tide/wind)
+ * for the map's optional layers - see marineModel.routes.ts /
+ * openMeteoAdapter.ts on the backend. Deliberately a distinct shape
+ * from SagarChatResponse's DataStatus: this is forecast/model data,
+ * never labelled live/observed, and never fed into risk/route/zone
+ * scoring.
+ */
+export interface MarineModelGridPoint {
+  latitude: number;
+  longitude: number;
+
+  waveHeight?: number;
+  waveDirection?: number;
+  wavePeriod?: number;
+  windWaveHeight?: number;
+  swellHeight?: number;
+  swellDirection?: number;
+  swellPeriod?: number;
+
+  currentVelocity?: number;
+  currentDirection?: number;
+
+  seaSurfaceTemperature?: number;
+  seaLevelHeight?: number;
+
+  windSpeed?: number;
+  windDirection?: number;
+
+  provider: "Open-Meteo";
+  model: string;
+
+  generatedAt?: string;
+  fetchedAt: string;
+
+  freshness: FreshnessStatus;
+  confidence: ConfidenceAssessment;
+}
+
+export interface MarineModelGridResponse {
+  status: "success" | "empty" | "failed";
+  provider: "Open-Meteo";
+  points: MarineModelGridPoint[];
+  bounds: {
+    minLatitude: number;
+    maxLatitude: number;
+    minLongitude: number;
+    maxLongitude: number;
+  };
+  generatedAt: string | null;
+  fetchedAt: string;
+  cacheTtlMs: number;
+  attribution: string;
+  message?: string;
+}
+
+export async function fetchMarineModelGrid(): Promise<MarineModelGridResponse> {
+  const { data } = await apiClient.get<MarineModelGridResponse>(
+    "/api/marine-model/grid"
+  );
+
+  return data;
+}
+
+export interface FeatureContribution {
+  feature: string;
+  value: number;
+  unit: string;
+  contribution: number;
+  direction: "positive" | "negative" | "neutral";
+  rank: number;
+}
+
+export interface SplitMetrics {
+  mae: number;
+  rmse: number;
+  r2: number;
+}
+
+export interface PermutationImportanceEntry {
+  feature: string;
+  label: string;
+  importance: number;
+  rank: number;
+}
+
+export interface SstModelInfo {
+  algorithm: string;
+  trainedAt: string;
+  latitude: number;
+  longitude: number;
+  horizonHours: number;
+  featureNames: readonly string[];
+  dataWindow: { start: string; end: string };
+  trainingPeriod: { start: string; end: string; rows: number };
+  validationPeriod: { start: string; end: string; rows: number };
+  testPeriod: { start: string; end: string; rows: number };
+  metrics: { train: SplitMetrics; validation: SplitMetrics; test: SplitMetrics };
+  baseline: { description: string; test: SplitMetrics };
+  validated: boolean;
+  validationLabel: "MODEL VALIDATED" | "MODEL NOT VALIDATED";
+  validationReason: string;
+  permutationImportance: PermutationImportanceEntry[];
+  validationResidualStdDev: number;
+  diagnostics: {
+    totalHourlyRowsFetched: number;
+    droppedMissingTarget: number;
+    droppedMissingFeature: number;
+    usableRows: number;
+  };
+}
+
+export interface SstDataReadiness {
+  status: "insufficient";
+  latitude: number;
+  longitude: number;
+  historicalWindow: { start: string; end: string };
+  totalHourlyRowsFetched: number;
+  usableRows: number;
+  minimumRequiredRows: number;
+  reason: string;
+}
+
+export interface SstPredictionSuccess {
+  status: "success";
+  location: { latitude: number; longitude: number };
+  currentSst: number;
+  sstObservedAt: string;
+  sstFetchedAt: string;
+  predictedSst: number;
+  predictionHorizon: string;
+  predictionGeneratedAt: string;
+  uncertainty: null | { lower: number; upper: number; method: string };
+  featureContributions: FeatureContribution[];
+  contributionMethod: string;
+  modelInfo: SstModelInfo;
+  limitations: string[];
+  sourceMetadata: {
+    weatherProvider: string;
+    weatherDataset: string;
+    weatherType: string;
+    marineProvider: string;
+    marineDataset: string;
+    marineType: string;
+    attribution: string;
+  };
+}
+
+export type SstPredictionResult =
+  | SstPredictionSuccess
+  | { status: "insufficient_data"; data: SstDataReadiness };
+
+export async function fetchSstPrediction(
+  latitude: number,
+  longitude: number
+): Promise<SstPredictionResult> {
+  const { data } = await apiClient.get<SstPredictionResult>(
+    `/api/research/sst/predict?latitude=${latitude}&longitude=${longitude}`
+  );
+  return data;
 }
 
 export default apiClient;

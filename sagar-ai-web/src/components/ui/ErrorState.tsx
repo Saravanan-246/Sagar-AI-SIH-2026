@@ -22,7 +22,7 @@ export default function ErrorState({
   action,
 }: ErrorStateProps) {
   const handleRetry = onRetry ?? retry;
-  // Safe helper to render action whether it is JSX or an object with {label, onClick}
+
   const renderAction = () => {
     if (!action) return null;
 
@@ -30,13 +30,13 @@ export default function ErrorState({
       typeof action === "object" &&
       action !== null &&
       "label" in action &&
-      !("$$typeof" in (action as any))
+      !("$$typeof" in (action as Record<string, unknown>))
     ) {
       const actionObj = action as ActionObject;
       return (
         <button
           type="button"
-          className="sagar-error-retry"
+          className="sagar-error-action-btn"
           onClick={actionObj.onClick}
         >
           {actionObj.label}
@@ -50,8 +50,8 @@ export default function ErrorState({
   return (
     <>
       <section className="sagar-error-state" role="alert">
-        <div className="sagar-error-icon">
-          <AlertCircle size={21} strokeWidth={2} />
+        <div className="sagar-error-icon" aria-hidden="true">
+          <AlertCircle size={22} strokeWidth={1.8} />
         </div>
 
         <h2 className="sagar-error-title">{title}</h2>
@@ -66,7 +66,7 @@ export default function ErrorState({
                 className="sagar-error-retry"
                 onClick={handleRetry}
               >
-                <RefreshCw size={15} strokeWidth={2} />
+                <RefreshCw size={14} strokeWidth={2} />
                 Try again
               </button>
             )}
@@ -85,91 +85,178 @@ export default function ErrorState({
           align-items: center;
           justify-content: center;
           box-sizing: border-box;
-          padding: 32px 20px;
-          border: 1px solid #e6e4ec;
-          border-radius: 18px;
-          background: #ffffff;
+          padding: 36px 20px;
           text-align: center;
+          border: 1px solid #fecaca;
+          border-radius: 14px;
+          background: #fef2f2;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
 
         .sagar-error-icon {
           width: 48px;
           height: 48px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          border-radius: 15px;
-          background: #fcebec;
-          color: #d64545;
+          border-radius: 12px;
+          background: #fee2e2;
+          border: 1px solid #fca5a5;
+          color: #dc2626;
+          box-shadow: 0 1px 2px rgba(220, 38, 38, 0.08);
         }
 
         .sagar-error-title {
-          margin: 15px 0 0;
-          color: #16151d;
-          font-size: 16px;
-          line-height: 22px;
-          font-weight: 800;
+          margin: 14px 0 0;
+          color: #991b1b;
+          font-size: 15px;
+          font-weight: 600;
+          line-height: 1.4;
+          letter-spacing: -0.01em;
         }
 
         .sagar-error-message {
-          max-width: 430px;
-          margin: 7px 0 0;
-          color: #676572;
-          font-size: 12px;
-          line-height: 19px;
+          max-width: 380px;
+          margin: 6px 0 0;
+          color: #7f1d1d;
+          font-size: 13px;
+          line-height: 1.5;
+          text-wrap: balance;
         }
 
         .sagar-error-actions {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
-          margin-top: 17px;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 18px;
         }
 
         .sagar-error-retry {
-          min-height: 38px;
+          appearance: none;
+          -webkit-appearance: none;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 7px;
-          padding: 0 13px;
-          border: 1px solid #6d28d9;
-          border-radius: 12px;
-          background: #6d28d9;
+          height: 38px;
+          padding: 0 16px;
+          border: 1px solid #b91c1c;
+          border-radius: 8px;
+          background: #dc2626;
           color: #ffffff;
-          font: inherit;
-          font-size: 11px;
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 600;
           line-height: 1;
-          font-weight: 700;
+          letter-spacing: -0.01em;
+          white-space: nowrap;
           cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          box-shadow: 0 1px 2px rgba(220, 38, 38, 0.16);
           transition:
-            background-color 160ms ease,
-            transform 160ms ease;
+            background-color 140ms ease,
+            border-color 140ms ease,
+            transform 100ms ease,
+            box-shadow 140ms ease;
         }
 
         .sagar-error-retry:hover {
-          background: #5b21b6;
+          background: #b91c1c;
+          border-color: #991b1b;
+          box-shadow: 0 2px 6px rgba(220, 38, 38, 0.22);
         }
 
         .sagar-error-retry:active {
-          transform: scale(0.98);
+          transform: scale(0.985);
         }
 
-        @media (max-width: 700px) {
+        .sagar-error-retry:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #dc2626;
+        }
+
+        .sagar-error-action-btn {
+          appearance: none;
+          -webkit-appearance: none;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          height: 38px;
+          padding: 0 16px;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          background: #ffffff;
+          color: #1e293b;
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 600;
+          line-height: 1;
+          letter-spacing: -0.01em;
+          white-space: nowrap;
+          cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+          transition:
+            background-color 140ms ease,
+            border-color 140ms ease,
+            transform 100ms ease;
+        }
+
+        .sagar-error-action-btn:hover {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+        }
+
+        .sagar-error-action-btn:active {
+          transform: scale(0.985);
+        }
+
+        .sagar-error-action-btn:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #7c3aed;
+        }
+
+        @media (max-width: 640px) {
           .sagar-error-state {
-            min-height: 210px;
-            padding: 26px 16px;
-            border-radius: 16px;
+            min-height: 200px;
+            padding: 28px 16px;
+            border-radius: 12px;
+          }
+
+          .sagar-error-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
           }
 
           .sagar-error-title {
-            font-size: 15px;
+            font-size: 14px;
           }
 
           .sagar-error-message {
-            font-size: 11px;
-            line-height: 18px;
+            font-size: 12.5px;
+            max-width: 320px;
+          }
+
+          .sagar-error-actions {
+            flex-direction: column;
+            width: 100%;
+          }
+
+          .sagar-error-retry,
+          .sagar-error-action-btn {
+            width: 100%;
+            height: 42px;
+            font-size: 13.5px;
           }
         }
       `}</style>

@@ -25,19 +25,10 @@ import { useAppStore } from "../store/appStore";
 
 import "./Profile.css";
 
-const AREA_STORAGE_KEY =
-  "sagar-ai-area";
+const AREA_STORAGE_KEY = "sagar-ai-area";
+const ALERTS_STORAGE_KEY = "sagar-ai-alert-preferences";
 
-const ALERTS_STORAGE_KEY =
-  "sagar-ai-alert-preferences";
-
-type LanguageCode =
-  | "en"
-  | "ta"
-  | "te"
-  | "ml"
-  | "kn"
-  | "hi";
+type LanguageCode = "en" | "ta" | "te" | "ml" | "kn" | "hi";
 
 type AlertPreference = {
   severeAlerts: boolean;
@@ -45,58 +36,24 @@ type AlertPreference = {
 };
 
 const languageOptions = [
-  {
-    value: "en",
-    label: "English",
-  },
-  {
-    value: "ta",
-    label: "தமிழ்",
-  },
-  {
-    value: "te",
-    label: "తెలుగు",
-  },
-  {
-    value: "ml",
-    label: "മലയാളം",
-  },
-  {
-    value: "kn",
-    label: "ಕನ್ನಡ",
-  },
-  {
-    value: "hi",
-    label: "हिन्दी",
-  },
+  { value: "en", label: "English" },
+  { value: "ta", label: "தமிழ்" },
+  { value: "te", label: "తెలుగు" },
+  { value: "ml", label: "മലയാളം" },
+  { value: "kn", label: "ಕನ್ನಡ" },
+  { value: "hi", label: "हिन्दी" },
 ];
 
 const areaOptions = [
-  {
-    value: "thoothukudi-coast",
-    label: "Thoothukudi Coast",
-  },
-  {
-    value: "central-gulf-mannar",
-    label: "Central Gulf of Mannar",
-  },
-  {
-    value: "southern-gulf-mannar",
-    label: "Southern Gulf of Mannar",
-  },
-  {
-    value: "north-gulf-mannar",
-    label: "Northern Gulf of Mannar",
-  },
+  { value: "thoothukudi-coast", label: "Thoothukudi Coast" },
+  { value: "central-gulf-mannar", label: "Central Gulf of Mannar" },
+  { value: "southern-gulf-mannar", label: "Southern Gulf of Mannar" },
+  { value: "north-gulf-mannar", label: "Northern Gulf of Mannar" },
 ];
 
-function readArea() {
+function readArea(): string {
   try {
-    return (
-      localStorage.getItem(
-        AREA_STORAGE_KEY,
-      ) ?? "thoothukudi-coast"
-    );
+    return localStorage.getItem(AREA_STORAGE_KEY) ?? "thoothukudi-coast";
   } catch {
     return "thoothukudi-coast";
   }
@@ -104,433 +61,256 @@ function readArea() {
 
 function readAlertPreferences(): AlertPreference {
   try {
-    const raw =
-      localStorage.getItem(
-        ALERTS_STORAGE_KEY,
-      );
-
+    const raw = localStorage.getItem(ALERTS_STORAGE_KEY);
     if (!raw) {
-      return {
-        severeAlerts: true,
-        geofenceAlerts: true,
-      };
+      return { severeAlerts: true, geofenceAlerts: true };
     }
-
     const parsed = JSON.parse(raw);
-
     return {
-      severeAlerts:
-        typeof parsed?.severeAlerts ===
-        "boolean"
-          ? parsed.severeAlerts
-          : true,
-      geofenceAlerts:
-        typeof parsed?.geofenceAlerts ===
-        "boolean"
-          ? parsed.geofenceAlerts
-          : true,
+      severeAlerts: typeof parsed?.severeAlerts === "boolean" ? parsed.severeAlerts : true,
+      geofenceAlerts: typeof parsed?.geofenceAlerts === "boolean" ? parsed.geofenceAlerts : true,
     };
   } catch {
-    return {
-      severeAlerts: true,
-      geofenceAlerts: true,
-    };
+    return { severeAlerts: true, geofenceAlerts: true };
   }
 }
 
 export default function Profile() {
   const navigate = useNavigate();
 
-  const language = useAppStore(
-    (state) => state.language,
-  );
+  const language = useAppStore((state) => state.language);
+  const setLanguage = useAppStore((state) => state.setLanguage);
 
-  const setLanguage = useAppStore(
-    (state) => state.setLanguage,
-  );
-
-  const [area, setArea] =
-    useState(readArea);
-
-  const [alertPreferences, setAlertPreferences] =
-    useState<AlertPreference>(
-      readAlertPreferences,
-    );
-
-  const [saved, setSaved] =
-    useState(false);
+  const [area, setArea] = useState(readArea);
+  const [alertPreferences, setAlertPreferences] = useState<AlertPreference>(readAlertPreferences);
+  const [saved, setSaved] = useState(false);
 
   const savePreferences = () => {
     try {
-      localStorage.setItem(
-        AREA_STORAGE_KEY,
-        area,
-      );
-
-      localStorage.setItem(
-        ALERTS_STORAGE_KEY,
-        JSON.stringify(
-          alertPreferences,
-        ),
-      );
-
+      localStorage.setItem(AREA_STORAGE_KEY, area);
+      localStorage.setItem(ALERTS_STORAGE_KEY, JSON.stringify(alertPreferences));
       setSaved(true);
-
-      window.setTimeout(() => {
-        setSaved(false);
-      }, 1800);
+      window.setTimeout(() => setSaved(false), 1800);
     } catch (error) {
-      console.error(
-        "Failed to save preferences:",
-        error,
-      );
+      console.error("Failed to save preferences:", error);
     }
   };
 
   const resetPreferences = () => {
     setLanguage("en");
     setArea("thoothukudi-coast");
-
-    setAlertPreferences({
-      severeAlerts: true,
-      geofenceAlerts: true,
-    });
+    setAlertPreferences({ severeAlerts: true, geofenceAlerts: true });
 
     try {
-      localStorage.removeItem(
-        AREA_STORAGE_KEY,
-      );
-
-      localStorage.removeItem(
-        ALERTS_STORAGE_KEY,
-      );
+      localStorage.removeItem(AREA_STORAGE_KEY);
+      localStorage.removeItem(ALERTS_STORAGE_KEY);
     } catch (error) {
-      console.error(
-        "Failed to reset preferences:",
-        error,
-      );
+      console.error("Failed to reset preferences:", error);
     }
   };
 
-  const toggleAlertPreference = (
-    key: keyof AlertPreference,
-  ) => {
-    setAlertPreferences(
-      (current) => ({
-        ...current,
-        [key]: !current[key],
-      }),
-    );
+  const toggleAlertPreference = (key: keyof AlertPreference) => {
+    setAlertPreferences((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
   };
 
   return (
     <AppShell>
       <PageContainer className="profile-page">
-        <section className="profile-header">
-          <div>
-            <div className="profile-eyebrow">
-              <UserRound size={14} />
-              Workspace
+        <div className="profile-layout-container">
+          
+          {/* HEADER */}
+          <header className="profile-header">
+            <div>
+              <div className="profile-eyebrow">
+                <UserRound size={14} />
+                <span>Workspace</span>
+              </div>
+              <h1>Settings & Preferences</h1>
+              <p>Manage your localized Sagar workspace context and real-time hazard notification behavior.</p>
             </div>
+            <Badge tone="neutral" size="sm">
+              OPERATIONAL
+            </Badge>
+          </header>
 
-            <h1>Profile</h1>
-
-            <p>
-              Manage your Sagar workspace
-              preferences and marine alert
-              behaviour.
-            </p>
-          </div>
-
-          <Badge
-            tone="violet"
-            size="md"
-          >
-            Marine workspace
-          </Badge>
-        </section>
-
-        <section className="profile-identity">
-          <div className="profile-avatar">
-            <span>S</span>
-          </div>
-
-          <div className="profile-identity-content">
-            <div className="profile-name-row">
-              <h2>Sagar User</h2>
-
-              <Badge
-                tone="success"
-                size="sm"
-              >
-                Active
-              </Badge>
+          {/* IDENTITY CARD */}
+          <section className="profile-identity">
+            <div className="profile-avatar">
+              <span>S</span>
             </div>
-
-            <p>
-              Marine intelligence workspace
-            </p>
-
-            <div className="profile-identity-meta">
-              <span>
-                <Waves size={12} />
-                {APP_CONFIG.appFullName}
-              </span>
-
-              <span>
-                <ShieldCheck size={12} />
-                Decision support
-              </span>
+            <div className="profile-identity-content">
+              <div className="profile-name-row">
+                <h2>Sagar Workspace</h2>
+                <Badge tone="success" size="sm">
+                  Active
+                </Badge>
+              </div>
+              <p>Marine intelligence decision-support console</p>
+              <div className="profile-identity-meta">
+                <span>
+                  <Waves size={14} />
+                  {APP_CONFIG.appFullName}
+                </span>
+                <span>
+                  <ShieldCheck size={14} />
+                  Live INCOIS Advisory Active
+                </span>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <div className="profile-layout">
-          <main className="profile-main">
-            <section className="profile-section">
-              <div className="profile-section-heading">
-                <div className="profile-section-icon">
-                  <Settings2 size={17} />
+          {/* MAIN SETTINGS GRID */}
+          <div className="profile-grid">
+            <main className="profile-main">
+              
+              {/* PREFERENCES SECTION */}
+              <section className="profile-card">
+                <div className="profile-card-header">
+                  <div className="profile-card-icon">
+                    <Settings2 size={18} />
+                  </div>
+                  <div>
+                    <h2>Workspace Context</h2>
+                    <p>Set default parameters used by Sagar AI during consultations.</p>
+                  </div>
                 </div>
 
-                <div>
-                  <h2>Workspace preferences</h2>
-                  <p>
-                    Set the context Sagar should
-                    use for your conversations.
-                  </p>
+                <div className="profile-form-grid">
+                  <Select
+                    label="Preferred language"
+                    value={language}
+                    onChange={(event) => setLanguage(event.target.value as LanguageCode)}
+                    options={languageOptions}
+                    hint="Generates marine intelligence briefings in this dialect."
+                  />
+                  <Select
+                    label="Primary marine operating zone"
+                    value={area}
+                    onChange={(event) => setArea(event.target.value)}
+                    options={areaOptions}
+                    hint="Default operational reference point for weather and alerts."
+                  />
                 </div>
+              </section>
+
+              {/* ALERTS SECTION */}
+              <section className="profile-card">
+                <div className="profile-card-header">
+                  <div className="profile-card-icon">
+                    <Bell size={18} />
+                  </div>
+                  <div>
+                    <h2>Alert Subscriptions</h2>
+                    <p>Configure automated vessel safety and proximity alerts.</p>
+                  </div>
+                </div>
+
+                <div className="profile-preference-list">
+                  <PreferenceRow
+                    icon={Bell}
+                    title="Severe Marine Hazards"
+                    description="Immediate notification of high-risk cyclones, squalls, wave surges, and lightning advisories."
+                    enabled={alertPreferences.severeAlerts}
+                    onToggle={() => toggleAlertPreference("severeAlerts")}
+                  />
+                  <PreferenceRow
+                    icon={MapPin}
+                    title="Geofence & Boundary Warnings"
+                    description="Proximity alerts when courses approach restricted zones, international borders, or marine sanctuaries."
+                    enabled={alertPreferences.geofenceAlerts}
+                    onToggle={() => toggleAlertPreference("geofenceAlerts")}
+                  />
+                </div>
+              </section>
+
+              {/* CONTEXT STRIP */}
+              <section className="profile-card">
+                <div className="profile-card-header">
+                  <div className="profile-card-icon">
+                    <Globe2 size={18} />
+                  </div>
+                  <div>
+                    <h2>Active Session Overview</h2>
+                    <p>Current operational constraints enforced for this session.</p>
+                  </div>
+                </div>
+
+                <div className="profile-context-grid">
+                  <div className="profile-context-item">
+                    <span>Active Region</span>
+                    <strong>Gulf of Mannar</strong>
+                  </div>
+                  <div className="profile-context-item">
+                    <span>Base Zone</span>
+                    <strong>{areaOptions.find((opt) => opt.value === area)?.label ?? "Thoothukudi Coast"}</strong>
+                  </div>
+                  <div className="profile-context-item">
+                    <span>Intelligence Mode</span>
+                    <strong>Safety & Zone Ranking</strong>
+                  </div>
+                </div>
+              </section>
+
+              {/* ACTION FOOTER */}
+              <div className="profile-actions">
+                <Button variant="secondary" size="sm" onClick={resetPreferences}>
+                  <RotateCcw size={14} />
+                  Reset Defaults
+                </Button>
+                <Button variant="primary" size="sm" onClick={savePreferences}>
+                  <ShieldCheck size={14} />
+                  {saved ? "Saved Successfully" : "Save Changes"}
+                </Button>
               </div>
+            </main>
 
-              <div className="profile-form-grid">
-                <Select
-                  label="Preferred language"
-                  value={language}
-                  onChange={(event) =>
-                    setLanguage(
-                      event.target.value as LanguageCode,
-                    )
-                  }
-                  options={languageOptions}
-                  hint="Sagar can use this preference when generating responses."
-                />
-
-                <Select
-                  label="Primary marine area"
-                  value={area}
-                  onChange={(event) =>
-                    setArea(event.target.value)
-                  }
-                  options={areaOptions}
-                  hint="Used as the default context for marine queries."
-                />
-              </div>
-            </section>
-
-            <section className="profile-section">
-              <div className="profile-section-heading">
-                <div className="profile-section-icon">
-                  <Bell size={17} />
+            {/* SIDE PANEL */}
+            <aside className="profile-side">
+              <div className="profile-side-card">
+                <div className="profile-side-header">
+                  <Languages size={18} />
+                  <h3>Regional Languages</h3>
                 </div>
-
-                <div>
-                  <h2>Alert preferences</h2>
-                  <p>
-                    Control which safety signals
-                    are surfaced by the workspace.
-                  </p>
-                </div>
-              </div>
-
-              <div className="profile-preference-list">
-                <PreferenceRow
-                  icon={Bell}
-                  title="Severe marine alerts"
-                  description="Show high and critical hazards such as cyclones, lightning and rough sea conditions."
-                  enabled={
-                    alertPreferences.severeAlerts
-                  }
-                  onToggle={() =>
-                    toggleAlertPreference(
-                      "severeAlerts",
-                    )
-                  }
-                />
-
-                <PreferenceRow
-                  icon={MapPin}
-                  title="Geofence notifications"
-                  description="Surface warnings when a planned operating area approaches a configured restricted or protected boundary."
-                  enabled={
-                    alertPreferences.geofenceAlerts
-                  }
-                  onToggle={() =>
-                    toggleAlertPreference(
-                      "geofenceAlerts",
-                    )
-                  }
-                />
-              </div>
-            </section>
-
-            <section className="profile-section">
-              <div className="profile-section-heading">
-                <div className="profile-section-icon">
-                  <Globe2 size={17} />
-                </div>
-
-                <div>
-                  <h2>Marine context</h2>
-                  <p>
-                    Current default decision context
-                    for this workspace.
-                  </p>
-                </div>
-              </div>
-
-              <div className="profile-context">
-                <div className="profile-context-item">
-                  <span>
-                    Default region
-                  </span>
-
-                  <strong>
-                    Gulf of Mannar
-                  </strong>
-                </div>
-
-                <div className="profile-context-item">
-                  <span>
-                    Primary operating area
-                  </span>
-
-                  <strong>
-                    {
-                      areaOptions.find(
-                        (option) =>
-                          option.value ===
-                          area,
-                      )?.label
-                    }
-                  </strong>
-                </div>
-
-                <div className="profile-context-item">
-                  <span>
-                    Intelligence mode
-                  </span>
-
-                  <strong>
-                    Marine decision support
-                  </strong>
-                </div>
-              </div>
-            </section>
-
-            <div className="profile-actions">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={
-                  resetPreferences
-                }
-              >
-                <RotateCcw size={15} />
-                Reset
-              </Button>
-
-              <Button
-                variant="primary"
-                size="md"
-                onClick={
-                  savePreferences
-                }
-              >
-                <ShieldCheck size={15} />
-                {saved
-                  ? "Saved"
-                  : "Save preferences"}
-              </Button>
-            </div>
-          </main>
-
-          <aside className="profile-side">
-            <section className="profile-side-card">
-              <div className="profile-side-icon">
-                <Languages size={18} />
-              </div>
-
-              <h3>
-                Regional language support
-              </h3>
-
-              <p>
-                Sagar is designed to support
-                natural-language interaction
-                across Indian regional languages.
-              </p>
-
-              <div className="profile-language-list">
-                {languageOptions.map(
-                  (option) => (
-                    <span key={option.value}>
-                      {option.label}
+                <p>Native-language ocean advisories tuned for localized maritime terminology.</p>
+                <div className="profile-pill-grid">
+                  {languageOptions.map((opt) => (
+                    <span key={opt.value} className={opt.value === language ? "active" : ""}>
+                      {opt.label}
                     </span>
-                  ),
-                )}
-              </div>
-            </section>
-
-            <section className="profile-side-card">
-              <div className="profile-side-icon">
-                <MapPin size={18} />
+                  ))}
+                </div>
               </div>
 
-              <h3>
-                Marine workspace
-              </h3>
-
-              <p>
-                Your selected area helps
-                Sagar prioritize relevant
-                marine conditions, hazards,
-                fishing zones and route context.
-              </p>
-
-              <button
-                type="button"
-                className="profile-side-link"
-                onClick={() =>
-                  navigate(ROUTES.MAP)
-                }
-              >
-                <span>Open marine map</span>
-                <ChevronRight size={15} />
-              </button>
-            </section>
-
-            <section className="profile-side-card profile-about-card">
-              <div className="profile-side-icon">
-                <Info size={18} />
+              <div className="profile-side-card">
+                <div className="profile-side-header">
+                  <MapPin size={18} />
+                  <h3>Operating Area</h3>
+                </div>
+                <p>Zone selection synchronizes bathymetric depth, PFZ layers, and wind charts automatically.</p>
+                <button
+                  type="button"
+                  className="profile-side-link"
+                  onClick={() => navigate(ROUTES.MAP)}
+                >
+                  <span>Open Marine Map</span>
+                  <ChevronRight size={15} />
+                </button>
               </div>
 
-              <h3>
-                About Sagar AI
-              </h3>
+              <div className="profile-side-card">
+                <div className="profile-side-header">
+                  <Info size={18} />
+                  <h3>About Sagar AI</h3>
+                </div>
+                <p>Autonomous marine decision support system providing real-time routing and safety analytics.</p>
+                <span className="profile-version-tag">Version {APP_CONFIG.version}</span>
+              </div>
+            </aside>
+          </div>
 
-              <p>
-                Conversational marine decision
-                support for safer navigation,
-                fishing operations and marine
-                planning.
-              </p>
-
-              <span className="profile-version">
-                Version{" "}
-                {APP_CONFIG.version}
-              </span>
-            </section>
-          </aside>
         </div>
       </PageContainer>
     </AppShell>
@@ -555,19 +335,13 @@ function PreferenceRow({
       <div className="profile-preference-icon">
         <Icon size={16} />
       </div>
-
       <div className="profile-preference-content">
         <strong>{title}</strong>
         <p>{description}</p>
       </div>
-
       <button
         type="button"
-        className={
-          enabled
-            ? "profile-toggle enabled"
-            : "profile-toggle"
-        }
+        className={`profile-toggle ${enabled ? "enabled" : ""}`}
         aria-pressed={enabled}
         onClick={onToggle}
       >

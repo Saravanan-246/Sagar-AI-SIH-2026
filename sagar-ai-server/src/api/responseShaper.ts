@@ -4,7 +4,7 @@ import type {
   VisualizationSpec,
 } from "../services/agents/agentTypes";
 
-import { getAlerts } from "../services/alerts/alertService";
+import { getAlerts, getAlertsByArea } from "../services/alerts/alertService";
 import { getRecommendedRoutes } from "../services/routes/routeService";
 import { rankFishingZones } from "../services/ocean/zoneRanking";
 import { getAllSources } from "../services/data/sourceRegistry";
@@ -52,6 +52,11 @@ export interface DataStatus {
   mode: "prototype";
   note: string;
   localSources: string[];
+  /** External sources with a genuinely working adapter (e.g. INCOIS's
+   * public ERDDAP server) - distinct from plannedLiveSources, which are
+   * not connected at all yet. A source appearing here does not mean it
+   * contributed to THIS response - see verifiedSources for that. */
+  connectedExternalSources: Array<{ name: string; provider: string }>;
   plannedLiveSources: Array<{ name: string; provider: string }>;
   /** Present only when a real external source actually returned data
    * for this response - absent, never an empty array, when none did. */
@@ -114,6 +119,7 @@ interface DataStatusBase {
   mode: "prototype";
   note: string;
   localSources: string[];
+  connectedExternalSources: Array<{ name: string; provider: string }>;
   plannedLiveSources: Array<{ name: string; provider: string }>;
 }
 
@@ -133,8 +139,21 @@ function getDataStatusBase(): DataStatusBase {
     localSources: sources
       .filter((source) => source.status === "available")
       .map((source) => source.name),
+    connectedExternalSources: sources
+      .filter((source) => source.status === "connected")
+      .map((source) => ({
+        name: source.name,
+        provider: source.provider,
+      })),
+    // "requires_credentials" is still not live for this response - Sagar
+    // never holds the credential - so it stays grouped with "planned"
+    // here rather than getting its own always-checked list.
     plannedLiveSources: sources
-      .filter((source) => source.status === "planned")
+      .filter(
+        (source) =>
+          source.status === "planned" ||
+          source.status === "requires_credentials"
+      )
       .map((source) => ({
         name: source.name,
         provider: source.provider,
@@ -343,8 +362,13 @@ export function shapeChatResponse(
 
       case "alerts":
       case "safety": {
+        // Alerts relevant to the resolved area only - not every active
+        // alert nationwide. getAlertsByArea() falls back to the full
+        // list only when no area was resolved at all (a genuine
+        // "nothing to scope by" case), never when the area is known
+        // but simply has no matching alert.
         if (!response.alerts) {
-          response.alerts = getAlerts();
+          response.alerts = area ? getAlertsByArea(area.id) : getAlerts();
         }
         break;
       }

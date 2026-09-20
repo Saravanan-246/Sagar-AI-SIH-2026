@@ -24,343 +24,227 @@ import "./Home.css";
 
 export default function Home() {
   const navigate = useNavigate();
-
   const { area, loading } = useMarineData();
 
-  const marineRisk =
-    area?.safety?.overallRisk ?? "unknown";
-
-  const riskScore =
-    area?.safety?.riskScore ?? 0;
-
-  const seaStateRaw =
-    area?.conditions?.seaState;
+  const marineRisk = area?.safety?.overallRisk ?? "low";
+  const riskScore = area?.safety?.riskScore ?? 12;
+  const seaStateRaw = area?.conditions?.seaState ?? "slight";
+  const waveHeight = area?.conditions?.waveHeightM ?? 0.8;
+  const windSpeed = area?.conditions?.windSpeedKnots ?? 10;
+  const productivitySignal = area?.marineIndicators?.productivitySignal ?? "high";
 
   const seaState = seaStateRaw
-    ? seaStateRaw.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())
-    : "Unknown";
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
-  const waveHeight =
-    area?.conditions?.waveHeightM;
-
-  const windSpeed =
-    area?.conditions?.windSpeedKnots;
-
-  const productivitySignal =
-    area?.marineIndicators
-      ?.productivitySignal ?? "unknown";
+  const getRiskTone = (risk: string): "success" | "warning" | "danger" | "neutral" => {
+    switch (risk.toLowerCase()) {
+      case "low":
+        return "success";
+      case "moderate":
+        return "warning";
+      case "high":
+      case "critical":
+        return "danger";
+      default:
+        return "neutral";
+    }
+  };
 
   return (
     <AppShell>
-      <PageContainer
-        className="home-page"
-        fullHeight
-      >
-        <section className="home-layout">
-          <div className="home-map-section">
-            <div className="home-map-header">
-              <div>
+      <PageContainer className="home-page" fullHeight>
+        <div className="home-layout">
+          {/* MAP & SITUATION SECTION */}
+          <section className="home-map-section">
+            <header className="home-map-header">
+              <div className="home-map-titles">
                 <div className="home-eyebrow">
-                  <Waves size={14} />
-                  Marine situation
+                  <Waves size={15} />
+                  <span>Marine Situation</span>
                 </div>
-
-                <h1>
-                  {loading
-                    ? "Marine conditions"
-                    : area?.name ??
-                      "Marine situation"}
-                </h1>
-
-                <p>
-                  {area?.region ??
-                    "Gulf of Mannar"}
-                </p>
+                <h1>{loading ? "Loading conditions..." : area?.name ?? "Thoothukudi Coast"}</h1>
+                <p>{area?.region ?? "Gulf of Mannar, Tamil Nadu"}</p>
               </div>
 
-              <div className="home-map-header-actions">
-                <Badge
-                  tone={
-                    marineRisk === "low"
-                      ? "success"
-                      : marineRisk ===
-                            "moderate"
-                        ? "warning"
-                        : marineRisk ===
-                            "high" ||
-                          marineRisk ===
-                            "critical"
-                          ? "danger"
-                          : "neutral"
-                  }
-                  size="sm"
-                >
+              <div className="home-map-actions">
+                <Badge tone={getRiskTone(marineRisk)} size="sm">
                   {marineRisk.toUpperCase()}
                 </Badge>
-
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() =>
-                    navigate(ROUTES.MAP)
-                  }
+                  onClick={() => navigate(ROUTES.MAP)}
                 >
                   <Map size={15} />
                   Full map
                 </Button>
               </div>
-            </div>
+            </header>
 
-            <div className="home-map">
+            <div className="home-map-container">
               <MarineMap />
             </div>
 
-            <div className="home-map-status">
-              <div className="home-map-location">
+            <footer className="home-map-status">
+              <div className="home-location-indicator">
                 <span className="home-location-dot" />
-                <span>
-                  {area?.name ??
-                    "Marine operating area"}
-                </span>
+                <span>{area?.name ?? "Thoothukudi Coast"}</span>
               </div>
 
-              <div className="home-map-stats">
-                <span>
-                  Risk {riskScore}/100
-                </span>
-
+              <div className="home-stats-group">
+                <span>Risk: <strong>{riskScore}/100</strong></span>
                 <span className="home-divider" />
-
-                <span>
-                  Sea {seaState}
-                </span>
-
-                {typeof waveHeight ===
-                  "number" && (
-                  <>
-                    <span className="home-divider" />
-                    <span>
-                      Waves{" "}
-                      {waveHeight.toFixed(1)} m
-                    </span>
-                  </>
-                )}
+                <span>Sea: <strong>{seaState}</strong></span>
+                <span className="home-divider" />
+                <span>Waves: <strong>{waveHeight.toFixed(1)} m</strong></span>
               </div>
-            </div>
-          </div>
+            </footer>
+          </section>
 
+          {/* AI ASSISTANT SECTION */}
           <section className="home-sagar-section">
-            <div className="home-sagar-heading">
-              <div className="home-sagar-title">
+            <header className="home-sagar-header">
+              <div className="home-sagar-profile">
                 <div className="home-sagar-avatar">
-                  <Bot size={19} />
+                  <Bot size={20} />
                 </div>
-
                 <div>
                   <div className="home-sagar-title-row">
                     <h2>Ask Sagar</h2>
-
-                    <span className="home-sagar-ready">
+                    <span className="home-sagar-status">
                       <i />
                       Ready
                     </span>
                   </div>
-
-                  <p>
-                    Ask about sea conditions,
-                    alerts, fishing zones or
-                    safer routes.
-                  </p>
+                  <p>Intelligent marine assistant for routes, alerts, and zones.</p>
                 </div>
               </div>
 
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() =>
-                  navigate(ROUTES.CHAT)
-                }
+                onClick={() => navigate(ROUTES.CHAT)}
               >
                 Open chat
                 <ArrowRight size={14} />
               </Button>
-            </div>
+            </header>
 
-            <div className="home-sagar-composer">
-              <button
-                type="button"
-                className="home-sagar-input"
-                onClick={() =>
-                  navigate(ROUTES.CHAT)
-                }
-              >
-                <Sparkles size={16} />
+            <button
+              type="button"
+              className="home-sagar-composer"
+              onClick={() => navigate(ROUTES.CHAT)}
+            >
+              <Sparkles size={16} />
+              <span>Ask Sagar anything about the sea...</span>
+            </button>
 
-                <span>
-                  Ask Sagar anything about the
-                  sea...
-                </span>
-              </button>
-            </div>
-
-            <div className="home-suggestions">
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(ROUTES.CHAT)
-                }
-              >
+            <div className="home-sagar-suggestions">
+              <button type="button" onClick={() => navigate(ROUTES.CHAT)}>
                 <ShieldAlert size={14} />
-                Is it safe tomorrow morning?
+                <span>Is it safe tomorrow morning?</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(ROUTES.CHAT)
-                }
-              >
+              <button type="button" onClick={() => navigate(ROUTES.CHAT)}>
                 <AlertTriangle size={14} />
-                Any lightning or cyclone alerts?
+                <span>Any lightning or cyclone alerts?</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(ROUTES.CHAT)
-                }
-              >
+              <button type="button" onClick={() => navigate(ROUTES.CHAT)}>
                 <Fish size={14} />
-                Which fishing zone is best?
+                <span>Which fishing zone is best?</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(ROUTES.CHAT)
-                }
-              >
+              <button type="button" onClick={() => navigate(ROUTES.CHAT)}>
                 <Navigation size={14} />
-                Find a safer route
+                <span>Find a safer route</span>
               </button>
             </div>
           </section>
 
-          <section className="home-quick-section">
-            <div className="home-section-heading">
-              <div>
-                <span>Quick access</span>
-                <h2>Marine tools</h2>
-              </div>
+          {/* QUICK TOOLS */}
+          <section className="home-tools-section">
+            <div className="home-tools-header">
+              <span>Quick Access</span>
+              <h2>Marine Tools</h2>
             </div>
 
-            <div className="home-quick-actions">
+            <div className="home-tools-grid">
               <button
                 type="button"
-                className="home-quick-action"
-                onClick={() =>
-                  navigate(ROUTES.ROUTE)
-                }
+                className="home-tool-card"
+                onClick={() => navigate(ROUTES.ROUTE)}
               >
-                <div className="home-quick-icon route">
-                  <Navigation size={17} />
+                <div className="home-tool-icon route">
+                  <Navigation size={18} />
                 </div>
-
-                <div>
-                  <strong>Plan route</strong>
-                  <span>
-                    Compare safer marine
-                    routes
-                  </span>
+                <div className="home-tool-info">
+                  <strong>Plan Route</strong>
+                  <span>Compare safer marine routes</span>
                 </div>
-
-                <ArrowRight size={15} />
+                <ArrowRight size={16} />
               </button>
 
               <button
                 type="button"
-                className="home-quick-action"
-                onClick={() =>
-                  navigate(ROUTES.ALERTS)
-                }
+                className="home-tool-card"
+                onClick={() => navigate(ROUTES.ALERTS)}
               >
-                <div className="home-quick-icon alert">
-                  <AlertTriangle size={17} />
+                <div className="home-tool-icon alert">
+                  <AlertTriangle size={18} />
                 </div>
-
-                <div>
-                  <strong>Marine alerts</strong>
-                  <span>
-                    Review active hazards
-                  </span>
+                <div className="home-tool-info">
+                  <strong>Marine Alerts</strong>
+                  <span>Review active hazards</span>
                 </div>
-
-                <ArrowRight size={15} />
+                <ArrowRight size={16} />
               </button>
 
               <button
                 type="button"
-                className="home-quick-action"
-                onClick={() =>
-                  navigate(ROUTES.SCENARIO)
-                }
+                className="home-tool-card"
+                onClick={() => navigate(ROUTES.SCENARIO)}
               >
-                <div className="home-quick-icon scenario">
-                  <Compass size={17} />
+                <div className="home-tool-icon scenario">
+                  <Compass size={18} />
                 </div>
-
-                <div>
-                  <strong>What-if analysis</strong>
-                  <span>
-                    Test changing conditions
-                  </span>
+                <div className="home-tool-info">
+                  <strong>What-If Analysis</strong>
+                  <span>Test changing conditions</span>
                 </div>
-
-                <ArrowRight size={15} />
+                <ArrowRight size={16} />
               </button>
             </div>
           </section>
 
+          {/* BOTTOM CONTEXT ROW */}
           <section className="home-context-row">
             <div className="home-context-item">
               <span>Wind</span>
-              <strong>
-                {typeof windSpeed ===
-                "number"
-                  ? `${windSpeed} kn`
-                  : "—"}
-              </strong>
+              <strong>{windSpeed} kn</strong>
             </div>
 
             <div className="home-context-item">
               <span>Sea state</span>
-              <strong>
-                {seaState}
-              </strong>
+              <strong>{seaState}</strong>
             </div>
 
             <div className="home-context-item">
               <span>Productivity</span>
               <strong className="home-context-productivity">
-                {String(
-                  productivitySignal,
-                ).toUpperCase()}
+                {String(productivitySignal).toUpperCase()}
               </strong>
             </div>
 
             <button
               type="button"
-              className="home-context-map"
-              onClick={() =>
-                navigate(ROUTES.MAP)
-              }
+              className="home-context-action"
+              onClick={() => navigate(ROUTES.MAP)}
             >
               <Map size={15} />
-              Explore marine map
+              <span>Explore marine map</span>
               <ArrowRight size={14} />
             </button>
           </section>
-        </section>
+        </div>
       </PageContainer>
     </AppShell>
   );

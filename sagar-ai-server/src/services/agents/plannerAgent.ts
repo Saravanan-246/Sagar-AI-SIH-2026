@@ -48,6 +48,20 @@ export function planAgents(
           true,
           ["marine-data"]
         ),
+        // Same optional/non-blocking pattern already used for
+        // safety/alerts below - a real INCOIS reading attached as
+        // supplementary evidence only (never fed into risk), so "what
+        // are the current sea conditions?" can actually answer "what
+        // data are you using?" with a real external source, not just
+        // the local dataset. Never required: a slow/failed external
+        // call must not hold up an otherwise-fast sea-conditions answer.
+        createTask(
+          "ocean",
+          "ocean",
+          "Check a real external ocean reference (SST) alongside local marine conditions.",
+          false,
+          ["marine-data"]
+        ),
         createTask(
           "risk",
           "risk",
@@ -164,6 +178,42 @@ export function planAgents(
           "risk",
           "risk",
           "Evaluate route safety using conditions and geospatial restrictions.",
+          true,
+          ["marine-data", "weather", "geo"]
+        )
+      );
+      break;
+
+    case "evidence":
+      // Same real inputs a "why is this risky?" answer needs to explain
+      // itself from - mirrors "safety" so the evidence/keyFactors this
+      // intent reports on are reliably present, not best-effort.
+      tasks.push(
+        createTask(
+          "weather",
+          "weather",
+          "Check adverse weather and marine hazards.",
+          true,
+          ["marine-data"]
+        ),
+        createTask(
+          "geo",
+          "geo",
+          "Check relevant restricted and protected areas.",
+          true,
+          ["marine-data"]
+        ),
+        createTask(
+          "ocean",
+          "ocean",
+          "Check SST, chlorophyll and productivity signal alongside the assessment.",
+          false,
+          ["marine-data"]
+        ),
+        createTask(
+          "risk",
+          "risk",
+          "Combine hazards, geospatial restrictions and ocean conditions into the assessment being explained.",
           true,
           ["marine-data", "weather", "geo"]
         )
@@ -349,6 +399,11 @@ export function planAgents(
     case "alerts":
       reasoning =
         "Safety planning combines marine hazards, geospatial restrictions and risk assessment.";
+      break;
+
+    case "evidence":
+      reasoning =
+        "Evidence planning re-runs the same hazard/risk assessment so the answer can explain the real data and factors behind it.";
       break;
 
     case "pfz":

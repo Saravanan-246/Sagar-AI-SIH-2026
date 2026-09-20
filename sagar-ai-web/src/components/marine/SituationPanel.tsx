@@ -8,6 +8,8 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
+import "./SituationPanel.css";
+
 export type SituationSeverity =
   | "favourable"
   | "caution"

@@ -55,9 +55,15 @@ const GENERIC_PHRASE: Record<"ta" | "hi", (area: string) => string> = {
   hi: (area) => `${area} के लिए अभी उपलब्ध जानकारी नीचे दी गई है।`,
 };
 
+// "இப்போது...சிறந்த" / "अभी...बेहतर" (both "right now...(the) best") claimed
+// live-verified current conditions for a zone that is only ever the
+// top-ranked record in Sagar's static configured PFZ dataset - matches
+// the English fix in chat.routes.ts's applyZoneAnswer.
 const ZONE_PHRASE: Record<"ta" | "hi", (zone: string, area: string) => string> = {
-  ta: (zone, area) => `${area} அருகே இப்போது ${zone} சிறந்த மீன்பிடி பகுதியாக உள்ளது.`,
-  hi: (zone, area) => `${area} के पास अभी ${zone} बेहतर मछली पकड़ने का क्षेत्र है।`,
+  ta: (zone, area) =>
+    `${area} அருகே, Sagar-இன் கட்டமைக்கப்பட்ட PFZ தரவுத்தொகுப்பில் ${zone} அதிக மதிப்பெண் பெற்ற பகுதியாக உள்ளது.`,
+  hi: (zone, area) =>
+    `${area} के पास, Sagar के कॉन्फ़िगर किए गए PFZ डेटा में ${zone} सबसे अधिक रैंक वाला क्षेत्र है।`,
 };
 
 const ROUTE_PHRASE: Record<"ta" | "hi", (route: string, km: string) => string> = {
@@ -123,6 +129,15 @@ export function buildDeterministicAnswer(
     typeof facts.riskScore !== "number"
   ) {
     return ALERT_PHRASE[language](facts.alerts.length, area);
+  }
+
+  // No Tamil/Hindi template exists yet for the data/evidence answer -
+  // keep the already-set English deterministic answer (built from real
+  // evidence/sources) rather than falling through to the generic
+  // risk-level phrase below, which would silently replace an answer
+  // about "what data" with an unrelated risk-level sentence.
+  if (facts.intent === "evidence") {
+    return null;
   }
 
   if (typeof facts.riskScore === "number" && facts.riskLevel) {

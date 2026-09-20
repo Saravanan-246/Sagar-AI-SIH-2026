@@ -3,8 +3,8 @@
  * (sidebar + conversation) in the spirit of a modern chat app, restyled
  * for a marine-intelligence product: navy/teal accents instead of the
  * rest of the app's violet, restrained decoration, calm typography.
- * These custom properties are scoped to .chat-shell and inherited by
- * the chat component styles in styles/theme.css.
+ * These custom properties are scoped to .chat-shell and available to
+ * any chat component CSS nested under it (components/chat/*.css).
  */
 .chat-shell {
   --chat-accent: #0f6e64;
@@ -34,10 +34,12 @@
   overflow: hidden;
   background: var(--chat-surface-alt);
   color: var(--chat-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ---------------------------------------------------------------- */
-/* Sidebar                                                           */
+/* Sidebar                                                          */
 /* ---------------------------------------------------------------- */
 
 .chat-sidebar-backdrop {
@@ -146,10 +148,7 @@
   color: var(--chat-accent);
 }
 
-/* App navigation - Home / Chat / Marine Map / Routes / Alerts. This is
-   the one navigation surface for the app while in chat, so it and the
-   conversation list below share the same sidebar rather than
-   competing for space with a second nav. */
+/* App navigation - Home / Chat / Marine Map / Routes / Alerts */
 .chat-sidebar-nav {
   flex: 0 0 auto;
   display: flex;
@@ -427,8 +426,7 @@
   color: var(--chat-text-faint) !important;
 }
 
-/* Offline / sync status - part of the same footer as location, kept
-   equally compact (a status line + one action), never a dashboard. */
+/* Offline / sync status */
 .chat-sidebar-offline {
   display: flex;
   flex-direction: column;
@@ -579,12 +577,9 @@
 }
 
 /* ---------------------------------------------------------------- */
-/* Content area (chat column + desktop map column)                   */
+/* Content area (chat column + desktop map column)                  */
 /* ---------------------------------------------------------------- */
 
-/* Everything to the right of the sidebar. The map column's width is
-   set as a share of THIS box (not the full window), so it scales
-   correctly regardless of sidebar width. */
 .chat-content-area {
   flex: 1 1 auto;
   min-width: 0;
@@ -695,6 +690,7 @@
 .chat-main-window {
   flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .chat-main-composer {
@@ -732,12 +728,7 @@
   color: var(--chat-danger);
 }
 
-/* Voice (TTS) playback failure - deliberately NOT the bold full-width
-   .chat-banner treatment above: the text answer already succeeded, so
-   this is a small, floating, self-dismissing notice (restrained red
-   only on the icon) that never implies the chat itself failed. It's
-   positioned above the composer without taking any layout space, so
-   it can never push the conversation down or cover the composer. */
+/* Voice (TTS) failure toast */
 .chat-voice-toast {
   position: absolute;
   left: 18px;
@@ -801,7 +792,6 @@
     opacity: 0;
     transform: translateY(4px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
@@ -814,8 +804,54 @@
   }
 }
 
+.chat-voice-control {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--chat-border);
+  border-radius: 6px;
+  background: var(--chat-surface);
+  color: var(--chat-text-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.chat-voice-control:hover {
+  background-color: var(--chat-surface-sunken);
+  border-color: var(--chat-border-strong);
+  color: var(--chat-text);
+}
+
+.chat-voice-control:active {
+  transform: scale(0.96);
+}
+
+.chat-map-panel-wrapper {
+  flex: 0 0 420px;
+  height: 100%;
+  border-left: 1px solid var(--chat-border);
+  background-color: var(--chat-surface);
+  overflow: hidden;
+}
+
+.chat-map-modal-canvas {
+  width: 100%;
+  height: 60vh;
+  min-height: 400px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 /* ---------------------------------------------------------------- */
-/* Area picker modal content                                         */
+/* Area picker modal content                                        */
 /* ---------------------------------------------------------------- */
 
 .chat-area-options {
@@ -845,7 +881,7 @@
 }
 
 /* ---------------------------------------------------------------- */
-/* Mobile (<= 800px): sidebar becomes a slide-in drawer               */
+/* Mobile (<= 800px): sidebar becomes a slide-in drawer              */
 /* ---------------------------------------------------------------- */
 
 @media (max-width: 800px) {
@@ -911,7 +947,6 @@
     max-width: calc(100% - 24px);
   }
 
-  /* Comfortable tap targets for the drawer's nav + conversation rows. */
   .chat-sidebar-nav-link {
     min-height: 44px;
   }

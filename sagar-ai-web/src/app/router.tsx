@@ -10,6 +10,8 @@ import Activity from "../pages/Activity";
 import Area from "../pages/Area";
 import Sources from "../pages/Sources";
 import Profile from "../pages/Profile";
+import SstResearchLab from "../pages/SstResearchLab";
+import MarineIntelligenceLab from "../pages/MarineIntelligenceLab";
 
 export default function Router() {
   return (
@@ -24,6 +26,8 @@ export default function Router() {
       <Route path="/area/:id" element={<Area />} />
       <Route path="/sources" element={<Sources />} />
       <Route path="/profile" element={<Profile />} />
+      <Route path="/research/sst" element={<SstResearchLab />} />
+      <Route path="/research/marine-lab" element={<MarineIntelligenceLab />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

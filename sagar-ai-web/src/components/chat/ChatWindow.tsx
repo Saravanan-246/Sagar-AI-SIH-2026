@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
+import "./ChatWindow.css";
+
 import ChatMessage from "./ChatMessage";
 import ChatWelcome from "./ChatWelcome";
 import ThinkingState from "./ThinkingState";
@@ -13,12 +15,18 @@ export type ChatItem = {
   structured?: ChatStructuredData;
   /** Language this message was actually asked/answered in (e.g. "ta"). */
   language?: string;
+  /** The real resolved area this answer is about, if any - never a
+   * fallback/default name (see chatMapFocus's same-spirit resolution). */
+  locationLabel?: string;
 };
 
 type ChatWindowProps = {
   messages: ChatItem[];
   loading?: boolean;
   thinkingLabel?: string;
+  /** Real pipeline stages that apply to the pending question, shown as
+   * pending (never checked/done) while `loading` is true. */
+  thinkingStages?: string[];
   suggestions?: string[];
   onSuggestion?: (value: string) => void;
   renderVoiceControl?: (message: ChatItem) => ReactNode;
@@ -28,6 +36,7 @@ export default function ChatWindow({
   messages,
   loading = false,
   thinkingLabel,
+  thinkingStages,
   suggestions,
   onSuggestion,
   renderVoiceControl,
@@ -60,13 +69,16 @@ export default function ChatWindow({
                   role={message.role}
                   timestamp={message.timestamp}
                   structured={message.structured}
+                  locationLabel={message.locationLabel}
                   voiceControl={renderVoiceControl?.(message)}
                 >
                   {message.text}
                 </ChatMessage>
               ))}
 
-              {loading && <ThinkingState label={thinkingLabel} />}
+              {loading && (
+                <ThinkingState label={thinkingLabel} stages={thinkingStages} />
+              )}
             </div>
           )}
 

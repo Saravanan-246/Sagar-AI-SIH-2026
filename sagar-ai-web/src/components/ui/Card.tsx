@@ -15,6 +15,7 @@ export default function Card({
   interactive = false,
   onClick,
 }: CardProps) {
+  const isClickable = Boolean(onClick || interactive);
   const Tag = onClick ? "button" : "div";
 
   return (
@@ -24,9 +25,7 @@ export default function Card({
         className={[
           "sagar-card",
           `sagar-card-${padding}`,
-          interactive || onClick
-            ? "sagar-card-interactive"
-            : "",
+          isClickable ? "sagar-card-interactive" : "",
           className,
         ]
           .filter(Boolean)
@@ -42,65 +41,76 @@ export default function Card({
           min-width: 0;
           display: block;
           box-sizing: border-box;
-          border: 1px solid #e6e4ec;
-          border-radius: 18px;
+          position: relative;
           background: #ffffff;
-          color: #16151d;
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          color: #0f172a;
           text-align: left;
           font: inherit;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
 
         .sagar-card-sm {
-          padding: 12px;
+          padding: 12px 14px;
         }
 
         .sagar-card-md {
-          padding: 16px;
+          padding: 16px 18px;
         }
 
         .sagar-card-lg {
-          padding: 20px;
+          padding: 22px 24px;
         }
 
         .sagar-card-interactive {
           appearance: none;
+          -webkit-appearance: none;
           cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
           transition:
-            border-color 160ms ease,
-            box-shadow 160ms ease,
-            transform 160ms ease;
+            border-color 140ms cubic-bezier(0.4, 0, 0.2, 1),
+            box-shadow 140ms cubic-bezier(0.4, 0, 0.2, 1),
+            transform 100ms ease;
         }
 
         .sagar-card-interactive:hover {
-          border-color: #d5d2df;
-          box-shadow: 0 8px 22px rgba(22, 21, 29, 0.07);
+          border-color: #cbd5e1;
+          box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
           transform: translateY(-1px);
         }
 
         .sagar-card-interactive:active {
-          transform: translateY(0);
+          transform: scale(0.995);
+          box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
         }
 
         .sagar-card-interactive:focus-visible {
           outline: none;
-          border-color: #8b5cf6;
-          box-shadow:
-            0 0 0 3px rgba(109, 40, 217, 0.12);
+          border-color: #7c3aed;
+          box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #7c3aed;
         }
 
-        @media (max-width: 700px) {
+        @media (max-width: 640px) {
+          .sagar-card {
+            border-radius: 12px;
+          }
+
           .sagar-card-sm {
-            padding: 11px;
+            padding: 10px 12px;
           }
 
           .sagar-card-md {
             padding: 14px;
-            border-radius: 16px;
           }
 
           .sagar-card-lg {
-            padding: 16px;
-            border-radius: 17px;
+            padding: 18px;
           }
         }
       `}</style>

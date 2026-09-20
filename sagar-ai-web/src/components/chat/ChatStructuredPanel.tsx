@@ -151,7 +151,11 @@ function ZonesBlock({ zones }: { zones: ChatZoneSummary[] }) {
 
   return (
     <div className="chat-structured-block">
-      <span className="chat-structured-label">Recommended zones</span>
+      {/* "· configured dataset" makes explicit that this ranking comes
+          from Sagar's static configured PFZ records (suitability/
+          chlorophyll/SST), not a live/current reading - kept distinct
+          from any real external evidence shown below (chat-verified-source). */}
+      <span className="chat-structured-label">Recommended zones · configured dataset</span>
 
       <div className="chat-zones-list">
         {zones.map((zone) => (
@@ -364,7 +368,11 @@ export default function ChatStructuredPanel({
         <div className="chat-verified-source">
           <span className="chat-verified-source-dot" />
           <span>
-            {data.verifiedSource!.name} · {data.verifiedSource!.age}
+            {/* Explicit "Marine context" prefix so this real-but-stale,
+                regional (never zone-specific) reading is never read as
+                confirming/verifying the configured PFZ ranking above -
+                the two are independent facts, not one combined claim. */}
+            <strong>Marine context:</strong> {data.verifiedSource!.name} · {data.verifiedSource!.age}
             {typeof data.verifiedSource!.distanceFromAreaKm === "number"
               ? ` · ~${data.verifiedSource!.distanceFromAreaKm} km away`
               : ""}

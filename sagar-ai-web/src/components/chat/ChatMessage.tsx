@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import "./ChatMessage.css";
+
 import ChatStructuredPanel, {
   type ChatStructuredData,
 } from "./ChatStructuredPanel";
@@ -11,6 +13,10 @@ type ChatMessageProps = {
   timestamp?: string;
   structured?: ChatStructuredData;
   voiceControl?: ReactNode;
+  /** The real configured area this answer is about, already resolved by
+   * the caller - never a fallback/default name, and omitted entirely
+   * when no area was actually resolved for this message. */
+  locationLabel?: string;
 };
 
 /** A short, glanceable local time (e.g. "12:09 PM") - the raw ISO
@@ -30,6 +36,7 @@ export default function ChatMessage({
   timestamp,
   structured,
   voiceControl,
+  locationLabel,
 }: ChatMessageProps) {
   const isUser = role === "user";
   const time = displayTime(timestamp);
@@ -60,6 +67,10 @@ export default function ChatMessage({
 
       <div className="chat-message-content chat-message-content-assistant">
         <span className="chat-assistant-name">Sagar AI</span>
+
+        {locationLabel && (
+          <span className="chat-location-badge">📍 {locationLabel}</span>
+        )}
 
         <div className="chat-assistant-text">{children}</div>
 

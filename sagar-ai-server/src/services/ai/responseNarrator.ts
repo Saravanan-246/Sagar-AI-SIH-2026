@@ -123,14 +123,19 @@ export async function narrateResponse(
         content: `Reply in ${languageName}.\n\n${contextBlock}${buildFactsText(facts)}`,
       },
     ],
-    // Kept deliberately small (1-2 short sentences per the system prompt):
-    // a lower cap keeps this call affordable even when the configured
-    // OpenRouter account has little balance left, and avoids paying for
-    // output the UI would truncate anyway. Bounded to a tight timeout so
-    // a slow/local model falls back to Sagar's already-correct
-    // deterministic answer quickly rather than leaving the chat message
-    // waiting for the provider's full configured timeout.
-    { temperature: 0.4, maxTokens: 100, timeoutMs: 8000 }
+    // maxTokens kept deliberately small (1-2 short sentences per the
+    // system prompt): a lower cap keeps this call affordable even when
+    // the configured OpenRouter account has little balance left, and
+    // avoids paying for output the UI would truncate anyway.
+    //
+    // No timeoutMs override (see the matching note in
+    // intentClassifier.ts) - each provider's own configured timeout is
+    // already tuned for it: OpenRouter's client always uses its fixed
+    // fast cloud timeout, and Ollama's generous default accounts for
+    // real local-generation latency instead of forcing an always-correct
+    // narrated answer to lose to an arbitrary short clock and fall back
+    // to the plainer deterministic text.
+    { temperature: 0.4, maxTokens: 100 }
   );
 }
 
@@ -141,12 +146,23 @@ export interface GeneralChatInput {
    * prior turn as a trigger to repeat marine facts here. */
   recentContext?: string;
   language: ChatLanguage;
+  /** Set only when the classifier flagged this message as genuine
+   * noise (see AiClassification.clarity) - never for an ordinary
+   * typo'd/ungrammatical/Tanglish message with a real, inferable
+   * meaning. Nudges the reply toward a short "could you rephrase that?"
+   * instead of guessing at gibberish. */
+  isUnclear?: boolean;
 }
 
 const GENERAL_SYSTEM_PROMPT = `You are Sagar, a marine safety assistant for small-craft fishermen in Tamil Nadu, India. This particular message is casual conversation or small talk, not a marine question.
 
+Real users type messily - typos, missing letters, broken grammar, Tamil-English mixing (Tanglish), no punctuation. Read past all of that to what they actually mean; never treat a typo'd or informally-worded message as invalid.
+
 STRICT RULES:
 - You have NOT been given any marine facts for this message - no risk score, wind, waves, sea state, fishing zone, route, alert or coordinate. Never state or imply a specific marine fact here. If the user asks a real marine question in this message, say you can check it and ask which place/area they mean, rather than guessing an answer.
+- Never respond by pointing out or "fixing" a spelling/grammar mistake, and never just repeat the user's message back in corrected form (e.g. if they wrote "what shuld i ask you", do not reply "What should I ask you?" - actually answer that question: list what you can help with). Never ask "Did you mean ...?" either, even for an obvious typo - silently understand it and respond to what they meant. The user wants an answer, not a correction.
+- If the user names a specific boat, person, business, place or thing you have no real information about (it was not given to you as a fact here or earlier in the conversation), say plainly that you don't have information about it - never invent details about it (e.g. if asked about a boat or place you don't recognize, do not describe it as if you knew it).
+- If (and only if) told below that this message could not be understood at all, say in one short sentence that you didn't catch that and ask them to say it a different way - do not guess at a meaning you're not confident of, and do not pretend to answer.
 - Respond the way a warm, direct person would to exactly this message - match their tone (casual stays casual, a thank-you gets a brief acknowledgement, a real question gets a real answer).
 - Reply in the requested language, naturally (not a literal word-for-word translation).
 - Keep it short: one sentence, two at most.
@@ -172,15 +188,21 @@ export async function narrateGeneralReply(
     ? `Recent conversation (for reference only):\n${input.recentContext}\n\n`
     : "";
 
+  const clarityNote = input.isUnclear
+    ? "Note: this message could not be confidently understood - it may be genuine noise rather than a typo'd real message. Ask them to rephrase rather than guessing.\n\n"
+    : "";
+
   return requestLlmCompletion(
     [
       { role: "system", content: GENERAL_SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Reply in ${languageName}.\n\n${contextBlock}User: ${input.userMessage}`,
+        content: `Reply in ${languageName}.\n\n${contextBlock}${clarityNote}User: ${input.userMessage}`,
       },
     ],
-    { temperature: 0.5, maxTokens: 100, timeoutMs: 8000 }
+    // See the timeout note on narrateResponse above - no override here
+    // either, for the same reason.
+    { temperature: 0.5, maxTokens: 100 }
   );
 }
 

@@ -45,6 +45,13 @@ interface AppState {
   setPendingRoute: (route: RoutePlan) => void;
   clearPendingRoute: () => void;
 
+  /** A question built from real page context (e.g. the Route page's
+   * selected route), pending pickup by Chat - asked through Chat's own
+   * existing send pipeline, never a second chat mechanism. */
+  pendingChatPrompt: string | null;
+  setPendingChatPrompt: (prompt: string) => void;
+  clearPendingChatPrompt: () => void;
+
   /**
    * The user's working location for chat/marine/route queries - either a
    * device-geolocation coordinate or a manually selected marine area.
@@ -235,6 +242,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearPendingRoute: () => {
     set({ pendingRoute: null });
+  },
+
+  pendingChatPrompt: null,
+
+  setPendingChatPrompt: (prompt) => {
+    set({ pendingChatPrompt: prompt });
+  },
+
+  clearPendingChatPrompt: () => {
+    set({ pendingChatPrompt: null });
   },
 
   currentLocation: null,

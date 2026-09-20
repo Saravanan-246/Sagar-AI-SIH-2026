@@ -17,6 +17,7 @@ export type ChatIntent =
   | "productivity"
   | "geofence"
   | "tide"
+  | "evidence"
   | "general";
 
 export interface ChatEvidence {

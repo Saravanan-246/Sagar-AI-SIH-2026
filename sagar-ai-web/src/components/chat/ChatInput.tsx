@@ -1,10 +1,13 @@
 import {
+  ChangeEvent,
   KeyboardEvent,
   useEffect,
   useRef,
   useState,
 } from "react";
 import { ArrowUp, MapPin, MicOff, Mic, Navigation, Plus } from "lucide-react";
+
+import "./ChatInput.css";
 
 export type MicState = "idle" | "listening" | "thinking" | "speaking" | "error";
 
@@ -83,9 +86,7 @@ export default function ChatInput({
     element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
   };
 
-  const handleChange = (
-    event: React.ChangeEvent<HTMLTextAreaElement>,
-  ) => {
+  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     onChange(event.target.value);
     resizeTextarea(event.target);
   };

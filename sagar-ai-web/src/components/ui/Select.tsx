@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
-import type {
-  SelectHTMLAttributes,
+import {
+  useId,
+  type SelectHTMLAttributes,
 } from "react";
 
 type SelectOption = {
@@ -9,13 +10,12 @@ type SelectOption = {
   disabled?: boolean;
 };
 
-type SelectProps =
-  SelectHTMLAttributes<HTMLSelectElement> & {
-    label?: string;
-    hint?: string;
-    error?: string;
-    options: SelectOption[];
-  };
+type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+  label?: string;
+  hint?: string;
+  error?: string;
+  options: SelectOption[];
+};
 
 export default function Select({
   label,
@@ -26,19 +26,13 @@ export default function Select({
   className = "",
   ...props
 }: SelectProps) {
-  const selectId =
-    id ??
-    `sagar-select-${Math.random()
-      .toString(36)
-      .slice(2, 9)}`;
+  const generatedId = useId();
+  const selectId = id ?? generatedId;
 
   return (
     <div className="sagar-select-field">
       {label && (
-        <label
-          htmlFor={selectId}
-          className="sagar-select-label"
-        >
+        <label htmlFor={selectId} className="sagar-select-label">
           {label}
         </label>
       )}
@@ -75,31 +69,19 @@ export default function Select({
           ))}
         </select>
 
-        <span
-          className="sagar-select-arrow"
-          aria-hidden="true"
-        >
-          <ChevronDown
-            size={17}
-            strokeWidth={2}
-          />
+        <span className="sagar-select-arrow" aria-hidden="true">
+          <ChevronDown size={16} strokeWidth={2} />
         </span>
       </div>
 
       {error && (
-        <p
-          id={`${selectId}-error`}
-          className="sagar-select-error"
-        >
+        <p id={`${selectId}-error`} className="sagar-select-error" role="alert">
           {error}
         </p>
       )}
 
       {!error && hint && (
-        <p
-          id={`${selectId}-hint`}
-          className="sagar-select-hint"
-        >
+        <p id={`${selectId}-hint`} className="sagar-select-hint">
           {hint}
         </p>
       )}
@@ -108,102 +90,148 @@ export default function Select({
         .sagar-select-field {
           width: 100%;
           min-width: 0;
+          display: flex;
+          flex-direction: column;
+          text-align: left;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
 
         .sagar-select-label {
           display: block;
-          margin-bottom: 7px;
-          color: #676572;
-          font-size: 11px;
-          line-height: 15px;
-          font-weight: 700;
+          margin-bottom: 6px;
+          color: #334155;
+          font-size: 13px;
+          font-weight: 600;
+          line-height: 1.3;
+          letter-spacing: -0.01em;
+          user-select: none;
         }
 
         .sagar-select-wrap {
           position: relative;
           width: 100%;
-          min-height: 44px;
+          min-height: 42px;
+          display: flex;
+          align-items: center;
+          border-radius: 10px;
         }
 
         .sagar-select {
           appearance: none;
           -webkit-appearance: none;
           width: 100%;
-          min-height: 44px;
-          padding: 10px 40px 10px 12px;
-          border: 1px solid #e6e4ec;
-          border-radius: 13px;
+          min-height: 42px;
+          padding: 0 40px 0 13px;
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
           outline: none;
-          background: #ffffff;
-          color: #16151d;
+          background-color: #ffffff;
+          color: #0f172a;
           font-family: inherit;
-          font-size: 13px;
-          line-height: 20px;
+          font-size: 14px;
+          line-height: 1.5;
+          letter-spacing: -0.01em;
           cursor: pointer;
+          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
           transition:
-            border-color 160ms ease,
-            box-shadow 160ms ease;
+            border-color 140ms cubic-bezier(0.4, 0, 0.2, 1),
+            box-shadow 140ms cubic-bezier(0.4, 0, 0.2, 1),
+            background-color 140ms ease;
         }
 
         .sagar-select:hover:not(:disabled) {
-          border-color: #d5d2df;
+          border-color: #94a3b8;
         }
 
         .sagar-select:focus {
-          border-color: #8b5cf6;
-          box-shadow:
-            0 0 0 3px rgba(109, 40, 217, 0.10);
+          border-color: #7c3aed;
+          box-shadow: 0 0 0 1px #7c3aed, 0 0 0 4px rgba(124, 58, 237, 0.12);
         }
 
         .sagar-select:disabled {
           cursor: not-allowed;
-          opacity: 0.55;
+          background-color: #f8fafc;
+          border-color: #e2e8f0;
+          color: #94a3b8;
+          box-shadow: none;
         }
 
         .sagar-select-wrap-error .sagar-select {
-          border-color: #d64545;
+          border-color: #ef4444;
+          background-color: #fffcfc;
+        }
+
+        .sagar-select-wrap-error .sagar-select:hover:not(:disabled) {
+          border-color: #dc2626;
         }
 
         .sagar-select-wrap-error .sagar-select:focus {
-          border-color: #d64545;
-          box-shadow:
-            0 0 0 3px rgba(214, 69, 69, 0.10);
+          border-color: #dc2626;
+          box-shadow: 0 0 0 1px #dc2626, 0 0 0 4px rgba(220, 38, 38, 0.12);
         }
 
         .sagar-select-arrow {
           position: absolute;
           top: 50%;
           right: 12px;
-          width: 20px;
-          height: 20px;
-          display: flex;
+          width: 18px;
+          height: 18px;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          color: #676572;
+          color: #64748b;
           pointer-events: none;
           transform: translateY(-50%);
+          transition: color 140ms ease;
+        }
+
+        .sagar-select:focus + .sagar-select-arrow {
+          color: #7c3aed;
+        }
+
+        .sagar-select:disabled ~ .sagar-select-arrow {
+          color: #cbd5e1;
         }
 
         .sagar-select-hint,
         .sagar-select-error {
           margin: 6px 2px 0;
-          font-size: 10px;
-          line-height: 14px;
+          font-size: 12px;
+          line-height: 1.4;
+          letter-spacing: -0.005em;
         }
 
         .sagar-select-hint {
-          color: #9795a2;
+          color: #64748b;
         }
 
         .sagar-select-error {
-          color: #d64545;
+          color: #dc2626;
+          font-weight: 500;
         }
 
-        @media (max-width: 700px) {
+        /* Prevent auto-zoom in mobile Safari with font-size >= 16px */
+        @media (max-width: 640px) {
+          .sagar-select-wrap {
+            min-height: 44px;
+          }
+
           .sagar-select {
-            min-height: 46px;
-            font-size: 14px;
-            border-radius: 12px;
+            min-height: 44px;
+            font-size: 16px;
+            padding: 0 38px 0 12px;
+          }
+
+          .sagar-select-label {
+            font-size: 12.5px;
+          }
+
+          .sagar-select-hint,
+          .sagar-select-error {
+            font-size: 11.5px;
           }
         }
       `}</style>

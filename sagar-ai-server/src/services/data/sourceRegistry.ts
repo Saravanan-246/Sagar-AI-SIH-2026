@@ -9,6 +9,8 @@ export type SourceKind =
 
 export type SourceStatus =
   | "available"
+  | "connected"
+  | "requires_credentials"
   | "planned"
   | "unavailable";
 
@@ -245,10 +247,10 @@ const SOURCES: DataSource[] = [
     domain: "marine",
     kind: "api",
 
-    status: "planned",
+    status: "connected",
 
     description:
-      "External marine and ocean-information source reserved for a future live adapter.",
+      "Connected: INCOIS's public ERDDAP ocean server (ARGO-based sea-surface temperature analysis), queried live with no API key. Its own analysis timestamp is reported honestly and can lag well behind the dataset's intended cadence (re-verified: ~7 weeks old as of this check, not the ~10 days its name implies), so freshness is computed from the real observed time, never assumed. Coverage is regional open-ocean only (no shallow coastal Gulf of Mannar/Palk Bay data), so readings are shown as supplementary regional context - never substituted for a coastal area's own local reading, never rendered as a map layer, and never fed into risk/route/zone scoring.",
 
     supports: [
       "ocean information",
@@ -268,10 +270,10 @@ const SOURCES: DataSource[] = [
     domain: "weather",
     kind: "meteorological",
 
-    status: "planned",
+    status: "requires_credentials",
 
     description:
-      "External meteorological source reserved for a future live weather adapter.",
+      "Not connected - IMD's official weather API requires a registered API key Sagar does not currently hold. Sagar continues using its configured prototype weather dataset.",
 
     supports: [
       "weather",
@@ -285,6 +287,35 @@ const SOURCES: DataSource[] = [
   },
 
   {
+    id: "open-meteo-marine",
+    name: "Open-Meteo Marine + Weather Forecast API",
+    provider: "Open-Meteo (open-meteo.com)",
+
+    domain: "marine",
+    kind: "api",
+
+    status: "connected",
+
+    description:
+      "Connected: Open-Meteo's free, no-API-key Marine Weather API (wave/current/SST/sea-level) and Weather Forecast API (wind), queried live over a bounded Gulf of Mannar pilot grid. These are forecast/model outputs (Open-Meteo's own wave/ocean/atmospheric model blend), never local sensor observations or AIS - always presented as \"Marine Model\"/\"Model Conditions\", never as live/observed readings. Used only for the map's optional Wind/Waves/Current/SST/Tide layers - never fed into risk, PFZ or route scoring.",
+
+    supports: [
+      "wave height",
+      "swell",
+      "ocean current",
+      "sea surface temperature",
+      "sea level",
+      "tide",
+      "wind",
+      "marine model",
+    ],
+
+    local: false,
+
+    updateFrequency: "Hourly-ish model refresh; Sagar caches responses for ~30 minutes",
+  },
+
+  {
     id: "isro",
     name: "ISRO",
     provider: "Indian Space Research Organisation",
@@ -295,7 +326,7 @@ const SOURCES: DataSource[] = [
     status: "planned",
 
     description:
-      "External satellite-data source reserved for a future satellite-data adapter.",
+      "Not connected - MOSDAC's satellite ocean/coastal products require portal registration and manual data access that has not been integrated. No viable automated access path identified yet.",
 
     supports: [
       "satellite",

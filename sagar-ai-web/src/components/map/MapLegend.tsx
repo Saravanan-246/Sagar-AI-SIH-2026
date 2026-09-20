@@ -26,6 +26,53 @@ type MapLegendProps = {
 export default function MapLegend({ activeLayers }: MapLegendProps) {
   const groups: LegendGroup[] = [];
 
+  if (activeLayers.wind) {
+    groups.push({
+      title: "Wind (model)",
+      entries: [
+        { color: "#0e2a43", label: "Light < 10 kn", shape: "dot" },
+        { color: "#0e2a43", label: "Moderate 10–20 kn", shape: "dot" },
+        { color: "#0e2a43", label: "Strong > 20 kn", shape: "dot" },
+      ],
+    });
+  }
+
+  if (activeLayers.waves) {
+    groups.push({
+      title: "Wave height (model)",
+      entries: [
+        { color: "#159a68", label: "< 1 m", shape: "square" },
+        { color: "#c98700", label: "1–2 m", shape: "square" },
+        { color: "#d64545", label: "> 2 m", shape: "square" },
+      ],
+    });
+  }
+
+  if (activeLayers.current) {
+    groups.push({
+      title: "Ocean current (model)",
+      entries: [{ color: "#0f6e64", label: "Direction / velocity", shape: "dot" }],
+    });
+  }
+
+  if (activeLayers.sst) {
+    groups.push({
+      title: "Sea-surface temperature (model)",
+      entries: [
+        { color: "#2563eb", label: "< 28°C", shape: "square" },
+        { color: "#c98700", label: "28–30°C", shape: "square" },
+        { color: "#d64545", label: "> 30°C", shape: "square" },
+      ],
+    });
+  }
+
+  if (activeLayers.tide) {
+    groups.push({
+      title: "Sea level / tide (model)",
+      entries: [{ color: "#0e2a43", label: "Modeled sea-level height", shape: "dot" }],
+    });
+  }
+
   if (activeLayers.conditions) {
     groups.push({
       title: "Marine areas",
@@ -76,6 +123,13 @@ export default function MapLegend({ activeLayers }: MapLegendProps) {
     });
   }
 
+  const hasModelLayer =
+    activeLayers.wind ||
+    activeLayers.waves ||
+    activeLayers.current ||
+    activeLayers.sst ||
+    activeLayers.tide;
+
   if (groups.length === 0) {
     return null;
   }
@@ -106,6 +160,16 @@ export default function MapLegend({ activeLayers }: MapLegendProps) {
           </div>
         </div>
       ))}
+
+      {hasModelLayer && (
+        <div className="map-legend-attribution">
+          Marine model layers: forecast data, not sensor observations. Weather data by{" "}
+          <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
+            Open-Meteo.com
+          </a>{" "}
+          (CC BY 4.0).
+        </div>
+      )}
     </div>
   );
 }

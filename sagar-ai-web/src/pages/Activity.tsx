@@ -44,12 +44,9 @@ type ActivityItem = {
 
 type FilterKey = "all" | ActivityType;
 
-const ACTIVITY_STORAGE_KEY =
-  APP_CONFIG.storage.activity;
+const ACTIVITY_STORAGE_KEY = APP_CONFIG.storage.activity;
 
-function isActivityType(
-  value: unknown,
-): value is ActivityType {
+function isActivityType(value: unknown): value is ActivityType {
   return (
     value === "question" ||
     value === "route" ||
@@ -62,9 +59,7 @@ function isActivityType(
 
 function readActivities(): ActivityItem[] {
   try {
-    const raw = localStorage.getItem(
-      ACTIVITY_STORAGE_KEY,
-    );
+    const raw = localStorage.getItem(ACTIVITY_STORAGE_KEY);
 
     if (!raw) {
       return [];
@@ -76,31 +71,18 @@ function readActivities(): ActivityItem[] {
       ? parsed
       : typeof parsed === "object" &&
           parsed !== null &&
-          Array.isArray(
-            (parsed as { activities?: unknown })
-              .activities,
-          )
-        ? (
-            parsed as {
-              activities: unknown[];
-            }
-          ).activities
+          Array.isArray((parsed as { activities?: unknown }).activities)
+        ? (parsed as { activities: unknown[] }).activities
         : [];
 
     return source
       .filter(
         (item): item is Record<string, unknown> =>
-          typeof item === "object" &&
-          item !== null,
+          typeof item === "object" && item !== null
       )
       .map((item, index) => ({
-        id:
-          typeof item.id === "string"
-            ? item.id
-            : `activity-${index}`,
-        type: isActivityType(item.type)
-          ? item.type
-          : "system",
+        id: typeof item.id === "string" ? item.id : `activity-${index}`,
+        type: isActivityType(item.type) ? item.type : "system",
         title:
           typeof item.title === "string"
             ? item.title
@@ -118,39 +100,28 @@ function readActivities(): ActivityItem[] {
             ? item.timestamp
             : new Date().toISOString(),
         metadata:
-          typeof item.metadata === "string"
-            ? item.metadata
-            : undefined,
+          typeof item.metadata === "string" ? item.metadata : undefined,
       }));
   } catch (error) {
-    console.error(
-      "Failed to read activity history:",
-      error,
-    );
-
+    console.error("Failed to read activity history:", error);
     return [];
   }
 }
 
-function formatTimestamp(
-  timestamp: string,
-): string {
+function formatTimestamp(timestamp: string): string {
   const date = new Date(timestamp);
 
   if (Number.isNaN(date.getTime())) {
     return "Unknown time";
   }
 
-  return new Intl.DateTimeFormat(
-    undefined,
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    },
-  ).format(date);
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function getIcon(type: ActivityType) {
@@ -203,46 +174,36 @@ function getTone(type: ActivityType) {
 }
 
 export default function Activity() {
-  const [activities, setActivities] =
-    useState<ActivityItem[]>(() =>
-      readActivities(),
-    );
+  const [activities, setActivities] = useState<ActivityItem[]>(() =>
+    readActivities()
+  );
 
-  const [filter, setFilter] =
-    useState<FilterKey>("all");
-
-  const [filtersOpen, setFiltersOpen] =
-    useState(false);
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const filteredActivities = useMemo(() => {
     const filtered =
       filter === "all"
         ? activities
-        : activities.filter(
-            (item) => item.type === filter,
-          );
+        : activities.filter((item) => item.type === filter);
 
     return [...filtered].sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() -
-        new Date(a.timestamp).getTime(),
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }, [activities, filter]);
 
-  const questionCount =
-    activities.filter(
-      (item) => item.type === "question",
-    ).length;
+  const questionCount = activities.filter(
+    (item) => item.type === "question"
+  ).length;
 
-  const routeCount =
-    activities.filter(
-      (item) => item.type === "route",
-    ).length;
+  const routeCount = activities.filter(
+    (item) => item.type === "route"
+  ).length;
 
-  const scenarioCount =
-    activities.filter(
-      (item) => item.type === "scenario",
-    ).length;
+  const scenarioCount = activities.filter(
+    (item) => item.type === "scenario"
+  ).length;
 
   const refresh = () => {
     setActivities(readActivities());
@@ -250,15 +211,10 @@ export default function Activity() {
 
   const clearActivity = () => {
     try {
-      localStorage.removeItem(
-        ACTIVITY_STORAGE_KEY,
-      );
+      localStorage.removeItem(ACTIVITY_STORAGE_KEY);
       setActivities([]);
     } catch (error) {
-      console.error(
-        "Failed to clear activity:",
-        error,
-      );
+      console.error("Failed to clear activity:", error);
     }
   };
 
@@ -275,8 +231,7 @@ export default function Activity() {
             <h1>Activity</h1>
 
             <p>
-              Review your recent Sagar questions,
-              routes, scenarios and marine alerts
+              Review your recent Sagar questions, routes, scenarios and marine alerts
               in one place.
             </p>
           </div>
@@ -359,20 +314,14 @@ export default function Activity() {
               <h2>Recent activity</h2>
               <span>
                 {filteredActivities.length}{" "}
-                {filteredActivities.length === 1
-                  ? "record"
-                  : "records"}
+                {filteredActivities.length === 1 ? "record" : "records"}
               </span>
             </div>
 
             <Button
               variant="secondary"
               size="sm"
-              onClick={() =>
-                setFiltersOpen(
-                  (current) => !current,
-                )
-              }
+              onClick={() => setFiltersOpen((current) => !current)}
             >
               <Filter size={15} />
               Filter
@@ -403,9 +352,7 @@ export default function Activity() {
                       ? "activity-filter active"
                       : "activity-filter"
                   }
-                  onClick={() =>
-                    setFilter(value)
-                  }
+                  onClick={() => setFilter(value)}
                 >
                   {label}
                 </button>
@@ -431,8 +378,7 @@ export default function Activity() {
                   filter !== "all"
                     ? {
                         label: "Show all activity",
-                        onClick: () =>
-                          setFilter("all"),
+                        onClick: () => setFilter("all"),
                       }
                     : undefined
                 }
@@ -440,80 +386,64 @@ export default function Activity() {
             </div>
           ) : (
             <div className="activity-list">
-              {filteredActivities.map(
-                (activity, index) => {
-                  const Icon = getIcon(
-                    activity.type,
-                  );
+              {filteredActivities.map((activity, index) => {
+                const Icon = getIcon(activity.type);
 
-                  return (
-                    <article
-                      key={activity.id}
-                      className="activity-record"
-                    >
-                      <div className="activity-record-rail">
-                        <div
-                          className={`activity-record-icon ${activity.type}`}
-                        >
-                          <Icon size={17} />
-                        </div>
-
-                        {index <
-                          filteredActivities.length -
-                            1 && (
-                          <span className="activity-record-line" />
-                        )}
+                return (
+                  <article
+                    key={activity.id}
+                    className="activity-record"
+                  >
+                    <div className="activity-record-rail">
+                      <div
+                        className={`activity-record-icon ${activity.type}`}
+                      >
+                        <Icon size={17} />
                       </div>
 
-                      <div className="activity-record-body">
-                        <div className="activity-record-top">
-                          <div className="activity-record-heading">
-                            <div className="activity-record-meta">
-                              <Badge
-                                tone={getTone(
-                                  activity.type,
-                                )}
-                                size="sm"
-                              >
-                                {getLabel(
-                                  activity.type,
-                                )}
-                              </Badge>
+                      {index < filteredActivities.length - 1 && (
+                        <span className="activity-record-line" />
+                      )}
+                    </div>
 
-                              <span>
-                                {formatTimestamp(
-                                  activity.timestamp,
-                                )}
-                              </span>
-                            </div>
+                    <div className="activity-record-body">
+                      <div className="activity-record-top">
+                        <div className="activity-record-heading">
+                          <div className="activity-record-meta">
+                            <Badge
+                              tone={getTone(activity.type)}
+                              size="sm"
+                            >
+                              {getLabel(activity.type)}
+                            </Badge>
 
-                            <h3>
-                              {activity.title}
-                            </h3>
+                            <span>
+                              {formatTimestamp(activity.timestamp)}
+                            </span>
                           </div>
 
-                          <ChevronRight
-                            size={17}
-                            className="activity-record-chevron"
-                          />
+                          <h3>{activity.title}</h3>
                         </div>
 
-                        {activity.description && (
-                          <p>
-                            {activity.description}
-                          </p>
-                        )}
-
-                        {activity.metadata && (
-                          <span className="activity-record-metadata">
-                            {activity.metadata}
-                          </span>
-                        )}
+                        <ChevronRight
+                          size={17}
+                          className="activity-record-chevron"
+                        />
                       </div>
-                    </article>
-                  );
-                },
-              )}
+
+                      {activity.description && (
+                        <p>{activity.description}</p>
+                      )}
+
+                      {activity.metadata && (
+                        <span className="activity-record-metadata">
+                          {activity.metadata}
+                        </span>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
@@ -522,10 +452,8 @@ export default function Activity() {
           <ShieldAlert size={15} />
 
           <span>
-            Activity records describe decisions
-            made in Sagar. They do not replace
-            official marine warnings or navigation
-            guidance.
+            Activity records describe decisions made in Sagar. They do not replace
+            official marine warnings or navigation guidance.
           </span>
         </aside>
       </PageContainer>

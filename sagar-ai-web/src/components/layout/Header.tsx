@@ -1,6 +1,8 @@
 import { Bell, Menu } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import "./Header.css";
+
 const pageTitles: Record<string, string> = {
   "/": "Marine Situation",
   "/map": "Marine Map",
@@ -11,6 +13,7 @@ const pageTitles: Record<string, string> = {
   "/activity": "Activity",
   "/sources": "Data Sources",
   "/profile": "Profile",
+  "/research/sst": "SST Intelligence",
 };
 
 type HeaderProps = {

@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import "./PageContainer.css";
+
 type PageContainerProps = {
   children: ReactNode;
   className?: string;

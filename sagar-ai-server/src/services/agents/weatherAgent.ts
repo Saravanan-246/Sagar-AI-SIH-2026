@@ -88,19 +88,16 @@ function getArea(
   );
 }
 
+// Alerts geographically/explicitly relevant to this area only -
+// getAlertsByArea() already returns an empty list (not every active
+// alert) when the area is known but nothing matches it, so no extra
+// fallback is layered on top here.
 function getWeatherAlerts(
   area: MarineArea
 ) {
-  const areaAlerts =
-    getAlertsByArea(
-      area.id
-    );
-
-  if (areaAlerts.length > 0) {
-    return areaAlerts;
-  }
-
-  return getActiveAlerts();
+  return getAlertsByArea(
+    area.id
+  );
 }
 
 function severityRank(

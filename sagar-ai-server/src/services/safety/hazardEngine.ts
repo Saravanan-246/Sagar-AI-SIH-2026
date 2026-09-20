@@ -1,5 +1,4 @@
 import {
-  getActiveAlerts,
   getAlertsByArea,
 } from "../alerts/alertService";
 
@@ -743,7 +742,11 @@ export function assessHazards(
       options.areaName
     );
 
-  const alertRecords =
+  // Alerts geographically/explicitly relevant to this area only -
+  // getAlertsByArea() already returns an empty list (not every active
+  // alert) when the area is known but nothing matches it, so no extra
+  // fallback is layered on top here.
+  const alerts =
     options.includeAlerts === false
       ? []
       : getAlertsByArea(
@@ -753,16 +756,6 @@ export function assessHazards(
             alert.status ===
             "active"
         );
-
-  /*
-   * Some alert datasets may not be explicitly
-   * linked to an area. Add active alerts only
-   * when no area-specific records exist.
-   */
-  const alerts =
-    alertRecords.length > 0
-      ? alertRecords
-      : getActiveAlerts();
 
   const alertHazards =
     alerts.map(

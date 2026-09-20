@@ -116,6 +116,8 @@ function buildStructuredActions(
   handlers: {
     onView: () => void;
     onSimulate: () => void;
+    onWhy: () => void;
+    onWhatData: () => void;
     onUseMyLocation?: () => void;
     onChooseArea?: () => void;
   }
@@ -177,7 +179,22 @@ function buildStructuredActions(
     actions.push({ label: "Simulate (what if?)", onClick: handlers.onSimulate });
   }
 
-  return actions.slice(0, 2);
+  // "Why this?" / "What data?" only make sense when there's a real
+  // decision (a risk score, or a zone/alert list) to explain, and never
+  // on a what-if comparison or an evidence answer explaining itself.
+  const hasExplainableBasis =
+    !result.whatIf &&
+    result.intent !== "evidence" &&
+    (typeof result.riskScore === "number" ||
+      (result.zones && result.zones.length > 0) ||
+      (result.alerts && result.alerts.length > 0));
+
+  if (hasExplainableBasis) {
+    actions.push({ label: "Why this?", onClick: handlers.onWhy });
+    actions.push({ label: "What data?", onClick: handlers.onWhatData });
+  }
+
+  return actions.slice(0, 4);
 }
 
 function buildStructuredData(
@@ -185,6 +202,8 @@ function buildStructuredData(
   handlers: {
     onView: () => void;
     onSimulate: () => void;
+    onWhy: () => void;
+    onWhatData: () => void;
     onUseMyLocation?: () => void;
     onChooseArea?: () => void;
   }
@@ -319,6 +338,21 @@ export default function useSagar(
         );
       };
 
+      // Both ask a real follow-up question through this same pipeline
+      // (like "Simulate" above) - the backend's deterministic evidence
+      // intent answers each from data already computed for this area,
+      // no new engine and no LLM call.
+      const handleWhy = () => {
+        void sendMessageRef.current?.("Why is this area risky?", options);
+      };
+
+      const handleWhatData = () => {
+        void sendMessageRef.current?.(
+          "What data are you using for this decision?",
+          options
+        );
+      };
+
       try {
         const result = await askSagarBackend(text, {
           language: options.language,
@@ -354,6 +388,8 @@ export default function useSagar(
           structured: buildStructuredData(result, {
             onView: handleViewOnMap(result),
             onSimulate: handleSimulate,
+            onWhy: handleWhy,
+            onWhatData: handleWhatData,
             onUseMyLocation: handlersRef.current.onUseMyLocation,
             onChooseArea: handlersRef.current.onChooseArea,
           }),

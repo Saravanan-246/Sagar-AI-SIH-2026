@@ -47,46 +47,80 @@ const VOICE_LANGUAGE_OPTIONS: Array<{ value: AppLanguage; label: string }> = [
 
 type MicState = "idle" | "listening" | "thinking" | "speaking" | "error";
 
-function getThinkingLabel(lastUserMessage: string | null): string {
-  if (!lastUserMessage) {
-    return "Sagar is checking marine conditions…";
+type ThinkingInfo = {
+  label: string;
+  /** Only the real pipeline stages that actually apply to this message -
+   * never a fixed list, never marked done here (the caller only ever
+   * renders these as pending; the whole bubble is replaced by the real
+   * answer the moment it arrives). Omitted entirely for a casual message,
+   * which the backend answers without touching marine data at all. */
+  stages?: string[];
+};
+
+// Mirrors (loosely - a false miss here only costs a slightly-generic
+// loading line, never a wrong claim) the backend's own casual-message
+// gate in chat.routes.ts, so a greeting/thanks never shows "Marine data
+// checked" for a message that will never touch marine data.
+const CASUAL_THINKING_PATTERN =
+  /^(hi|hello|hey|yo|sup|bro|ok|okay|k|thanks|thank you|thx|good morning|good afternoon|good evening|bye|goodbye)[.!? ]*$/i;
+
+function getThinkingInfo(
+  lastUserMessage: string | null,
+  hasLocation: boolean,
+): ThinkingInfo {
+  if (!lastUserMessage || CASUAL_THINKING_PATTERN.test(lastUserMessage.trim())) {
+    return { label: "Sagar is replying…" };
   }
 
   const text = lastUserMessage.toLowerCase();
+  const locationStage = hasLocation ? ["Location identified"] : [];
 
   if (/\broute|path|passage|sail\b/.test(text)) {
-    return "Sagar is plotting the safest route…";
+    return {
+      label: "Sagar is plotting the safest route…",
+      stages: [...locationStage, "Marine data checked", "Risk evaluated"],
+    };
   }
 
   if (/\bzone|fishing|pfz\b/.test(text)) {
-    return "Sagar is scanning fishing zones…";
+    return {
+      label: "Sagar is scanning fishing zones…",
+      stages: [...locationStage, "Marine data checked"],
+    };
   }
 
   if (/\bwind|storm|cyclone|weather|what if\b/.test(text)) {
-    return "Sagar is modelling the scenario…";
+    return {
+      label: "Sagar is modelling the scenario…",
+      stages: [...locationStage, "Marine data checked", "Risk evaluated"],
+    };
   }
 
   if (/\balert|warning\b/.test(text)) {
-    return "Sagar is checking active alerts…";
+    return {
+      label: "Sagar is checking active alerts…",
+      stages: [...locationStage, "Marine data checked"],
+    };
   }
 
-  return "Sagar is checking marine conditions…";
+  if (/\bwhy|what data|what sources|what evidence|show me the evidence\b/.test(text)) {
+    return {
+      label: "Sagar is gathering the evidence…",
+      stages: [...locationStage, "Marine data checked"],
+    };
+  }
+
+  return {
+    label: "Sagar is checking marine conditions…",
+    stages: [...locationStage, "Marine data checked", "Risk evaluated"],
+  };
 }
 
 export default function Chat() {
   const navigate = useNavigate();
 
-  /*
-   * A clarification chip needs to retry the question after the location
-   * is set, but retryLastQuestion comes from the very hook these
-   * handlers are passed into - the refs break that cycle without
-   * re-creating the hook on every render.
-   */
   const retryRef = useRef<(() => void) | null>(null);
   const requestLocationRef = useRef<(() => Promise<boolean>) | null>(null);
-
-  // Set when the user opened the area picker from a chat chip, so
-  // picking an area re-asks the question instead of leaving it hanging.
   const retryAfterAreaSelectRef = useRef(false);
 
   const handleClarifyUseMyLocation = useCallback(async () => {
@@ -100,8 +134,6 @@ export default function Chat() {
       return;
     }
 
-    // Requirement of the browser permission model: we can offer the
-    // area picker, but we can never re-prompt once it is blocked.
     setLocationNotice(
       "Location access is blocked. You can choose an area instead.",
     );
@@ -147,9 +179,7 @@ export default function Chat() {
 
   const [input, setInput] = useState("");
   const [areaPickerOpen, setAreaPickerOpen] = useState(false);
-  const [locationNotice, setLocationNotice] = useState<string | null>(
-    null,
-  );
+  const [locationNotice, setLocationNotice] = useState<string | null>(null);
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [savedChats, setSavedChats] = useState<SavedChat[]>(() =>
@@ -165,6 +195,10 @@ export default function Chat() {
   const selectedAreaId = useAppStore((state) => state.selectedAreaId);
   const currentLocation = useAppStore((state) => state.currentLocation);
   const locationPermission = useAppStore((state) => state.locationPermission);
+  const pendingChatPrompt = useAppStore((state) => state.pendingChatPrompt);
+  const clearPendingChatPrompt = useAppStore(
+    (state) => state.clearPendingChatPrompt,
+  );
 
   const { requestLocation, status: locationStatus } = useUserLocation();
 
@@ -173,16 +207,6 @@ export default function Chat() {
   }, [requestLocation]);
 
   const voiceOutput = useVoiceOutput();
-
-  /*
-   * TTS is an optional enhancement, not a chat failure - the text
-   * answer already succeeded regardless of whether it can be read
-   * aloud. This is a small, self-dismissing toast (never the same
-   * bold banner a real send/network error gets) so a voice hiccup
-   * never reads as "the app is broken". Re-shows and restarts its
-   * timer on every new voiceOutput "error" transition; manual
-   * dismiss closes it early.
-   */
   const [voiceToastVisible, setVoiceToastVisible] = useState(false);
 
   useEffect(() => {
@@ -200,11 +224,8 @@ export default function Chat() {
   }, [voiceOutput.status]);
 
   const locale = LOCALE_BY_LANGUAGE[language] ?? "en-IN";
-
   const marineAreas = useMemo(() => getMarineAreas(), []);
 
-  // Deterministic, local-data-only suggestions (no AI call) that change
-  // with the selected area/location and interaction language.
   const suggestions = useMemo(
     () =>
       getSuggestedQuestions({
@@ -254,12 +275,6 @@ export default function Chat() {
       VOICE_ERROR_LABEL.unknown,
   };
 
-  /*
-   * One compact line covering the distinct location states: none,
-   * using the device location (with the supported area the backend
-   * resolved it to, once known), a manually selected area, or blocked.
-   * The raw coordinates are never shown.
-   */
   const locationStateLabel = currentLocation
     ? resolvedAreaName
       ? `Using your location · ${resolvedAreaName}`
@@ -271,21 +286,21 @@ export default function Chat() {
         ? "Location unavailable"
         : "No location set";
 
-  const chatMessages: ChatItem[] = messages.map(
-    (message) => ({
-      id: message.id,
-      role: message.role,
-      text: message.text,
-      timestamp: message.timestamp,
-      structured: message.structured,
-      language: message.language,
-    }),
-  );
+  const chatMessages: ChatItem[] = messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    text: message.text,
+    timestamp: message.timestamp,
+    structured: message.structured,
+    language: message.language,
+    // The real resolved area for this specific answer, if any - never a
+    // fallback/default name when it doesn't resolve against the
+    // configured marine areas.
+    locationLabel: message.affectedAreaId
+      ? marineAreas.find((area) => area.id === message.affectedAreaId)?.name
+      : undefined,
+  }));
 
-  // The map only ever reflects the most recent answer that actually
-  // resolved something map-relevant (route/zone/alert/area) - a purely
-  // conversational reply leaves the map exactly as it was, per the
-  // requirement not to force a map update into every message.
   const mapFocus = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const message = messages[i];
@@ -324,9 +339,13 @@ export default function Chat() {
     return null;
   }, [chatMessages]);
 
-  const thinkingLabel = useMemo(
-    () => getThinkingLabel(lastUserMessage),
-    [lastUserMessage],
+  const hasKnownLocation = Boolean(
+    selectedAreaId || currentLocation || resolvedAreaName,
+  );
+
+  const thinkingInfo = useMemo(
+    () => getThinkingInfo(lastUserMessage, hasKnownLocation),
+    [lastUserMessage, hasKnownLocation],
   );
 
   const activeChat = currentChatId
@@ -348,19 +367,12 @@ export default function Chat() {
       return;
     }
 
-    // "Use my current location" is a location command, not a marine
-    // question - browser geolocation permission also requires this
-    // direct user-gesture path rather than an AI classification
-    // round-trip.
     if (/\buse (my )?(current )?location\b/i.test(text)) {
       setInput("");
       await handleUseMyLocation();
       return;
     }
 
-    // "Set location to X" / "check near X" / "show ... near X" - resolve
-    // deterministically against the configured marine areas and persist
-    // it as the working location, then still let the question through.
     const setLocationMatch = text.match(
       /\b(?:set location to|switch (?:location )?to|use location|check near|near me at|show.*\bnear)\s+(.+?)[.?!]*$/i,
     );
@@ -397,9 +409,19 @@ export default function Chat() {
     void submitMessage(value);
   };
 
-  // Always-current snapshot for the autosave effect below, so it never
-  // needs these values in its dependency array (which would re-fire it
-  // on every unrelated change) or reads them stale.
+  // A question built from real page context elsewhere (e.g. the Route
+  // page's selected route), asked through this same send pipeline the
+  // moment Chat mounts - never a second chat mechanism.
+  useEffect(() => {
+    if (!pendingChatPrompt) {
+      return;
+    }
+
+    clearPendingChatPrompt();
+    void submitMessage(pendingChatPrompt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingChatPrompt]);
+
   const latestRef = useRef({
     currentChatId,
     language,
@@ -416,17 +438,8 @@ export default function Chat() {
     };
   });
 
-  // Opening a saved conversation shouldn't re-save it (that would just
-  // bump its recency for no reason) - this flag skips exactly one
-  // autosave pass right after restoreMessages runs.
   const skipAutosaveRef = useRef(false);
 
-  /*
-   * Sagar conversations autosave as they happen, the way a modern chat
-   * app does - reusing the exact same saveChat/listSavedChats utilities
-   * the app already had for manual saving, just triggered automatically
-   * instead of via a button.
-   */
   useEffect(() => {
     if (skipAutosaveRef.current) {
       skipAutosaveRef.current = false;
@@ -563,16 +576,12 @@ export default function Chat() {
 
     setAreaPickerOpen(false);
 
-    // Only auto-retry when the picker was opened from a chat
-    // clarification - changing area mid-conversation from elsewhere
-    // should not silently re-send the previous question.
     if (area && retryAfterAreaSelectRef.current) {
       retryAfterAreaSelectRef.current = false;
       retryRef.current?.();
     }
   };
 
-  // Mobile drawer: lock background scroll and allow Escape to close.
   useEffect(() => {
     if (!mobileSidebarOpen) {
       return;
@@ -628,142 +637,143 @@ export default function Chat() {
       />
 
       <div className="chat-content-area">
-      <div className="chat-main">
-        <ChatHeader
-          title={headerTitle}
-          locationLabel={locationStateLabel}
-          onMenuClick={() => setMobileSidebarOpen(true)}
-          onNewChat={handleNewConversation}
-        />
+        <div className="chat-main">
+          <ChatHeader
+            title={headerTitle}
+            locationLabel={locationStateLabel}
+            onMenuClick={() => setMobileSidebarOpen(true)}
+            onNewChat={handleNewConversation}
+          />
 
-        <div className="chat-main-window">
-          <ChatWindow
-            messages={chatMessages}
-            loading={loading}
-            thinkingLabel={thinkingLabel}
-            suggestions={suggestions}
-            onSuggestion={handleSuggestion}
-            renderVoiceControl={(message) => {
-              if (!voiceOutput.isSupported) {
-                return null;
-              }
+          <div className="chat-main-window">
+            <ChatWindow
+              messages={chatMessages}
+              loading={loading}
+              thinkingLabel={thinkingInfo.label}
+              thinkingStages={thinkingInfo.stages}
+              suggestions={suggestions}
+              onSuggestion={handleSuggestion}
+              renderVoiceControl={(message) => {
+                if (!voiceOutput.isSupported) {
+                  return null;
+                }
 
-              const isThisSpeaking =
-                voiceOutput.speakingId === message.id &&
-                voiceOutput.status === "speaking";
+                const isThisSpeaking =
+                  voiceOutput.speakingId === message.id &&
+                  voiceOutput.status === "speaking";
 
-              const isThisPaused =
-                voiceOutput.speakingId === message.id &&
-                voiceOutput.status === "paused";
+                const isThisPaused =
+                  voiceOutput.speakingId === message.id &&
+                  voiceOutput.status === "paused";
 
-              if (isThisSpeaking) {
+                if (isThisSpeaking) {
+                  return (
+                    <button
+                      type="button"
+                      className="chat-voice-control"
+                      onClick={voiceOutput.pause}
+                      aria-label="Pause"
+                    >
+                      <Pause size={12} />
+                    </button>
+                  );
+                }
+
+                if (isThisPaused) {
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        className="chat-voice-control"
+                        onClick={voiceOutput.resume}
+                        aria-label="Resume"
+                      >
+                        <Volume2 size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="chat-voice-control"
+                        onClick={voiceOutput.stop}
+                        aria-label="Stop"
+                      >
+                        <Square size={12} />
+                      </button>
+                    </>
+                  );
+                }
+
                 return (
                   <button
                     type="button"
                     className="chat-voice-control"
-                    onClick={voiceOutput.pause}
-                    aria-label="Pause"
+                    onClick={() =>
+                      voiceOutput.speak(message.text, {
+                        id: message.id,
+                        language: localeForMessage(message.language),
+                      })
+                    }
+                    aria-label="Speak this response"
                   >
-                    <Pause size={12} />
+                    <Volume2 size={12} />
                   </button>
                 );
-              }
+              }}
+            />
+          </div>
 
-              if (isThisPaused) {
-                return (
-                  <>
-                    <button
-                      type="button"
-                      className="chat-voice-control"
-                      onClick={voiceOutput.resume}
-                      aria-label="Resume"
-                    >
-                      <Volume2 size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      className="chat-voice-control"
-                      onClick={voiceOutput.stop}
-                      aria-label="Stop"
-                    >
-                      <Square size={12} />
-                    </button>
-                  </>
-                );
-              }
+          <div className="chat-main-composer">
+            {error && (
+              <div className="chat-banner-stack">
+                <div className="chat-banner chat-banner-error">
+                  <AlertTriangle size={14} />
+                  <span>{error}</span>
+                </div>
+              </div>
+            )}
 
-              return (
+            <ChatMapPanel
+              variant="card"
+              focus={mapFocus}
+              areas={marineAreas}
+              onExpand={() => setMapModalOpen(true)}
+            />
+
+            {voiceToastVisible && (
+              <div className="chat-voice-toast" role="status">
+                <VolumeX size={13} />
+                <span>Voice playback unavailable on this device.</span>
                 <button
                   type="button"
-                  className="chat-voice-control"
-                  onClick={() =>
-                    voiceOutput.speak(message.text, {
-                      id: message.id,
-                      language: localeForMessage(message.language),
-                    })
-                  }
-                  aria-label="Speak this response"
+                  className="chat-voice-toast-dismiss"
+                  onClick={() => setVoiceToastVisible(false)}
+                  aria-label="Dismiss"
                 >
-                  <Volume2 size={12} />
+                  <X size={12} />
                 </button>
-              );
-            }}
-          />
-        </div>
-
-        <div className="chat-main-composer">
-          {error && (
-            <div className="chat-banner-stack">
-              <div className="chat-banner chat-banner-error">
-                <AlertTriangle size={14} />
-                <span>{error}</span>
               </div>
-            </div>
-          )}
+            )}
 
-          <ChatMapPanel
-            variant="card"
-            focus={mapFocus}
-            areas={marineAreas}
-            onExpand={() => setMapModalOpen(true)}
-          />
-
-          {voiceToastVisible && (
-            <div className="chat-voice-toast" role="status">
-              <VolumeX size={13} />
-              <span>Voice playback unavailable on this device.</span>
-              <button
-                type="button"
-                className="chat-voice-toast-dismiss"
-                onClick={() => setVoiceToastVisible(false)}
-                aria-label="Dismiss"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          )}
-
-          <ChatInput
-            value={input}
-            onChange={setInput}
-            onSend={handleSend}
-            disabled={loading}
-            placeholder="Message Sagar about sea conditions, alerts, fishing zones or routes..."
-            micSupported={voiceInput.isSupported}
-            micState={micState}
-            micLabel={micLabel[micState]}
-            onMicPress={handleMicPress}
-            onUseMyLocation={handleUseMyLocation}
-            onChooseArea={handleOpenAreaPicker}
-          />
+            <ChatInput
+              value={input}
+              onChange={setInput}
+              onSend={handleSend}
+              disabled={loading}
+              placeholder="Message Sagar about sea conditions, alerts, fishing zones or routes..."
+              micSupported={voiceInput.isSupported}
+              micState={micState}
+              micLabel={micLabel[micState]}
+              onMicPress={handleMicPress}
+              onUseMyLocation={handleUseMyLocation}
+              onChooseArea={handleOpenAreaPicker}
+            />
+          </div>
         </div>
-      </div>
 
-      {isDesktopMapLayout && (
-        <div className="chat-map-panel-wrapper">
-          <ChatMapPanel variant="inline" focus={mapFocus} areas={marineAreas} />
-        </div>
-      )}
+        {isDesktopMapLayout && (
+          <div className="chat-map-panel-wrapper">
+            <ChatMapPanel variant="inline" focus={mapFocus} areas={marineAreas} />
+          </div>
+        )}
       </div>
 
       <Modal

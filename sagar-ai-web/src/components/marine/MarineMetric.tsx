@@ -1,5 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 
+import "./MarineMetric.css";
+
 type MarineMetricProps = {
   label: string;
   value: string | number;

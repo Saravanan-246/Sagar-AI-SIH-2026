@@ -38,18 +38,29 @@ export default function useRoute() {
   const [error, setError] =
     useState<string | null>(null);
 
+  // Whether the most recent route data actually came from the live
+  // backend or the local/offline fallback - a real observed outcome
+  // (matches useSagar's same offline-fallback pattern), never a
+  // hardcoded "LIVE" label.
+  const [dataSource, setDataSource] =
+    useState<"backend" | "offline" | null>(null);
+
   const loadRoutes = useCallback(async () => {
     try {
       setError(null);
+
+      let usedFallback = false;
 
       const availableRoutes = await fetchRoutes().catch((err) => {
         console.warn(
           "Sagar backend is unavailable, using local route data:",
           err
         );
+        usedFallback = true;
         return getRoutesLocal();
       });
 
+      setDataSource(usedFallback ? "offline" : "backend");
       setRoutes(availableRoutes);
 
       setSelectedRoute((current) =>
@@ -77,6 +88,8 @@ export default function useRoute() {
       setError(null);
 
       try {
+        let usedFallback = false;
+
         const [calculated, options] = await Promise.all([
           calculateRouteRemote(
             origin,
@@ -86,6 +99,7 @@ export default function useRoute() {
               "Sagar backend is unavailable, calculating the route locally:",
               err
             );
+            usedFallback = true;
             return calculateRouteLocal(origin, destination);
           }),
           calculateRouteOptionsRemote(
@@ -96,10 +110,12 @@ export default function useRoute() {
               "Sagar backend is unavailable, calculating route options locally:",
               err
             );
+            usedFallback = true;
             return calculateRouteOptionsLocal(origin, destination);
           }),
         ]);
 
+        setDataSource(usedFallback ? "offline" : "backend");
         setResult(calculated);
         setRouteOptions(options);
 
@@ -156,6 +172,8 @@ export default function useRoute() {
     loading: isLoading,
 
     error,
+
+    dataSource,
 
     loadRoutes,
     refresh: loadRoutes,

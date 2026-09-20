@@ -1,6 +1,6 @@
 import "leaflet/dist/leaflet.css";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import { CircleMarker, MapContainer, Marker, TileLayer, Polyline, Polygon, Popup, useMap } from "react-leaflet";
 import { divIcon } from "leaflet";
 import type { LatLngExpression, Map as LeafletMap } from "leaflet";
@@ -8,9 +8,13 @@ import type { LatLngExpression, Map as LeafletMap } from "leaflet";
 import MapControls from "./MapControls";
 import MapLayers, { type MapLayerKey } from "./MapLayers";
 import MapLegend from "./MapLegend";
+import AskSagarButton from "../chat/AskSagarButton";
 import { APP_CONFIG } from "../../constants/config";
 import { getMarineAreas } from "../../services/marine/marineData";
 import { getAlerts } from "../../services/alerts/alertService";
+import { nearestMarineAreaName } from "../../utils/geo";
+import { useMarineModelGrid } from "../../hooks/useMarineModelGrid";
+import { fetchRisk, type MarineModelGridPoint } from "../../services/api/sagarApiClient";
 import {
   alertSeverityColor,
   formatAlertType,
@@ -80,6 +84,17 @@ type MarineMapProps = {
    * repeat it. Defaults to shown, unchanged for existing standalone
    * pages (Map, Route) that have no header of their own. */
   showStatusPill?: boolean;
+
+  /** Overrides the auto-derived context subtitle in the status pill
+   * (e.g. "Thoothukudi Coast", "Route", "Fishing Zone"). When omitted,
+   * derived from whatever real context this render already carries
+   * (a route, or a chat handoff's highlight label) - never invented. */
+  contextLabel?: string;
+
+  /** A real, already-known connectivity outcome (e.g. from
+   * useConnectivity()) - never polled or guessed here. Downgrades the
+   * status pill to OFFLINE instead of the default PROTOTYPE label. */
+  offline?: boolean;
 };
 
 const DEFAULT_CENTER: LatLngExpression = APP_CONFIG.map.defaultCenter;
@@ -139,6 +154,100 @@ function hazardDivIcon(color: string) {
     iconSize: [24, 24],
     iconAnchor: [12, 12],
   });
+}
+
+/** Wave-height display band - low/moderate/high, matching the same 3
+ * fixed colors used elsewhere on the map for severity (never a new
+ * fabricated palette). Presentation-only binning of the real fetched
+ * value, not a synthesized value. */
+function waveHeightColor(heightM: number): string {
+  if (heightM > 2) return "#d64545";
+  if (heightM >= 1) return "#c98700";
+  return "#159a68";
+}
+
+function sstColor(tempC: number): string {
+  if (tempC > 30) return "#d64545";
+  if (tempC >= 28) return "#c98700";
+  return "#2563eb";
+}
+
+/** Directional arrow for wind/current grid points - a small rotated
+ * triangle, same construction as the demo-boat glyph. Rotated directly
+ * by the source's own reported direction in degrees; magnitude scales
+ * opacity so a near-calm point reads as visually quieter than a strong
+ * one, without ever changing the numbers shown in its popup. */
+function vectorDivIcon(kind: "wind" | "current", directionDeg: number, magnitude: number) {
+  const opacity = Math.min(1, Math.max(0.35, magnitude / (kind === "wind" ? 25 : 3)));
+
+  return divIcon({
+    className: "marine-map-vector-icon",
+    html:
+      `<div class="marine-map-vector-glyph marine-map-vector-glyph-${kind}" ` +
+      `style="transform: rotate(${directionDeg}deg); opacity: ${opacity.toFixed(2)}"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+/** "Model" timestamps formatted the same compact inline style already
+ * used for alert issuedAt in this file - never a fake-precise value,
+ * just a plain local-time rendering of a real ISO timestamp. */
+function formatModelTime(iso?: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toLocaleString(undefined, {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * Presentational-only relabeling for the marine-model popup badge -
+ * freshnessEngine.ts's raw FreshnessStatus values are correct and
+ * unchanged (still used as-is everywhere else, e.g. INCOIS evidence),
+ * but showing the bare word "LIVE" on a forecast/model point would
+ * read as a live-sensor claim to a user, which the task's data-truth
+ * rule explicitly forbids ("never label as sensor/live observation").
+ * Open-Meteo's "current" value is always well within the
+ * marine_forecast domain's LIVE threshold, so every successful
+ * response would otherwise show "LIVE" on every popup.
+ */
+function describeModelFreshness(freshness: string): string {
+  switch (freshness) {
+    case "LIVE":
+      return "Just updated";
+    case "RECENT":
+      return "Recently updated";
+    case "AGING":
+      return "Aging";
+    case "STALE":
+      return "Stale";
+    case "OFFLINE":
+      return "Offline";
+    case "UNAVAILABLE":
+      return "Unavailable";
+    default:
+      return freshness;
+  }
+}
+
+function timeAgo(iso?: string | null): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return null;
+
+  const minutes = Math.max(0, Math.round(ms / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return `${days} d ago`;
 }
 
 function MapSyncController({ center, zoom }: { center: LatLngExpression; zoom: number }) {
@@ -236,12 +345,21 @@ export default function MarineMap({
   journeyBearingDeg = 0,
   highlight,
   showStatusPill = true,
+  contextLabel,
+  offline = false,
 }: MarineMapProps) {
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [location, setLocation] = useState<Coordinates | null>(null);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [activeLayers, setActiveLayers] = useState<Record<MapLayerKey, boolean>>({
+    wind: false,
+    waves: false,
+    current: false,
+    sst: false,
+    tide: false,
     conditions: true,
     pfz: true,
     alerts: true,
@@ -254,11 +372,17 @@ export default function MarineMap({
     [center]
   );
 
+  // The plain configured-area list (not the {area, latLng} pairs below) -
+  // used to resolve "which real configured area is this popup's own
+  // coordinate nearest to" for Ask Sagar prompts (a zone/alert/route
+  // point is rarely itself a configured area's exact center).
+  const marineAreasList = useMemo(() => areas ?? getMarineAreas(), [areas]);
+
   // Real configured marine areas (monitoring stations) - a prop when
   // the host page already fetched them (Map.tsx), otherwise the same
   // local dataset every other page already reads from.
   const areaList = useMemo(() => {
-    const source = areas ?? getMarineAreas();
+    const source = marineAreasList;
 
     return source
       .map((area) => {
@@ -266,7 +390,48 @@ export default function MarineMap({
         return latLng ? { area, latLng } : null;
       })
       .filter((item): item is { area: MarineArea; latLng: [number, number] } => item !== null);
-  }, [areas]);
+  }, [marineAreasList]);
+
+  // The same live, deterministic risk result Chat/What-If already use
+  // (via /api/risk - see riskAgent.ts), keyed by area id. Popups below
+  // prefer this over each area's own static safety.riskScore/overallRisk
+  // fixture field so a fisherman never sees a different number here
+  // than Sagar just told them in Chat for the same area. Falls back to
+  // the static field (unchanged) while loading, offline, or on error -
+  // never blocks the popup on this fetch.
+  const [liveAreaRisk, setLiveAreaRisk] = useState<
+    Record<string, { riskScore: number; riskLevel: string }>
+  >({});
+
+  useEffect(() => {
+    if (offline || marineAreasList.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void Promise.all(
+      marineAreasList.map((area) =>
+        fetchRisk({ areaId: area.id })
+          .then((response) => {
+            if (!response.data) return null;
+            return [area.id, { riskScore: response.data.riskScore, riskLevel: response.data.riskLevel }] as const;
+          })
+          .catch(() => null)
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, { riskScore: number; riskLevel: string }> = {};
+      for (const entry of results) {
+        if (entry) next[entry[0]] = entry[1];
+      }
+      setLiveAreaRisk(next);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [marineAreasList, offline]);
 
   // Real active alerts - a prop when the host page already fetched
   // them, otherwise the same normalized alert service every other
@@ -436,6 +601,59 @@ export default function MarineMap({
     };
   }, []);
 
+  const anyModelLayerActive =
+    activeLayers.wind ||
+    activeLayers.waves ||
+    activeLayers.current ||
+    activeLayers.sst ||
+    activeLayers.tide;
+
+  const {
+    points: modelPoints,
+    loading: modelLoading,
+    error: modelError,
+    lastFetchedAt: modelFetchedAt,
+  } = useMarineModelGrid({ enabled: anyModelLayerActive, offline });
+
+  const windIcon = useMemo(
+    () => (point: MarineModelGridPoint) =>
+      vectorDivIcon("wind", point.windDirection ?? 0, point.windSpeed ?? 0),
+    []
+  );
+
+  const currentIcon = useMemo(
+    () => (point: MarineModelGridPoint) =>
+      vectorDivIcon("current", point.currentDirection ?? 0, point.currentVelocity ?? 0),
+    []
+  );
+
+  const modelPointPopup = useCallback(
+    (point: MarineModelGridPoint, valueLines: ReactNode) => (
+      <Popup>
+        <div className="marine-map-popup">
+          <div className="marine-map-popup-head">
+            <div className="marine-map-popup-title">Marine model point</div>
+            <span className="marine-map-badge marine-map-badge-simulation">
+              {describeModelFreshness(point.freshness)}
+            </span>
+          </div>
+          {valueLines}
+          <div className="marine-map-popup-data-status">
+            Source: {point.provider} &middot; {point.model}
+            <br />
+            Valid: {formatModelTime(point.generatedAt) ?? "unknown"} &middot; Fetched:{" "}
+            {formatModelTime(point.fetchedAt) ?? "unknown"} ({timeAgo(point.fetchedAt)})
+            <br />
+            Confidence: {point.confidence.level} &mdash; {point.confidence.explanation}
+            <br />
+            <b>Model data &mdash; not a local observation.</b>
+          </div>
+        </div>
+      </Popup>
+    ),
+    []
+  );
+
   const handleLocationChange = useCallback(
     (nextLocation: Coordinates) => {
       setLocation(nextLocation);
@@ -472,10 +690,57 @@ export default function MarineMap({
     );
   };
 
+  // Re-fits to the currently selected route on demand - the same
+  // bounds RouteBoundsController already fits to automatically when a
+  // route first loads/changes, exposed as a manual control for when
+  // the user has since panned/zoomed away from it.
+  const handleFitRoute = useCallback(() => {
+    if (mapInstance && mapInstance.getContainer() && routeBoundsPoints.length > 0) {
+      mapInstance.fitBounds(routeBoundsPoints, { padding: [48, 48], maxZoom: 11 });
+    }
+  }, [mapInstance, routeBoundsPoints]);
+
+  const handleFullscreen = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    } else {
+      container.requestFullscreen?.().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", handleChange);
+    return () => document.removeEventListener("fullscreenchange", handleChange);
+  }, []);
+
   const activeCount = useMemo(() => Object.values(activeLayers).filter(Boolean).length, [activeLayers]);
 
+  // Honest map status - never LIVE. SIMULATION only for the demo route
+  // playback marker; OFFLINE only when the caller passed a real,
+  // already-observed connectivity outcome; PROTOTYPE otherwise, matching
+  // the same dataStatus.mode disclosure every chat answer already uses.
+  const mapDataState: "OFFLINE" | "SIMULATION" | "PROTOTYPE" = offline
+    ? "OFFLINE"
+    : journeyMarkerPosition
+      ? "SIMULATION"
+      : "PROTOTYPE";
+
+  // A short context subtitle for the status pill - only from real
+  // context this render already carries, never invented: an explicit
+  // override, a route context, or the label a chat handoff attached to
+  // its highlight (an area/zone/alert name).
+  const derivedContextLabel =
+    contextLabel ??
+    (overrideRoutes && overrideRoutes.length > 0 ? "Route" : null) ??
+    highlight?.label ??
+    null;
+
   return (
-    <div className={`marine-map ${className}`.trim()}>
+    <div ref={containerRef} className={`marine-map ${className}`.trim()}>
       <MapContainer
         center={mapCenter}
         zoom={zoom}
@@ -502,6 +767,74 @@ export default function MarineMap({
         {routeBoundsPoints.length > 0 && (
           <RouteBoundsController points={routeBoundsPoints} />
         )}
+
+        {/* MARINE MODEL: WAVES - a discrete per-grid-point intensity
+            layer (Open-Meteo). Never an interpolated contour - only
+            the actual returned points are drawn, and a point with no
+            wave data (land-adjacent grid cell) is simply skipped. */}
+        {activeLayers.waves &&
+          modelPoints
+            .filter((point) => typeof point.waveHeight === "number")
+            .map((point) => (
+              <CircleMarker
+                key={`wave-${point.latitude}-${point.longitude}`}
+                center={[point.latitude, point.longitude]}
+                radius={16}
+                pathOptions={{
+                  color: waveHeightColor(point.waveHeight as number),
+                  fillColor: waveHeightColor(point.waveHeight as number),
+                  fillOpacity: 0.32,
+                  weight: 1,
+                  opacity: 0.6,
+                }}
+              >
+                {modelPointPopup(
+                  point,
+                  <>
+                    <div>Wave height: <b>{point.waveHeight?.toFixed(2)} m</b></div>
+                    {typeof point.wavePeriod === "number" && (
+                      <div>Wave period: {point.wavePeriod.toFixed(1)} s</div>
+                    )}
+                    {typeof point.waveDirection === "number" && (
+                      <div>Wave direction: {Math.round(point.waveDirection)}&deg;</div>
+                    )}
+                    {typeof point.swellHeight === "number" && (
+                      <div>Swell height: {point.swellHeight.toFixed(2)} m</div>
+                    )}
+                    {typeof point.windWaveHeight === "number" && (
+                      <div>Wind-wave height: {point.windWaveHeight.toFixed(2)} m</div>
+                    )}
+                  </>
+                )}
+              </CircleMarker>
+            ))}
+
+        {/* MARINE MODEL: SEA-SURFACE TEMPERATURE - same discrete
+            per-point intensity treatment as Waves. */}
+        {activeLayers.sst &&
+          modelPoints
+            .filter((point) => typeof point.seaSurfaceTemperature === "number")
+            .map((point) => (
+              <CircleMarker
+                key={`sst-${point.latitude}-${point.longitude}`}
+                center={[point.latitude, point.longitude]}
+                radius={16}
+                pathOptions={{
+                  color: sstColor(point.seaSurfaceTemperature as number),
+                  fillColor: sstColor(point.seaSurfaceTemperature as number),
+                  fillOpacity: 0.32,
+                  weight: 1,
+                  opacity: 0.6,
+                }}
+              >
+                {modelPointPopup(
+                  point,
+                  <div>
+                    Sea-surface temperature: <b>{point.seaSurfaceTemperature?.toFixed(1)} &deg;C</b>
+                  </div>
+                )}
+              </CircleMarker>
+            ))}
 
         {/* 1. MARINE AREAS (monitoring stations) */}
         {activeLayers.conditions &&
@@ -536,9 +869,23 @@ export default function MarineMap({
                     {typeof area.conditions?.windSpeedKnots === "number" && (
                       <div>Wind speed: {area.conditions.windSpeedKnots} kn</div>
                     )}
-                    {typeof area.safety?.riskScore === "number" && (
-                      <div>Risk: <b>{area.safety.overallRisk}</b> ({area.safety.riskScore}/100)</div>
-                    )}
+                    {(() => {
+                      const live = liveAreaRisk[area.id];
+                      const riskScore = live?.riskScore ?? area.safety?.riskScore;
+                      const overallRisk = live?.riskLevel ?? area.safety?.overallRisk;
+                      if (typeof riskScore !== "number") return null;
+                      return <div>Risk: <b>{overallRisk}</b> ({riskScore}/100)</div>;
+                    })()}
+                    <div className="marine-map-popup-data-status">
+                      Data: Prototype dataset{liveAreaRisk[area.id] ? " · risk score: same live calculation as Chat" : ""}
+                    </div>
+                    <AskSagarButton
+                      prompt={`Is it safe to fish near ${area.name} right now?`}
+                      label="Ask Sagar"
+                      size="sm"
+                      fullWidth
+                      className="marine-map-popup-ask"
+                    />
                   </div>
                 </Popup>
               </CircleMarker>
@@ -550,6 +897,18 @@ export default function MarineMap({
           fishingZonesList.map((zone: any, idx: number) => {
             const color = zoneRecommendationColor(zone.recommendation);
 
+            const zoneCentroid: [number, number] = [
+              zone.parsedCoordinates.reduce((sum: number, p: [number, number]) => sum + p[0], 0) /
+                zone.parsedCoordinates.length,
+              zone.parsedCoordinates.reduce((sum: number, p: [number, number]) => sum + p[1], 0) /
+                zone.parsedCoordinates.length,
+            ];
+
+            const zoneNearestArea = nearestMarineAreaName(
+              { latitude: zoneCentroid[0], longitude: zoneCentroid[1] },
+              marineAreasList
+            );
+
             return (
               <Polygon
                 key={zone.id || idx}
@@ -557,17 +916,20 @@ export default function MarineMap({
                 pathOptions={{
                   color,
                   fillColor: color,
-                  fillOpacity: 0.18,
+                  fillOpacity: 0.22,
                   weight: 2,
+                  opacity: 0.85,
                 }}
               >
                 <Popup>
                   <div className="marine-map-popup">
-                    <div className="marine-map-popup-title">{zone.name || "Fishing zone"}</div>
-                    <div>
-                      Status: <b style={{ color }}>{zone.recommendation}</b>
+                    <div className="marine-map-popup-head">
+                      <div className="marine-map-popup-title">{zone.name || "Fishing zone"}</div>
+                      <span className="marine-map-badge" style={{ background: color }}>
+                        {zone.recommendation}
+                      </span>
                     </div>
-                    {zone.suitability && <div>Suitability: {zone.suitability}</div>}
+                    {zone.suitability && <div>Configured suitability: {zone.suitability}</div>}
                     {typeof zone.depthMeters === "number" && <div>Depth: {zone.depthMeters} m</div>}
                     {typeof zone.chlorophyll === "number" && (
                       <div>
@@ -579,7 +941,20 @@ export default function MarineMap({
                     )}
                     {typeof zone.sst === "number" && <div>Sea-surface temp: {zone.sst} °C</div>}
                     {zone.fishSpecies && Array.isArray(zone.fishSpecies) && zone.fishSpecies.length > 0 && (
-                      <div>Species observed: <i>{zone.fishSpecies.join(", ")}</i></div>
+                      // "Species observed" would imply an actual field
+                      // sighting; this is a configured, typical-species
+                      // list for the zone, not a live/recent observation.
+                      <div>Typical species (configured): <i>{zone.fishSpecies.join(", ")}</i></div>
+                    )}
+                    <div className="marine-map-popup-data-status">Data: Prototype dataset</div>
+                    {zoneNearestArea && (
+                      <AskSagarButton
+                        prompt={`Which fishing zone is better near ${zoneNearestArea}?`}
+                        label="Ask Sagar"
+                        size="sm"
+                        fullWidth
+                        className="marine-map-popup-ask"
+                      />
                     )}
                   </div>
                 </Popup>
@@ -589,24 +964,48 @@ export default function MarineMap({
 
         {/* 3. ACTIVE ALERTS (real hazards) LAYER */}
         {activeLayers.alerts &&
-          alertList.map(({ alert, latLng }) => (
-            <Marker key={alert.id} position={latLng} icon={alertIcons(alert.severity)}>
-              <Popup>
-                <div className="marine-map-popup">
-                  <div className="marine-map-popup-title">{alert.title}</div>
-                  <div>
-                    Severity:{" "}
-                    <b style={{ color: alertSeverityColor(alert.severity) }}>
-                      {alert.severity.toUpperCase()}
-                    </b>
+          alertList.map(({ alert, latLng }) => {
+            const alertNearestArea = nearestMarineAreaName(
+              { latitude: alert.location.latitude, longitude: alert.location.longitude },
+              marineAreasList
+            );
+
+            return (
+              <Marker key={alert.id} position={latLng} icon={alertIcons(alert.severity)}>
+                <Popup>
+                  <div className="marine-map-popup">
+                    <div className="marine-map-popup-head">
+                      <div className="marine-map-popup-title">{alert.title}</div>
+                      <span
+                        className="marine-map-badge"
+                        style={{ background: alertSeverityColor(alert.severity) }}
+                      >
+                        {alert.severity}
+                      </span>
+                    </div>
+                    <div>Type: {formatAlertType(alert.type)}</div>
+                    <div>Area: {alert.location.name}</div>
+                    <div>{alert.recommendation}</div>
+                    <div className="marine-map-popup-data-status">
+                      Source: {alert.source || "Sagar Alert Dataset"}
+                      {alert.issuedAt && !Number.isNaN(new Date(alert.issuedAt).getTime())
+                        ? ` · Issued ${new Date(alert.issuedAt).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                        : ""}
+                    </div>
+                    {alertNearestArea && (
+                      <AskSagarButton
+                        prompt={`Is it safe near ${alertNearestArea} right now, given the "${alert.title}" alert?`}
+                        label="Ask Sagar"
+                        size="sm"
+                        fullWidth
+                        className="marine-map-popup-ask"
+                      />
+                    )}
                   </div>
-                  <div>Type: {formatAlertType(alert.type)}</div>
-                  <div>Area: {alert.location.name}</div>
-                  <div>{alert.recommendation}</div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+                </Popup>
+              </Marker>
+            );
+          })}
 
         {/* 4. BOUNDARIES LAYER (restricted / regulated marine areas) */}
         {activeLayers.boundaries &&
@@ -643,6 +1042,18 @@ export default function MarineMap({
             const isControlled = Boolean(overrideRoutesList);
             const isSelected = !isControlled || route.id === selectedRouteId;
 
+            // The route's own origin/destination point names (e.g. "Thoothukudi
+            // New Port Outer") are route-specific waypoints, not the configured
+            // area names Chat's deterministic "from X to Y" parser resolves -
+            // resolve each endpoint to its nearest real configured area instead
+            // (same fix already verified on the Route page).
+            const routeOriginArea = route.origin
+              ? nearestMarineAreaName(route.origin, marineAreasList)
+              : null;
+            const routeDestinationArea = route.destination
+              ? nearestMarineAreaName(route.destination, marineAreasList)
+              : null;
+
             return (
               <Polyline
                 key={route.id || idx}
@@ -661,16 +1072,15 @@ export default function MarineMap({
               >
                 <Popup>
                   <div className="marine-map-popup">
-                    <div className="marine-map-popup-title">{route.name || "Route corridor"}</div>
+                    <div className="marine-map-popup-head">
+                      <div className="marine-map-popup-title">{route.name || "Route corridor"}</div>
+                      <span className="marine-map-badge" style={{ background: routeColor }}>
+                        {route.resolvedDecision}
+                      </span>
+                    </div>
                     {route.origin?.name && route.destination?.name && (
                       <div>{route.origin.name} → {route.destination.name}</div>
                     )}
-                    <div>
-                      Status:{" "}
-                      <b style={{ color: routeColor, textTransform: "capitalize" }}>
-                        {route.resolvedDecision}
-                      </b>
-                    </div>
                     <div>Risk: <b>{route.calculatedScore}/100</b></div>
                     {typeof route.distanceKm === "number" && <div>Distance: {route.distanceKm} km</div>}
                     {typeof route.estimatedDurationHours === "number" && (
@@ -680,11 +1090,99 @@ export default function MarineMap({
                     {route.reason && (
                       <div className="marine-map-popup-reason">{route.reason}</div>
                     )}
+                    <div className="marine-map-popup-data-status">Data: Prototype dataset</div>
+                    {routeOriginArea && routeDestinationArea && routeOriginArea !== routeDestinationArea && (
+                      <AskSagarButton
+                        prompt={`Why is the safest route from ${routeOriginArea} to ${routeDestinationArea}?`}
+                        label="Ask Sagar"
+                        size="sm"
+                        fullWidth
+                        className="marine-map-popup-ask"
+                      />
+                    )}
                   </div>
                 </Popup>
               </Polyline>
             );
           })}
+
+        {/* MARINE MODEL: WIND - directional arrows scaled by speed
+            (Open-Meteo Weather Forecast API, not the Marine API). */}
+        {activeLayers.wind &&
+          modelPoints
+            .filter((point) => typeof point.windSpeed === "number")
+            .map((point) => (
+              <Marker
+                key={`wind-${point.latitude}-${point.longitude}`}
+                position={[point.latitude, point.longitude]}
+                icon={windIcon(point)}
+              >
+                {modelPointPopup(
+                  point,
+                  <>
+                    <div>Wind speed: <b>{point.windSpeed?.toFixed(1)} kn</b></div>
+                    {typeof point.windDirection === "number" && (
+                      <div>Wind direction: {Math.round(point.windDirection)}&deg;</div>
+                    )}
+                  </>
+                )}
+              </Marker>
+            ))}
+
+        {/* MARINE MODEL: OCEAN CURRENT - directional arrows scaled by
+            velocity. */}
+        {activeLayers.current &&
+          modelPoints
+            .filter((point) => typeof point.currentVelocity === "number")
+            .map((point) => (
+              <Marker
+                key={`current-${point.latitude}-${point.longitude}`}
+                position={[point.latitude, point.longitude]}
+                icon={currentIcon(point)}
+              >
+                {modelPointPopup(
+                  point,
+                  <>
+                    <div>Current velocity: <b>{point.currentVelocity?.toFixed(2)} kn</b></div>
+                    {typeof point.currentDirection === "number" && (
+                      <div>Current direction: {Math.round(point.currentDirection)}&deg;</div>
+                    )}
+                  </>
+                )}
+              </Marker>
+            ))}
+
+        {/* MARINE MODEL: TIDE / SEA LEVEL - modeled sea-level height,
+            rendered separately from waves/current and explicitly
+            marked as a model limitation (not a harmonic tide-table
+            prediction) in its own popup. */}
+        {activeLayers.tide &&
+          modelPoints
+            .filter((point) => typeof point.seaLevelHeight === "number")
+            .map((point) => (
+              <CircleMarker
+                key={`tide-${point.latitude}-${point.longitude}`}
+                center={[point.latitude, point.longitude]}
+                radius={6}
+                pathOptions={{
+                  color: "#0e2a43",
+                  fillColor: "#0e2a43",
+                  fillOpacity: 0.55,
+                  weight: 2,
+                }}
+              >
+                {modelPointPopup(
+                  point,
+                  <>
+                    <div>Sea-level height (MSL): <b>{point.seaLevelHeight?.toFixed(2)} m</b></div>
+                    <div className="marine-map-popup-note">
+                      Modeled sea-level height, not a harmonic tide-table prediction - do not use for
+                      precise tidal-window planning.
+                    </div>
+                  </>
+                )}
+              </CircleMarker>
+            ))}
 
         {/* ROUTE PLANNER START / DESTINATION MARKERS */}
         {startMarkerPosition && (
@@ -707,10 +1205,22 @@ export default function MarineMap({
           </CircleMarker>
         )}
 
-        {/* JOURNEY SIMULATION MARKER (demo only, not live vessel tracking) */}
+        {/* JOURNEY SIMULATION MARKER - a demo passage playback along the
+            selected route's real waypoints, never live vessel tracking
+            or AIS. Explicitly labelled as such, never LIVE/AIS/REAL-TIME. */}
         {journeyMarkerPosition && (
           <Marker position={journeyMarkerPosition} icon={boatIcon}>
-            <Popup>Route simulation (demo)</Popup>
+            <Popup>
+              <div className="marine-map-popup">
+                <div className="marine-map-popup-head">
+                  <div className="marine-map-popup-title">Demo passage</div>
+                  <span className="marine-map-badge marine-map-badge-simulation">
+                    Simulated vessel
+                  </span>
+                </div>
+                <div>Simulated playback of the selected route - not AIS, not live tracking.</div>
+              </div>
+            </Popup>
           </Marker>
         )}
 
@@ -743,18 +1253,26 @@ export default function MarineMap({
           </>
         )}
 
-        {/* USER POSITION */}
+        {/* USER POSITION - a real GPS-fix marker: a steady center dot plus
+            an animated accuracy pulse (CSS-driven, via the SVG path's own
+            className - no extra DOM, no changed marker semantics). */}
         {location && (
           <>
             <CircleMarker
               center={[location.latitude, location.longitude]}
-              radius={7}
-              pathOptions={{ color: "#FFFFFF", fillColor: MAP_NAVY, fillOpacity: 1, weight: 3 }}
+              radius={18}
+              pathOptions={{
+                color: MAP_NAVY,
+                fillColor: MAP_NAVY,
+                fillOpacity: 0.12,
+                weight: 1,
+                className: "marine-map-location-pulse",
+              }}
             />
             <CircleMarker
               center={[location.latitude, location.longitude]}
-              radius={18}
-              pathOptions={{ color: MAP_NAVY, fillColor: MAP_NAVY, fillOpacity: 0.12, weight: 1 }}
+              radius={7}
+              pathOptions={{ color: "#FFFFFF", fillColor: MAP_NAVY, fillOpacity: 1, weight: 3 }}
             />
           </>
         )}
@@ -765,8 +1283,22 @@ export default function MarineMap({
         <div className="marine-map-topbar">
           {showStatusPill && (
             <div className="marine-map-status">
-              <span className="marine-map-status-dot" />
-              <span>MARINE MAP</span>
+              <span
+                className={`marine-map-status-dot marine-map-status-dot-${mapDataState.toLowerCase()}`}
+              />
+              <span className="marine-map-status-text">
+                <span className="marine-map-status-title">Marine map</span>
+                {derivedContextLabel && (
+                  <span className="marine-map-status-context">
+                    {derivedContextLabel}
+                  </span>
+                )}
+              </span>
+              <span
+                className={`marine-map-status-badge marine-map-status-badge-${mapDataState.toLowerCase()}`}
+              >
+                {mapDataState}
+              </span>
             </div>
           )}
 
@@ -787,11 +1319,42 @@ export default function MarineMap({
           </div>
         )}
 
+        {anyModelLayerActive && (
+          <div
+            className={`marine-map-model-status ${
+              modelLoading
+                ? "marine-map-model-status-loading"
+                : modelError
+                  ? "marine-map-model-status-unavailable"
+                  : ""
+            }`}
+          >
+            <span className="marine-map-model-status-dot" />
+            <span className="marine-map-model-status-text">
+              {modelLoading
+                ? "Loading marine model…"
+                : modelError
+                  ? "Marine model unavailable"
+                  : "Marine Model Data"}
+              {!modelLoading && !modelError && modelFetchedAt && (
+                <span className="marine-map-model-status-time">
+                  {" "}
+                  &middot; Updated {timeAgo(modelFetchedAt)}
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
         <MapControls
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
           onLocate={handleLocate}
           onLayers={() => setLayersOpen((open) => !open)}
+          isLocated={Boolean(location)}
+          onFitRoute={routeBoundsPoints.length > 0 ? handleFitRoute : undefined}
+          onFullscreen={handleFullscreen}
+          isFullscreen={isFullscreen}
         />
 
         {!location ? (
