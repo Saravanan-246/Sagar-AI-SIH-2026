@@ -160,13 +160,29 @@
   color: #ffffff;
 }
 
-.chat-input-mic-thinking { color: var(--chat-accent, #0f6e64); }
-.chat-input-mic-speaking { color: #159a68; }
-.chat-input-mic-error    { color: var(--chat-danger, #c23b3b); }
+.chat-input-mic-processing { color: var(--chat-accent, #0f6e64); }
+.chat-input-mic-thinking   { color: var(--chat-accent, #0f6e64); }
+.chat-input-mic-speaking   { color: #159a68; }
+.chat-input-mic-error      { color: var(--chat-danger, #c23b3b); }
 
 @keyframes chat-mic-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(194, 59, 59, 0.4); }
   50%      { box-shadow: 0 0 0 6px rgba(194, 59, 59, 0); }
+}
+
+.chat-input-mic-spinner {
+  animation: chat-mic-spin 900ms linear infinite;
+}
+
+@keyframes chat-mic-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-input-mic-spinner {
+    animation: none;
+  }
 }
 
 .chat-send {
@@ -214,11 +230,21 @@
   .chat-input-mic-listening {
     animation: none;
   }
+
+  .chat-input-mic-spinner {
+    animation: none;
+  }
 }
 
+/* Mobile: every tappable control in the composer stays at least 44px
+   - the mic in particular is the primary control for the voice
+   feature, so it must never shrink below a comfortable touch target,
+   and the state hint (Listening…/Processing…/…) stays visible rather
+   than hidden, since it's the only text feedback voice state gets on
+   a phone. */
 @media (max-width: 700px) {
   .chat-input {
-    min-height: 52px;
+    min-height: 56px;
     border-radius: 14px;
     padding: 6px 8px;
   }
@@ -226,31 +252,26 @@
   .chat-input-add,
   .chat-send,
   .chat-input-mic {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
   }
 
   .chat-textarea {
-    min-height: 36px;
+    min-height: 40px;
     font-size: 14px;
-    padding: 8px 2px;
+    padding: 10px 2px;
   }
 
   .chat-input-hint {
-    display: none;
+    margin-top: 6px;
+    font-size: 10.5px;
   }
 }
 
 @media (max-width: 420px) {
   .chat-input {
     gap: 6px;
-  }
-
-  .chat-input-add,
-  .chat-input-mic,
-  .chat-send {
-    width: 34px;
-    height: 34px;
+    padding: 5px 6px;
   }
 }

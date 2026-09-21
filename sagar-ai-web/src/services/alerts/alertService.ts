@@ -120,13 +120,26 @@ function normalizeAlert(item: any, index: number): Alert {
 
 const bundledAlerts: Alert[] = rawAlertList.map(normalizeAlert);
 
+/** Mirrors the backend alertService's own staleness check (kept in
+ * sync) - an alert is only "active" while its status says so AND it
+ * hasn't passed its own validUntil. Previously nothing here checked
+ * validUntil against the current time, so an old alert (e.g. from a
+ * stale synced snapshot) stayed visible as "active" indefinitely. */
+function isCurrentlyActive(alert: Alert, now: number = Date.now()): boolean {
+  if (alert.status && alert.status !== "active") return false;
+  const validUntilMs = Date.parse(alert.validUntil);
+  if (!Number.isFinite(validUntilMs)) return true;
+  return validUntilMs > now;
+}
+
 /** Prefers a synced offline snapshot's alerts over the bundled
  * dataset - see marineData.ts's currentAreas() for the same rationale.
  * An empty synced alert list is a real, honest state (no active
  * alerts at sync time) and is used as-is, not treated as "missing". */
 function currentAlerts(): Alert[] {
   const snapshot = getOfflineSnapshot();
-  return snapshot ? snapshot.alerts : bundledAlerts;
+  const source = snapshot ? snapshot.alerts : bundledAlerts;
+  return source.filter((alert) => isCurrentlyActive(alert));
 }
 
 export function getAlerts(): Alert[] {

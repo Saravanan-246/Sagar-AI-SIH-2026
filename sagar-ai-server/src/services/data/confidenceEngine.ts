@@ -12,6 +12,12 @@ export interface ConfidenceInput {
    * from the requested area (e.g. no coastal coverage), so confidence
    * isn't overstated for a reading that isn't really "here". */
   verifiedFarFromArea?: boolean;
+  /** Set when this reading is NOT supplementary evidence attached to a
+   * prototype-based core decision, but is itself the directly-sourced
+   * external forecast/model reading (e.g. one Open-Meteo marine-model
+   * grid point). Avoids the "local prototype dataset" framing below,
+   * which doesn't apply - there is no prototype core involved. */
+  isDirectModelReading?: boolean;
 }
 
 /**
@@ -22,6 +28,30 @@ export interface ConfidenceInput {
  * freshness/completeness, not a trained or calibrated model).
  */
 export function computeConfidence(input: ConfidenceInput): ConfidenceAssessment {
+  if (input.isDirectModelReading) {
+    switch (input.verifiedFreshness) {
+      case "LIVE":
+      case "RECENT":
+        return {
+          level: "MEDIUM",
+          explanation:
+            "Open-Meteo's own forecast model output for this point - not a local prototype dataset and not a sensor observation.",
+        };
+      case "AGING":
+        return {
+          level: "LOW",
+          explanation:
+            "Open-Meteo's own forecast model output for this point, though the cached copy is older than ideal - not a sensor observation.",
+        };
+      default:
+        return {
+          level: "LOW",
+          explanation:
+            "Open-Meteo's own forecast model output for this point - not a sensor observation, and its freshness could not be confirmed.",
+        };
+    }
+  }
+
   if (input.coreIsPrototype) {
     if (input.verifiedFreshness && !input.verifiedFarFromArea) {
       return {

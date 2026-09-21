@@ -782,6 +782,10 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     !isDeterministicWhatIf &&
     (deterministicIntent === "general" || isLikelyMultiTopic);
 
+  if (!needsAiClassification && isLlmEnabled()) {
+    console.info("[llm] classifyWithAi skipped (deterministic router already resolved this message)");
+  }
+
   const classification = needsAiClassification
     ? await timed(debugTiming, "classifyWithAi", () =>
         classifyWithAi(input.message, history).catch(() => null)
@@ -923,6 +927,10 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     // classifier is instructed to mark "clear" whenever it can infer a
     // meaning at all.
     const isUnclear = classification?.clarity === "unclear";
+
+    if (isCasualOrFiller && isLlmEnabled()) {
+      console.info("[llm] narrateGeneralReply skipped (casual/filler message, static reply used)");
+    }
 
     const conversational =
       isLlmEnabled() && !isCasualOrFiller
@@ -1085,7 +1093,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
       riskLevel: riskData?.riskLevel ?? area.safety.overallRisk,
     };
 
-    const scenarioResult = runWhatIf(detection, area.id);
+    const scenarioResult = runWhatIf(detection, area.id, before.riskScore);
     const description = describeWhatIf(detection);
 
     extras.whatIf = {
@@ -1225,6 +1233,10 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
    * plain-language phrasing (vs. "Combined risk score: 84/100...") is
    * the whole point.
    */
+  if (answerFinalizedDeterministically && isLlmEnabled()) {
+    console.info("[llm] narrateResponse skipped (answer already finalized deterministically)");
+  }
+
   if (isLlmEnabled() && !answerFinalizedDeterministically) {
     const routeSummary = shaped.route
       ? `${shaped.route.name}, ${shaped.route.distanceKm.toFixed(1)} km, risk ${shaped.route.risk.score}/100 (${shaped.route.risk.level}), ${shaped.route.routeDecision} - ${shaped.route.reason}`

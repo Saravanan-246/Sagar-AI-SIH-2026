@@ -8,6 +8,8 @@ export const ROUTES = {
   ACTIVITY: "/activity",
   SOURCES: "/sources",
   PROFILE: "/profile",
+  SST_LAB: "/research/sst",
+  MARINE_LAB: "/research/marine-lab",
 
   AREA: (id: string) => `/area/${id}`,
 } as const;

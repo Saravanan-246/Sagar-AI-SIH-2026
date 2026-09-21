@@ -20,12 +20,9 @@ import {
 } from "lucide-react";
 
 import type { SavedChat } from "../../utils/savedChats";
-import type { AppLanguage } from "../../store/appStore";
 import { ROUTES } from "../../constants/routes";
 import type { ConnectivityStatus } from "../../hooks/useConnectivity";
 import type { SyncStatus } from "../../hooks/useOfflineSync";
-
-type LanguageOption = { value: AppLanguage; label: string };
 
 type MainNavItem = {
   to: string;
@@ -64,11 +61,6 @@ type ChatSidebarProps = {
   onUseMyLocation: () => void;
   onChooseArea: () => void;
   onClearLocation: () => void;
-
-  language: AppLanguage;
-  languageOptions: LanguageOption[];
-  onSetLanguage: (language: AppLanguage) => void;
-  voiceSupported: boolean;
 
   profileHref: string;
 
@@ -128,10 +120,6 @@ export default function ChatSidebar({
   onUseMyLocation,
   onChooseArea,
   onClearLocation,
-  language,
-  languageOptions,
-  onSetLanguage,
-  voiceSupported,
   profileHref,
   connectivityStatus,
   snapshotAge,
@@ -367,32 +355,6 @@ export default function ChatSidebar({
               />
               {syncStatus === "syncing" ? "Syncing…" : "Sync for offline"}
             </button>
-          </div>
-
-          <div className="chat-sidebar-language">
-            <span className="chat-sidebar-language-label">
-              Voice language
-            </span>
-
-            <div className="chat-sidebar-language-options">
-              {languageOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={option.value === language ? "active" : ""}
-                  onClick={() => onSetLanguage(option.value)}
-                  aria-pressed={option.value === language}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
-            {!voiceSupported && (
-              <p className="chat-sidebar-voice-note">
-                Voice input isn't supported in this browser.
-              </p>
-            )}
           </div>
 
           <Link to={profileHref} className="chat-sidebar-settings">

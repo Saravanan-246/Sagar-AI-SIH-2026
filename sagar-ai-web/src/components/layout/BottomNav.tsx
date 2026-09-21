@@ -62,7 +62,7 @@ const drawerTools = [
     label: "Marine Alerts",
     path: "/alerts",
     icon: ShieldAlert,
-    badge: "Live",
+    badge: "Alerts",
     desc: "Active severe weather & hazard bulletins",
   },
   {

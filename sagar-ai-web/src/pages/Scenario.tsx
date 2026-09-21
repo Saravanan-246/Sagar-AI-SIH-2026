@@ -329,6 +329,14 @@ export default function Scenario() {
     if (!selected) return;
 
     await run(selected, {
+      // Same area as the "current risk" fetched above, and that risk's
+      // own score as the scenario's baseline - so the before/after
+      // delta shown together is computed from the same starting point
+      // for the same area, instead of "before" being live and "after"
+      // being projected from a separate static baseline (possibly for
+      // a different default area).
+      areaId: selectedAreaId ?? undefined,
+      baseRiskScore: currentRisk?.riskScore,
       departureTime: inputs.departureTime,
       durationHours: inputs.durationHours,
       windSpeedIncreasePercent: inputs.windIncrease,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -593,7 +593,7 @@ function ModuleProvenance({
           </div>
           <div className="mil-provenance-row">
             <span>Freshness</span>
-            <Badge tone={freshnessToneOf(verified.freshness)}>{verified.freshness}</Badge>
+            <Badge tone={freshnessToneOf(verified.freshness)}>{describeModelFreshness(verified.freshness)}</Badge>
           </div>
           {typeof verified.distanceFromAreaKm === "number" && (
             <div className="mil-provenance-row">
@@ -625,6 +625,34 @@ function freshnessToneOf(freshness: string): "success" | "warning" | "danger" | 
       return "danger";
     default:
       return "neutral";
+  }
+}
+
+/**
+ * Presentational-only relabeling, mirroring MarineMap.tsx's
+ * describeModelFreshness (kept in sync deliberately) - the bare word
+ * "LIVE" on a verified reading that's actually Open-Meteo forecast
+ * output would read as a live-sensor claim, which the app's data-truth
+ * rule forbids. freshnessEngine.ts's raw FreshnessStatus values are
+ * unchanged elsewhere (e.g. this same value still drives the tone via
+ * freshnessToneOf above); only the displayed word changes.
+ */
+function describeModelFreshness(freshness: string): string {
+  switch (freshness) {
+    case "LIVE":
+      return "Just updated";
+    case "RECENT":
+      return "Recently updated";
+    case "AGING":
+      return "Aging";
+    case "STALE":
+      return "Stale";
+    case "OFFLINE":
+      return "Offline";
+    case "UNAVAILABLE":
+      return "Unavailable";
+    default:
+      return freshness;
   }
 }
 
@@ -714,6 +742,20 @@ const SST_LOCATIONS = [
   { name: "Southern Gulf of Mannar", latitude: 8.4, longitude: 78.2 },
 ];
 
+// Mirrors SstResearchLab.tsx's own formatTimestamp (kept in sync
+// deliberately) - Open-Meteo's timestamp is UTC, so this must not be
+// left as a raw unformatted string for the user.
+function formatSstTimestamp(iso: string): string {
+  const parsed = new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function ModuleSst({
   result,
   loading,
@@ -781,7 +823,7 @@ function ModuleSst({
             label="Current SST"
             value={result.currentSst}
             unit="°C"
-            detail={`Observed ${result.sstObservedAt}`}
+            detail={`Model reading ${formatSstTimestamp(result.sstObservedAt)}`}
           />
           <MarineMetric
             label={`Predicted (${result.predictionHorizon})`}
@@ -1067,6 +1109,9 @@ export default function MarineIntelligenceLab() {
   const [sstResult, setSstResult] = useState<SstPredictionResult | null>(null);
   const [sstLoading, setSstLoading] = useState(false);
   const [sstError, setSstError] = useState<string | null>(null);
+  // Guards against a stale response overwriting a newer one if the SST
+  // module is re-run for a different location before the prior call resolves.
+  const sstRequestIdRef = useRef(0);
 
   const selectedAreaId = useAppStore((state) => state.selectedAreaId);
   const locationLabel = useAppStore((state) => state.locationLabel);
@@ -1079,16 +1124,21 @@ export default function MarineIntelligenceLab() {
   const { snapshot } = useOfflineSync();
 
   const runSst = async (latitude: number, longitude: number) => {
+    const requestId = ++sstRequestIdRef.current;
     setSstLoading(true);
     setSstError(null);
     try {
       const result = await fetchSstPrediction(latitude, longitude);
+      if (sstRequestIdRef.current !== requestId) return;
       setSstResult(result);
     } catch {
+      if (sstRequestIdRef.current !== requestId) return;
       setSstResult(null);
       setSstError("Sagar's backend is unreachable, so the SST model could not run.");
     } finally {
-      setSstLoading(false);
+      if (sstRequestIdRef.current === requestId) {
+        setSstLoading(false);
+      }
     }
   };
 
@@ -1117,7 +1167,7 @@ export default function MarineIntelligenceLab() {
 
           <Button variant="secondary" size="sm" onClick={() => signals.refresh()}>
             <RefreshCw size={14} className={signals.loading ? "mil-spin" : undefined} />
-            Refresh live data
+            Refresh data
           </Button>
         </header>
 

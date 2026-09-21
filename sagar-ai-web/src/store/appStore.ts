@@ -15,6 +15,11 @@ export interface AppPreferences {
   defaultArea: string;
   severeAlerts: boolean;
   geofenceAlerts: boolean;
+  /** Advanced, rarely-needed override for which language voice
+   * recognition listens in. "auto" (the default) means Chat follows
+   * the conversation's own detected language turn-by-turn instead of a
+   * fixed setting - see Chat.tsx's conversationLanguage state. */
+  voiceLanguageOverride: AppLanguage | "auto";
 }
 
 interface AppState {
@@ -26,6 +31,7 @@ interface AppState {
 
   severeAlerts: boolean;
   geofenceAlerts: boolean;
+  voiceLanguageOverride: AppLanguage | "auto";
 
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
@@ -37,6 +43,7 @@ interface AppState {
 
   setSevereAlerts: (enabled: boolean) => void;
   setGeofenceAlerts: (enabled: boolean) => void;
+  setVoiceLanguageOverride: (value: AppLanguage | "auto") => void;
 
   getPreferences: () => AppPreferences;
 
@@ -101,6 +108,7 @@ const DEFAULT_PREFERENCES: AppPreferences = {
   defaultArea: "Gulf of Mannar",
   severeAlerts: true,
   geofenceAlerts: true,
+  voiceLanguageOverride: "auto",
 };
 
 function loadPreferences(): AppPreferences {
@@ -148,6 +156,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   severeAlerts: initialPreferences.severeAlerts,
   geofenceAlerts: initialPreferences.geofenceAlerts,
+  voiceLanguageOverride: initialPreferences.voiceLanguageOverride ?? "auto",
 
   setSidebarOpen: (open) => {
     set({ isSidebarOpen: open });
@@ -170,6 +179,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         defaultArea: state.defaultArea,
         severeAlerts: state.severeAlerts,
         geofenceAlerts: state.geofenceAlerts,
+        voiceLanguageOverride: state.voiceLanguageOverride,
       };
 
       savePreferences(preferences);
@@ -185,6 +195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         defaultArea: area,
         severeAlerts: state.severeAlerts,
         geofenceAlerts: state.geofenceAlerts,
+        voiceLanguageOverride: state.voiceLanguageOverride,
       };
 
       savePreferences(preferences);
@@ -200,6 +211,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         defaultArea: state.defaultArea,
         severeAlerts: enabled,
         geofenceAlerts: state.geofenceAlerts,
+        voiceLanguageOverride: state.voiceLanguageOverride,
       };
 
       savePreferences(preferences);
@@ -215,11 +227,28 @@ export const useAppStore = create<AppState>((set, get) => ({
         defaultArea: state.defaultArea,
         severeAlerts: state.severeAlerts,
         geofenceAlerts: enabled,
+        voiceLanguageOverride: state.voiceLanguageOverride,
       };
 
       savePreferences(preferences);
 
       return { geofenceAlerts: enabled };
+    });
+  },
+
+  setVoiceLanguageOverride: (value) => {
+    set((state) => {
+      const preferences: AppPreferences = {
+        language: state.language,
+        defaultArea: state.defaultArea,
+        severeAlerts: state.severeAlerts,
+        geofenceAlerts: state.geofenceAlerts,
+        voiceLanguageOverride: value,
+      };
+
+      savePreferences(preferences);
+
+      return { voiceLanguageOverride: value };
     });
   },
 
@@ -231,6 +260,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultArea: state.defaultArea,
       severeAlerts: state.severeAlerts,
       geofenceAlerts: state.geofenceAlerts,
+      voiceLanguageOverride: state.voiceLanguageOverride,
     };
   },
 

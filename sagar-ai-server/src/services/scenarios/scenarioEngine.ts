@@ -164,9 +164,24 @@ function findScenario(
   );
 }
 
+// Optional live-risk override: when the caller already has this area's
+// current riskAgent score for this same turn (e.g. Scenario.tsx/Chat
+// what-if, both of which also display that live score to the user as
+// "current risk"), pass it as inputs.baseRiskScore so the projected
+// "after" score is computed from the same number, not a second,
+// potentially different, static area.safety.riskScore baseline - the
+// two would otherwise not reconcile in the before/after delta shown.
+// Omitted entirely, this falls back to the static value exactly as
+// before (fully backward compatible).
 function getBaseRisk(
   areaId?: string,
+  inputs?: ScenarioInputs,
 ): number {
+  const override = inputs?.["baseRiskScore"];
+  if (typeof override === "number" && Number.isFinite(override)) {
+    return override;
+  }
+
   const area =
     findMarineArea(areaId);
 
@@ -209,7 +224,7 @@ function calculateWeatherScenario(
   inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const windIncrease =
     numberInput(
@@ -296,7 +311,7 @@ function calculateLightningScenario(
   inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const lightningRisk =
     stringInput(
@@ -356,7 +371,7 @@ function calculateDepartureScenario(
   inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const duration =
     numberInput(
@@ -570,7 +585,7 @@ function calculateRouteChangeScenario(
   inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const routeId =
     stringInput(
@@ -629,9 +644,10 @@ function calculateRouteChangeScenario(
 function calculateGenericScenario(
   scenario: ScenarioRecord,
   areaId: string | undefined,
+  inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const configuredScore =
     scenario.result?.riskScore;
@@ -793,6 +809,7 @@ export function runScenario(
         calculateGenericScenario(
           record,
           areaId,
+          inputs,
         );
   }
 

@@ -121,6 +121,18 @@ function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Open-Meteo's hourly "timestamp" fields are UTC-offset-less local
+ * strings (e.g. "2026-09-20T09:00") - normalize to a real UTC ISO
+ * string before these leave this module, matching the convention
+ * sourceAdapters/openMeteoAdapter.ts already uses, so every timestamp
+ * this app shows a user is consistently Z-suffixed and safe to
+ * `new Date()` without silently parsing in the browser's local zone. */
+function normalizeTimestamp(value: string): string {
+  const isoLike = value.endsWith("Z") ? value : `${value}Z`;
+  const parsed = Date.parse(isoLike);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : value;
+}
+
 function evaluate(predictions: number[], actuals: number[]): Metrics {
   return {
     mae: Math.round(mae(predictions, actuals) * 1000) / 1000,
@@ -217,9 +229,9 @@ async function trainForLocation(
     horizonHours: HORIZON_HOURS,
     featureNames: FEATURE_NAMES,
     dataWindow: historicalWindow,
-    trainingPeriod: { start: trainSet[0]!.timestamp, end: trainSet[trainSet.length - 1]!.timestamp, rows: trainSet.length },
-    validationPeriod: { start: valSet[0]!.timestamp, end: valSet[valSet.length - 1]!.timestamp, rows: valSet.length },
-    testPeriod: { start: testSet[0]!.timestamp, end: testSet[testSet.length - 1]!.timestamp, rows: testSet.length },
+    trainingPeriod: { start: normalizeTimestamp(trainSet[0]!.timestamp), end: normalizeTimestamp(trainSet[trainSet.length - 1]!.timestamp), rows: trainSet.length },
+    validationPeriod: { start: normalizeTimestamp(valSet[0]!.timestamp), end: normalizeTimestamp(valSet[valSet.length - 1]!.timestamp), rows: valSet.length },
+    testPeriod: { start: normalizeTimestamp(testSet[0]!.timestamp), end: normalizeTimestamp(testSet[testSet.length - 1]!.timestamp), rows: testSet.length },
     metrics: { train: trainMetrics, validation: valMetrics, test: testMetrics },
     baseline: {
       description: `Persistence baseline: predicts SST(t+${HORIZON_HOURS}h) = SST(t)`,
@@ -243,6 +255,12 @@ async function trainForLocation(
   return { model, info };
 }
 
+// Training fetches a full year of hourly history and fits a model -
+// far too expensive to let two concurrent requests for the same
+// not-yet-cached location each trigger their own copy. Single-flight,
+// same pattern as sourceAdapters/openMeteoAdapter.ts's grid cache.
+const trainInFlight = new Map<string, Promise<{ model: GradientBoostingModel; info: TrainedModelInfo } | DataReadinessResult>>();
+
 async function getOrTrainModel(
   latitude: number,
   longitude: number
@@ -253,13 +271,24 @@ async function getOrTrainModel(
     return { model: cached.model, info: cached.info };
   }
 
-  const result = await trainForLocation(latitude, longitude);
-  if ("status" in result) {
-    return result;
+  const existing = trainInFlight.get(key);
+  if (existing) {
+    return existing;
   }
 
-  modelCache.set(key, { model: result.model, info: result.info, expiresAt: Date.now() + MODEL_CACHE_TTL_MS });
-  return result;
+  const promise = trainForLocation(latitude, longitude)
+    .then((result) => {
+      if (!("status" in result)) {
+        modelCache.set(key, { model: result.model, info: result.info, expiresAt: Date.now() + MODEL_CACHE_TTL_MS });
+      }
+      return result;
+    })
+    .finally(() => {
+      trainInFlight.delete(key);
+    });
+
+  trainInFlight.set(key, promise);
+  return promise;
 }
 
 export interface DisplayContribution {
@@ -387,6 +416,41 @@ export interface SstPredictionSuccess {
 
 export type SstPredictionResponse = SstPredictionSuccess | { status: "insufficient_data"; data: DataReadinessResult };
 
+// Unlike training, predictSst's "recent conditions" fetch had no
+// caching or dedup at all - every request (even N concurrent ones for
+// the same location) triggered its own live Open-Meteo call. The
+// hourly source data itself can't have changed within a few minutes,
+// so a short TTL plus single-flight removes the duplicate load without
+// making predictions noticeably staler.
+const RECENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const recentCache = new Map<string, { rows: HourlyRow[]; expiresAt: number }>();
+const recentInFlight = new Map<string, Promise<HourlyRow[]>>();
+
+async function getRecentHourlyCached(latitude: number, longitude: number, pastDays: number): Promise<HourlyRow[]> {
+  const key = `${cacheKey(latitude, longitude)}:${pastDays}`;
+  const cached = recentCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.rows;
+  }
+
+  const existing = recentInFlight.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = fetchRecentHourly(latitude, longitude, pastDays)
+    .then((rows) => {
+      recentCache.set(key, { rows, expiresAt: Date.now() + RECENT_CACHE_TTL_MS });
+      return rows;
+    })
+    .finally(() => {
+      recentInFlight.delete(key);
+    });
+
+  recentInFlight.set(key, promise);
+  return promise;
+}
+
 export async function predictSst(latitude: number, longitude: number): Promise<SstPredictionResponse> {
   const trained = await getOrTrainModel(latitude, longitude);
   if ("status" in trained) {
@@ -396,7 +460,7 @@ export async function predictSst(latitude: number, longitude: number): Promise<S
 
   // past_days=3 guarantees >=24h of real lookback even accounting for
   // Open-Meteo's own ingestion lag for the very latest hour.
-  const recentRows = await fetchRecentHourly(latitude, longitude, 3);
+  const recentRows = await getRecentHourlyCached(latitude, longitude, 3);
   const live = buildLiveFeatureVector(recentRows);
 
   if (!live) {
@@ -446,7 +510,7 @@ export async function predictSst(latitude: number, longitude: number): Promise<S
     status: "success",
     location: { latitude, longitude },
     currentSst: Math.round(nowRow.sst! * 100) / 100,
-    sstObservedAt: nowRow.timestamp,
+    sstObservedAt: normalizeTimestamp(nowRow.timestamp),
     sstFetchedAt: new Date().toISOString(),
     predictedSst: Math.round(predictedSst * 100) / 100,
     predictionHorizon: `+${HORIZON_HOURS}h`,

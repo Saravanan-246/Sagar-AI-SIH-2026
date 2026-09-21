@@ -164,9 +164,21 @@ function findScenario(
   );
 }
 
+// Mirrors the backend scenarioEngine's own baseRiskScore override
+// (kept in sync) - lets a caller that already has this area's live
+// riskAgent score thread it through as the baseline, so the projected
+// "after" score isn't computed from a separate static baseline that
+// doesn't match the "before" score already shown to the user. Omitted
+// entirely, this falls back to the static value exactly as before.
 function getBaseRisk(
   areaId?: string,
+  inputs?: ScenarioInputs,
 ): number {
+  const override = inputs?.["baseRiskScore"];
+  if (typeof override === "number" && Number.isFinite(override)) {
+    return override;
+  }
+
   const area =
     findMarineArea(areaId);
 
@@ -209,7 +221,7 @@ function calculateWeatherScenario(
   inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const windIncrease =
     numberInput(
@@ -296,7 +308,7 @@ function calculateLightningScenario(
   inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const lightningRisk =
     stringInput(
@@ -356,7 +368,7 @@ function calculateDepartureScenario(
   inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const duration =
     numberInput(
@@ -570,7 +582,7 @@ function calculateRouteChangeScenario(
   inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const routeId =
     stringInput(
@@ -629,9 +641,10 @@ function calculateRouteChangeScenario(
 function calculateGenericScenario(
   scenario: ScenarioRecord,
   areaId: string | undefined,
+  inputs: ScenarioInputs,
 ) {
   const baseRisk =
-    getBaseRisk(areaId);
+    getBaseRisk(areaId, inputs);
 
   const configuredScore =
     scenario.result?.riskScore;
@@ -793,6 +806,7 @@ export function runScenario(
         calculateGenericScenario(
           record,
           areaId,
+          inputs,
         );
   }
 

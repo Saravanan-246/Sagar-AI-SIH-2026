@@ -14,7 +14,7 @@ import { useConnectivity } from "../hooks/useConnectivity";
 import { useOfflineSync, describeSnapshotAge } from "../hooks/useOfflineSync";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useUserLocation } from "../hooks/useUserLocation";
-import { useVoiceInput } from "../hooks/useVoiceInput";
+import { useVoiceInput, type VoiceInputErrorReason } from "../hooks/useVoiceInput";
 import { useVoiceOutput } from "../hooks/useVoiceOutput";
 import { getMarineAreas } from "../services/marine/marineData";
 import { getSuggestedQuestions } from "../utils/chatSuggestions";
@@ -39,13 +39,67 @@ const LOCALE_BY_LANGUAGE: Record<AppLanguage, string> = {
   hi: "hi-IN",
 };
 
-const VOICE_LANGUAGE_OPTIONS: Array<{ value: AppLanguage; label: string }> = [
-  { value: "en", label: "English" },
-  { value: "ta", label: "தமிழ்" },
-  { value: "hi", label: "हिन्दी" },
-];
+type MicState = "idle" | "listening" | "processing" | "thinking" | "speaking" | "error";
 
-type MicState = "idle" | "listening" | "thinking" | "speaking" | "error";
+/*
+ * A small, per-string translation table for the mic's own chrome text
+ * (state labels + error copy) - the same lightweight pattern already
+ * used elsewhere in this codebase (e.g. useSagar.ts's CLARIFY_LABELS),
+ * not a second localization system. Scoped to English/Tamil/Hindi,
+ * matching the three languages voice conversation actually targets;
+ * Telugu/Malayalam/Kannada conversations fall back to the English
+ * labels here (chrome text only - the conversation itself still
+ * answers in whatever language the backend detected).
+ */
+const MIC_LABELS: Record<
+  "en" | "ta" | "hi",
+  Record<Exclude<MicState, "error">, string> & {
+    errors: Record<VoiceInputErrorReason, string>;
+  }
+> = {
+  en: {
+    idle: "Tap to speak",
+    listening: "Listening…",
+    processing: "Processing…",
+    thinking: "Sagar is analyzing…",
+    speaking: "Sagar is responding…",
+    errors: {
+      denied: "Mic permission blocked — allow it in your browser, then tap to retry",
+      "no-speech": "Didn't catch that — tap to try again",
+      unsupported: "Voice input isn't supported in this browser",
+      network: "Voice recognition needs an internet connection — tap to retry",
+      unknown: "Couldn't hear that — tap to retry",
+    },
+  },
+  ta: {
+    idle: "பேச தட்டவும்",
+    listening: "கேட்கிறேன்…",
+    processing: "செயலாக்குகிறேன்…",
+    thinking: "சாகர் பகுப்பாய்வு செய்கிறார்…",
+    speaking: "சாகர் பதிலளிக்கிறார்…",
+    errors: {
+      denied: "மைக் அனுமதி தடுக்கப்பட்டது — உலாவியில் அனுமதி அளித்து மீண்டும் தட்டவும்",
+      "no-speech": "கேட்கவில்லை — மீண்டும் தட்டவும்",
+      unsupported: "இந்த உலாவியில் குரல் உள்ளீடு ஆதரிக்கப்படவில்லை",
+      network: "குரல் அறிதலுக்கு இணைய இணைப்பு தேவை — மீண்டும் தட்டவும்",
+      unknown: "கேட்க முடியவில்லை — மீண்டும் தட்டவும்",
+    },
+  },
+  hi: {
+    idle: "बोलने के लिए टैप करें",
+    listening: "सुन रहा हूँ…",
+    processing: "प्रोसेस कर रहा हूँ…",
+    thinking: "सागर विश्लेषण कर रहा है…",
+    speaking: "सागर जवाब दे रहा है…",
+    errors: {
+      denied: "माइक अनुमति अवरुद्ध — ब्राउज़र में अनुमति दें, फिर टैप करें",
+      "no-speech": "कुछ सुनाई नहीं दिया — फिर से टैप करें",
+      unsupported: "इस ब्राउज़र में वॉइस इनपुट समर्थित नहीं है",
+      network: "वॉइस पहचान के लिए इंटरनेट कनेक्शन चाहिए — फिर से टैप करें",
+      unknown: "सुनाई नहीं दिया — फिर से टैप करें",
+    },
+  },
+};
 
 type ThinkingInfo = {
   label: string;
@@ -189,6 +243,7 @@ export default function Chat() {
 
   const language = useAppStore((state) => state.language);
   const setLanguage = useAppStore((state) => state.setLanguage);
+  const voiceLanguageOverride = useAppStore((state) => state.voiceLanguageOverride);
   const locationLabel = useAppStore((state) => state.locationLabel);
   const setSelectedArea = useAppStore((state) => state.setSelectedArea);
   const clearLocation = useAppStore((state) => state.clearLocation);
@@ -210,7 +265,7 @@ export default function Chat() {
   const [voiceToastVisible, setVoiceToastVisible] = useState(false);
 
   useEffect(() => {
-    if (voiceOutput.status !== "error") {
+    if (voiceOutput.status !== "error" && voiceOutput.status !== "unavailable") {
       return;
     }
 
@@ -223,7 +278,24 @@ export default function Chat() {
     return () => window.clearTimeout(timer);
   }, [voiceOutput.status]);
 
-  const locale = LOCALE_BY_LANGUAGE[language] ?? "en-IN";
+  const voiceToastMessage =
+    voiceOutput.status === "unavailable"
+      ? "No voice available for this language on this device — showing text only."
+      : "Voice playback unavailable on this device.";
+
+  // The conversation's own rolling language, not the static app-wide
+  // preference above - updated after every assistant reply from the
+  // backend's own detected language (see submitMessage below), so
+  // voice recognition's next hint, the mic's chrome text and the
+  // welcome suggestions all follow what the conversation is actually
+  // in right now ("chat language lock"), not a fixed setting the user
+  // has to manage. Seeded from the app-wide preference only as a
+  // starting point for a brand-new conversation.
+  const [autoDetectedLanguage, setAutoDetectedLanguage] = useState<AppLanguage>(language);
+  const conversationLanguage: AppLanguage =
+    voiceLanguageOverride !== "auto" ? voiceLanguageOverride : autoDetectedLanguage;
+
+  const locale = LOCALE_BY_LANGUAGE[conversationLanguage] ?? "en-IN";
   const marineAreas = useMemo(() => getMarineAreas(), []);
 
   const suggestions = useMemo(
@@ -231,9 +303,9 @@ export default function Chat() {
       getSuggestedQuestions({
         areaId: selectedAreaId,
         coordinates: currentLocation,
-        language,
+        language: conversationLanguage,
       }),
-    [selectedAreaId, currentLocation, language],
+    [selectedAreaId, currentLocation, conversationLanguage],
   );
 
   const handleVoiceTranscript = (transcript: string) => {
@@ -241,38 +313,51 @@ export default function Chat() {
     void submitMessage(transcript, { spokenAloud: true });
   };
 
+  // The language hint SpeechRecognition needs before it can start (the
+  // real browser API has no "detect any language from raw audio" mode
+  // - see useVoiceInput's own doc comment) - this is the conversation's
+  // own last-known language, which is the closest honest approximation
+  // to "automatic" available: correct whenever the conversation stays
+  // in one language (the common case), and always overridable via the
+  // manual voice-language setting in Settings for anyone who needs it.
   const voiceInput = useVoiceInput({
     language: locale,
     onResult: handleVoiceTranscript,
   });
 
+  // Shows the real, live interim recognition result in the composer
+  // while the user is still speaking - never guessed text, only what
+  // the browser's own recognizer has actually hypothesized so far.
+  useEffect(() => {
+    if (voiceInput.status === "listening" && voiceInput.interimTranscript) {
+      setInput(voiceInput.interimTranscript);
+    }
+  }, [voiceInput.status, voiceInput.interimTranscript]);
+
   const micState: MicState =
     voiceInput.status === "listening"
       ? "listening"
-      : voiceInput.status === "error"
-        ? "error"
-        : loading
-          ? "thinking"
-          : voiceOutput.status === "speaking"
-            ? "speaking"
-            : "idle";
+      : voiceInput.status === "processing"
+        ? "processing"
+        : voiceInput.status === "error"
+          ? "error"
+          : loading
+            ? "thinking"
+            : voiceOutput.status === "speaking"
+              ? "speaking"
+              : "idle";
 
-  const VOICE_ERROR_LABEL: Record<string, string> = {
-    denied: "Mic permission blocked — allow it in your browser, then tap to retry",
-    "no-speech": "Didn't catch that — tap to try again",
-    unsupported: "Voice input isn't supported in this browser",
-    network: "Voice recognition needs an internet connection — tap to retry",
-    unknown: "Couldn't hear that — tap to retry",
-  };
+  const micLabelSet = MIC_LABELS[conversationLanguage as "en" | "ta" | "hi"] ?? MIC_LABELS.en;
 
   const micLabel: Record<MicState, string> = {
-    idle: "Tap to speak",
-    listening: "Listening…",
-    thinking: "Sagar is analyzing…",
-    speaking: "Sagar is responding…",
+    idle: micLabelSet.idle,
+    listening: micLabelSet.listening,
+    processing: micLabelSet.processing,
+    thinking: micLabelSet.thinking,
+    speaking: micLabelSet.speaking,
     error:
-      VOICE_ERROR_LABEL[voiceInput.errorReason ?? "unknown"] ??
-      VOICE_ERROR_LABEL.unknown,
+      micLabelSet.errors[voiceInput.errorReason ?? "unknown"] ??
+      micLabelSet.errors.unknown,
   };
 
   const locationStateLabel = currentLocation
@@ -355,7 +440,10 @@ export default function Chat() {
   const headerTitle = activeChat?.title ?? "Sagar AI";
 
   const localeForMessage = (messageLanguage?: string) =>
-    LOCALE_BY_LANGUAGE[(messageLanguage as AppLanguage) ?? language] ?? locale;
+    LOCALE_BY_LANGUAGE[(messageLanguage as AppLanguage) ?? conversationLanguage] ?? locale;
+
+  const isKnownAppLanguage = (value?: string): value is AppLanguage =>
+    Boolean(value && value in LOCALE_BY_LANGUAGE);
 
   const submitMessage = async (
     value: string,
@@ -394,6 +482,16 @@ export default function Chat() {
     setInput("");
 
     const reply = await sendMessage(text);
+
+    // Chat language lock: the backend independently detects language
+    // fresh from each message's own text (never a client-supplied
+    // override - see chat.routes.ts's detectQueryLanguage), so simply
+    // carrying its result forward as the next turn's starting point is
+    // enough to keep the conversation in the language it's actually
+    // in, without a second detection pass on the frontend.
+    if (isKnownAppLanguage(reply?.language)) {
+      setAutoDetectedLanguage(reply.language);
+    }
 
     if (reply && options.spokenAloud && voiceOutput.isSupported) {
       voiceOutput.speak(reply.text, {
@@ -488,6 +586,8 @@ export default function Chat() {
     setInput("");
     setCurrentChatId(null);
     voiceOutput.stop();
+    voiceInput.cancel();
+    setAutoDetectedLanguage(language);
     setMobileSidebarOpen(false);
   };
 
@@ -513,6 +613,9 @@ export default function Chat() {
     );
 
     setLanguage(saved.language);
+    if (isKnownAppLanguage(saved.language)) {
+      setAutoDetectedLanguage(saved.language);
+    }
 
     if (saved.areaId) {
       setSelectedArea(saved.areaId, saved.areaLabel ?? saved.areaId);
@@ -535,12 +638,12 @@ export default function Chat() {
   };
 
   const handleMicPress = () => {
-    if (micState === "listening") {
+    if (micState === "listening" || micState === "processing") {
       voiceInput.stop();
       return;
     }
 
-    if (voiceOutput.status === "speaking") {
+    if (voiceOutput.status === "speaking" || voiceOutput.status === "paused") {
       voiceOutput.stop();
     }
 
@@ -621,10 +724,6 @@ export default function Chat() {
         onUseMyLocation={handleUseMyLocation}
         onChooseArea={handleOpenAreaPicker}
         onClearLocation={clearLocation}
-        language={language}
-        languageOptions={VOICE_LANGUAGE_OPTIONS}
-        onSetLanguage={setLanguage}
-        voiceSupported={voiceInput.isSupported}
         profileHref={ROUTES.PROFILE}
         connectivityStatus={connectivity.status}
         snapshotAge={
@@ -741,7 +840,7 @@ export default function Chat() {
             {voiceToastVisible && (
               <div className="chat-voice-toast" role="status">
                 <VolumeX size={13} />
-                <span>Voice playback unavailable on this device.</span>
+                <span>{voiceToastMessage}</span>
                 <button
                   type="button"
                   className="chat-voice-toast-dismiss"

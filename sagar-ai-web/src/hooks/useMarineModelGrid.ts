@@ -25,6 +25,19 @@ export function useMarineModelGrid({
   const [error, setError] = useState<string | null>(null);
 
   const hasFetchedRef = useRef(false);
+  // Guards against two overlapping requests (e.g. refresh() called
+  // again before the previous load() resolved) both committing state
+  // out of order, and against committing state after unmount.
+  const loadingRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     if (offline) {
@@ -32,21 +45,32 @@ export function useMarineModelGrid({
       return;
     }
 
+    if (loadingRef.current) {
+      return;
+    }
+    loadingRef.current = true;
+    const requestId = ++requestIdRef.current;
+
     setLoading(true);
     setError(null);
 
     try {
       const result = await fetchMarineModelGrid();
+      if (!mountedRef.current || requestIdRef.current !== requestId) return;
       setData(result);
 
       if (result.status !== "success") {
         setError(result.message ?? "Marine model unavailable.");
       }
     } catch (err) {
+      if (!mountedRef.current || requestIdRef.current !== requestId) return;
       console.warn("Marine model grid request failed:", err);
       setError("Marine model unavailable.");
     } finally {
-      setLoading(false);
+      loadingRef.current = false;
+      if (mountedRef.current && requestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, [offline]);
 

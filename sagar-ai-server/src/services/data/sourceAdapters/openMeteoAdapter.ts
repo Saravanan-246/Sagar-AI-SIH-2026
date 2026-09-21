@@ -253,7 +253,8 @@ async function fetchGridFromOpenMeteo(): Promise<MarineModelGridResult> {
 
     const freshness = computeFreshness("marine_forecast", generatedAt, fetchedAt);
     const confidence = computeConfidence({
-      coreIsPrototype: true,
+      coreIsPrototype: false,
+      isDirectModelReading: true,
       verifiedFreshness: freshness,
     });
 
@@ -332,8 +333,11 @@ export async function getMarineModelGrid(): Promise<MarineModelGridResult> {
     .then((result) => {
       // Never cache a failed fetch as if it were a valid answer - the
       // next request should retry rather than silently repeating an
-      // "unavailable" result for the full TTL.
-      if (result.status === "success") {
+      // "unavailable" result for the full TTL. Same for a partial
+      // success (e.g. wind lookup failed): caching it would leave the
+      // wind layer empty for the full 30-minute TTL even though only
+      // one of the two upstream endpoints had a transient failure.
+      if (result.status === "success" && !result.message) {
         cache = { result, expiresAt: Date.now() + CACHE_TTL_MS };
       }
       return result;

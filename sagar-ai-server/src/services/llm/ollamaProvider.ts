@@ -111,6 +111,7 @@ export async function requestOllamaCompletion(
   const timeoutMs = options.timeoutMs ?? configuredTimeoutMs;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
 
   try {
     const response = await fetch(`${baseUrl}/api/chat`, {
@@ -163,6 +164,8 @@ export async function requestOllamaCompletion(
       console.warn(
         "[llm] Ollama returned reasoning only - falling back to the deterministic response."
       );
+    } else {
+      console.info(`[llm] Ollama completion used (${Date.now() - startedAt}ms, model ${model})`);
     }
 
     return answer;

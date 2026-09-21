@@ -210,7 +210,7 @@
   color: #93650a;
 }
 
-.marine-map-status-badge-prototype {
+.marine-map-status-badge-configured {
   background: #eef2f6;
   color: #5b6b7a;
 }
@@ -284,6 +284,29 @@
 .marine-map-layer-button:hover {
   background: #f8fafc;
   border-color: #94a3b8;
+}
+
+@media (max-width: 420px) {
+  .marine-map-topbar {
+    left: 10px;
+    right: 10px;
+    gap: 8px;
+  }
+
+  .marine-map-status {
+    max-width: min(54vw, 200px);
+    padding: 0 8px;
+  }
+
+  .marine-map-layer-button {
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .marine-map-model-status {
+    left: 10px;
+    max-width: min(76vw, 260px);
+  }
 }
 
 .marine-map-layer-panel {
@@ -408,6 +431,21 @@
   background: #c98700;
 }
 
+.marine-map-popup-badge-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Data-type label (Model output/Forecast/Observation/...) - distinct
+   from the freshness badge next to it, so "what kind of reading is
+   this" and "how fresh is it" are never fused into one ambiguous tag. */
+.marine-map-badge-model-type {
+  background: #eef2f6;
+  color: #334155;
+}
+
 /* Honest per-object data provenance - a plain footnote, never a "LIVE"
    claim. Present on every popup so the map never implies live data it
    doesn't have. */
@@ -418,6 +456,51 @@
   color: #94a3b8;
   font-size: 10px;
   font-weight: 600;
+}
+
+/* Compact field/value info panel (source, valid/fetched time,
+   confidence) for marine-model popups - a small two-column grid reads
+   as a real data panel, rather than a wall of br-separated text. */
+.marine-map-popup-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.marine-map-popup-meta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10.5px;
+}
+
+.marine-map-popup-meta-row > span:first-child {
+  flex: 0 0 64px;
+  color: #94a3b8;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 9px;
+}
+
+.marine-map-popup-meta-row > span:last-child {
+  flex: 1;
+  min-width: 0;
+  color: #5b6b7a;
+  font-weight: 600;
+}
+
+.marine-map-popup-disclaimer {
+  margin-top: 6px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #384652;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .marine-map-popup-ask {
@@ -753,7 +836,13 @@
    ========================================================================== */
 
 .map-layers {
-  width: min(290px, calc(100vw - 28px));
+  /* Always rendered nested inside .marine-map-layer-panel, which
+     already constrains its own width - sizing this to 100% of that
+     real parent (instead of a separate 100vw-based guess) is what
+     actually keeps it from overflowing its container on narrow
+     screens; a vw-based width here could exceed the parent's own
+     narrower width and clip/scroll internally. */
+  width: 100%;
   padding: 12px;
   background: #ffffff;
   border: 1px solid #e2e8f0;

@@ -137,8 +137,20 @@ export function describeWhatIf(
 
 export function runWhatIf(
   detection: WhatIfDetection,
-  areaId: string
+  areaId: string,
+  baseRiskScore?: number
 ): ScenarioResult {
+  // When the caller already has this area's live riskAgent score for
+  // this same turn (chat.routes.ts's "before" value), thread it
+  // through as the scenario's baseline so the "before"/"after" numbers
+  // shown together are computed from the same starting point, rather
+  // than "before" being live and "after" being projected from the
+  // separate static area.safety.riskScore fixture.
+  const baseInputs =
+    typeof baseRiskScore === "number" && Number.isFinite(baseRiskScore)
+      ? { baseRiskScore }
+      : {};
+
   switch (detection.kind) {
     case "wind_increase":
       return runScenario(
@@ -146,6 +158,7 @@ export function runWhatIf(
         {
           areaId,
           windSpeedIncreasePercent: detection.percent ?? 20,
+          ...baseInputs,
         }
       );
 
@@ -155,6 +168,7 @@ export function runWhatIf(
         {
           areaId,
           waveIncreasePercent: detection.percent ?? 20,
+          ...baseInputs,
         }
       );
 
@@ -168,6 +182,7 @@ export function runWhatIf(
         {
           areaId,
           lightningRisk: "high",
+          ...baseInputs,
         }
       );
 
@@ -181,6 +196,7 @@ export function runWhatIf(
         {
           areaId,
           lightningRisk: "high",
+          ...baseInputs,
         }
       );
 
@@ -208,6 +224,7 @@ export function runWhatIf(
           areaId,
           productivityDecreasePercent:
             detection.percent ?? 15,
+          ...baseInputs,
         }
       );
 
@@ -222,6 +239,7 @@ export function runWhatIf(
           areaId,
           durationHours: 6,
           departureTime: `${10 + (detection.hours ?? 4)}:00`,
+          ...baseInputs,
         }
       );
 

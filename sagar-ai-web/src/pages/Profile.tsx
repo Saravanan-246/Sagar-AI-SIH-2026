@@ -44,6 +44,16 @@ const languageOptions = [
   { value: "hi", label: "हिन्दी" },
 ];
 
+// Advanced, rarely-needed override - Chat defaults to "auto" (follows
+// the conversation's own detected language turn-by-turn) and only
+// covers the three languages voice conversation actually targets.
+const voiceOverrideOptions = [
+  { value: "auto", label: "Auto (recommended)" },
+  { value: "en", label: "English" },
+  { value: "ta", label: "தமிழ் (Tamil)" },
+  { value: "hi", label: "हिन्दी (Hindi)" },
+];
+
 const areaOptions = [
   { value: "thoothukudi-coast", label: "Thoothukudi Coast" },
   { value: "central-gulf-mannar", label: "Central Gulf of Mannar" },
@@ -80,6 +90,8 @@ export default function Profile() {
 
   const language = useAppStore((state) => state.language);
   const setLanguage = useAppStore((state) => state.setLanguage);
+  const voiceLanguageOverride = useAppStore((state) => state.voiceLanguageOverride);
+  const setVoiceLanguageOverride = useAppStore((state) => state.setVoiceLanguageOverride);
 
   const [area, setArea] = useState(readArea);
   const [alertPreferences, setAlertPreferences] = useState<AlertPreference>(readAlertPreferences);
@@ -98,6 +110,7 @@ export default function Profile() {
 
   const resetPreferences = () => {
     setLanguage("en");
+    setVoiceLanguageOverride("auto");
     setArea("thoothukudi-coast");
     setAlertPreferences({ severeAlerts: true, geofenceAlerts: true });
 
@@ -156,7 +169,7 @@ export default function Profile() {
                 </span>
                 <span>
                   <ShieldCheck size={14} />
-                  Live INCOIS Advisory Active
+                  INCOIS Ocean Reference Connected
                 </span>
               </div>
             </div>
@@ -192,6 +205,15 @@ export default function Profile() {
                     onChange={(event) => setArea(event.target.value)}
                     options={areaOptions}
                     hint="Default operational reference point for weather and alerts."
+                  />
+                  <Select
+                    label="Voice language override (advanced)"
+                    value={voiceLanguageOverride}
+                    onChange={(event) =>
+                      setVoiceLanguageOverride(event.target.value as typeof voiceLanguageOverride)
+                    }
+                    options={voiceOverrideOptions}
+                    hint="Chat's microphone normally follows the conversation's own language automatically. Only set this if you need it locked to one language."
                   />
                 </div>
               </section>

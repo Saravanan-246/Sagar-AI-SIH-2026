@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import "./Header.css";
 
 const pageTitles: Record<string, string> = {
-  "/": "Marine Situation",
+  "/": "Sagar AI",
   "/map": "Marine Map",
   "/chat": "Ask Sagar",
   "/route": "Route Planning",
@@ -14,6 +14,7 @@ const pageTitles: Record<string, string> = {
   "/sources": "Data Sources",
   "/profile": "Profile",
   "/research/sst": "SST Intelligence",
+  "/research/marine-lab": "Marine Intelligence Lab",
 };
 
 type HeaderProps = {

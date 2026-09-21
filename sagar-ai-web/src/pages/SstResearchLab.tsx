@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Info, Loader, MapPin } from "lucide-react";
 
 import AppShell from "../components/layout/AppShell";
@@ -41,7 +41,7 @@ function buildResearchPrompt(locationName: string, prediction: SstPredictionSucc
   const top = prediction.featureContributions.slice(0, 3).map((f) => f.feature).join(", ");
   return (
     `In the SST Intelligence Lab, at ${locationName} the current sea-surface temperature is ${prediction.currentSst}°C ` +
-    `(observed ${prediction.sstObservedAt} UTC) and the model predicts ${prediction.predictedSst}°C in ${prediction.predictionHorizon} ` +
+    `(Open-Meteo model reading, ${formatTimestamp(prediction.sstObservedAt)}) and the model predicts ${prediction.predictedSst}°C in ${prediction.predictionHorizon} ` +
     `(${prediction.modelInfo.validationLabel}, test MAE ${prediction.modelInfo.metrics.test.mae}°C vs persistence baseline ${prediction.modelInfo.baseline.test.mae}°C). ` +
     `The top contributing factors were: ${top}. What should I understand from this for fishing conditions?`
   );
@@ -56,18 +56,25 @@ export default function SstResearchLab() {
   const [prediction, setPrediction] = useState<SstPredictionSuccess | null>(null);
   const [readiness, setReadiness] = useState<SstDataReadiness | null>(null);
 
+  // Guards against a stale response overwriting a newer one if the
+  // user changes location and re-submits before the first request
+  // resolves - only the most recently started request may commit state.
+  const requestIdRef = useRef(0);
+
   useEffect(() => {
     setCustomLat(selectedLocation.latitude);
     setCustomLon(selectedLocation.longitude);
   }, [selectedLocation]);
 
   const handlePredict = async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     setPrediction(null);
     setReadiness(null);
     try {
       const result = await fetchSstPrediction(customLat, customLon);
+      if (requestIdRef.current !== requestId) return;
       if (result.status === "success") {
         setPrediction(result);
       } else if (result.status === "insufficient_data") {
@@ -76,9 +83,12 @@ export default function SstResearchLab() {
         setError("Prediction failed");
       }
     } catch (err) {
+      if (requestIdRef.current !== requestId) return;
       setError((err as Error).message || "Failed to fetch prediction");
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   };
 
@@ -187,7 +197,7 @@ export default function SstResearchLab() {
                     <div className="sst-lab-large-value">{prediction.currentSst}°C</div>
                     <div className="sst-lab-meta">
                       <div>Source: {prediction.sourceMetadata.marineProvider} ({prediction.sourceMetadata.marineType})</div>
-                      <div>Observed: {formatTimestamp(prediction.sstObservedAt)}</div>
+                      <div>Model reading: {formatTimestamp(prediction.sstObservedAt)}</div>
                       <div>Fetched: {formatTimestamp(prediction.sstFetchedAt)}</div>
                     </div>
                   </div>
@@ -213,7 +223,8 @@ export default function SstResearchLab() {
               <section className="sst-lab-section">
                 <h2>Environmental Factors</h2>
                 <p className="sst-lab-section-note">
-                  Live conditions this prediction was built from, at {locationLabel}.
+                  Model-estimated conditions this prediction was built from, at {locationLabel} - Open-Meteo's own
+                  marine/weather model output, not a sensor observation.
                 </p>
                 <div className="sst-lab-factor-grid">
                   {prediction.featureContributions.map((fc) => (

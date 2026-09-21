@@ -7,8 +7,6 @@ import {
   Navigation,
   Search,
   ShieldAlert,
-  Waves,
-  Wind,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -134,6 +132,25 @@ export default function Map() {
     setSearchOpen(false);
   };
 
+  // The same real configured areas rendered as monitoring stations on
+  // the map itself, offered as a one-tap way to focus the map on one -
+  // reuses the exact same focus mechanism as picking a search result
+  // (handleSelectSearchResult), so there is only ever one "focus the
+  // map on this area" code path, not a second one.
+  const areaChips = useMemo<SearchResult[]>(
+    () =>
+      (areas.length > 0 ? areas : getMarineAreas()).map((item) => ({
+        id: `area-${item.id}`,
+        label: item.name,
+        sublabel: "Marine area",
+        latitude: item.coordinates.latitude,
+        longitude: item.coordinates.longitude,
+      })),
+    [areas]
+  );
+
+  const activeAreaLabel = searchFocus?.label ?? (!pendingFocus ? area?.name : undefined);
+
   useEffect(() => {
     clearPendingMapFocus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,76 +249,104 @@ export default function Map() {
     <AppShell>
       <PageContainer className="map-page" fullHeight>
         <div className="map-workspace">
-          {/* MAIN MAP CONTAINER */}
+          {/* MAIN MAP CONTAINER - the map is the primary experience on
+              this page, so the chrome around it stays to a single
+              compact row; area/risk/condition detail lives in the
+              sidebar and the map's own overlay, not repeated again here. */}
           <section className="map-main">
-            <header className="map-header">
-              <div className="map-title-block">
-                <div className="map-eyebrow">
-                  <MapIcon size={14} />
-                  <span>Marine Intelligence</span>
-                </div>
+            <header className="map-header-compact">
+              <div className="map-header-compact-row">
+                <MapIcon size={15} />
                 <h1>{searchFocus?.label ?? area?.name ?? "Marine Map"}</h1>
-                <p>{area?.region ?? "Gulf of Mannar, Tamil Nadu"}</p>
-              </div>
-
-              <div className="map-header-actions">
                 <Badge tone={getRiskTone(risk)} size="sm">
                   {risk.toUpperCase()}
                 </Badge>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => navigate(ROUTES.ROUTE)}
-                >
-                  <Navigation size={14} />
-                  <span>Plan route</span>
-                </Button>
               </div>
+              <p>{area?.region ?? "Gulf of Mannar, Tamil Nadu"}</p>
             </header>
 
-            <div className="map-search">
-              <Search size={15} className="map-search-icon" />
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => {
-                  setSearchQuery(event.target.value);
-                  setSearchOpen(true);
-                  if (!event.target.value.trim()) {
-                    setSearchFocus(null);
-                  }
-                }}
-                onFocus={() => setSearchOpen(true)}
-                onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
-                placeholder="Search marine areas, fishing zones..."
-                aria-label="Search marine areas and fishing zones"
-              />
+            <div className="map-search-row">
+              <div className="map-search">
+                <Search size={14} className="map-search-icon" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value);
+                    setSearchOpen(true);
+                    if (!event.target.value.trim()) {
+                      setSearchFocus(null);
+                    }
+                  }}
+                  onFocus={() => setSearchOpen(true)}
+                  onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
+                  placeholder="Search areas, fishing zones..."
+                  aria-label="Search marine areas and fishing zones"
+                />
 
-              {searchOpen && searchQuery.trim() && (
-                <div className="map-search-results" role="listbox">
-                  {searchResults.length === 0 ? (
-                    <div className="map-search-empty">
-                      No supported area or zone matches "{searchQuery.trim()}".
-                    </div>
-                  ) : (
-                    searchResults.map((result) => (
-                      <button
-                        key={result.id}
-                        type="button"
-                        className="map-search-result"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => handleSelectSearchResult(result)}
-                      >
-                        <span className="map-search-result-label">{result.label}</span>
-                        <span className="map-search-result-sublabel">{result.sublabel}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
+                {searchOpen && searchQuery.trim() && (
+                  <div className="map-search-results" role="listbox">
+                    {searchResults.length === 0 ? (
+                      <div className="map-search-empty">
+                        No supported area or zone matches "{searchQuery.trim()}".
+                      </div>
+                    ) : (
+                      searchResults.map((result) => {
+                        const ResultIcon = result.sublabel === "Fishing zone" ? Fish : MapIcon;
+                        return (
+                          <button
+                            key={result.id}
+                            type="button"
+                            className="map-search-result"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSelectSearchResult(result)}
+                          >
+                            <span
+                              className={`map-search-result-icon ${result.sublabel === "Fishing zone" ? "zone" : "area"}`}
+                            >
+                              <ResultIcon size={13} />
+                            </span>
+                            <span className="map-search-result-text">
+                              <span className="map-search-result-label">{result.label}</span>
+                              <span className="map-search-result-sublabel">{result.sublabel}</span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <Button variant="secondary" size="sm" onClick={() => navigate(ROUTES.ROUTE)}>
+                <Navigation size={14} />
+                <span>Route</span>
+              </Button>
             </div>
 
-            {/* Clean map canvas - All internal controls are handled safely by MarineMap */}
+            {areaChips.length > 0 && (
+              <div className="map-area-chips" role="tablist" aria-label="Select a marine area">
+                {areaChips.map((chip) => {
+                  const isActive = activeAreaLabel === chip.label;
+                  return (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      className={`map-area-chip${isActive ? " map-area-chip-active" : ""}`}
+                      onClick={() => handleSelectSearchResult(chip)}
+                    >
+                      {chip.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Clean map canvas - All internal controls are handled safely by MarineMap.
+                This is deliberately the dominant element on the page: no status footer
+                duplicating the sidebar's own area/risk/condition panel underneath it. */}
             <div className="map-canvas">
               <MarineMap
                 areas={areas}
@@ -320,44 +365,6 @@ export default function Map() {
                 offline={connectivity.status === "offline"}
               />
             </div>
-
-            <footer className="map-bottom-status">
-              <div className="map-status-item">
-                <Waves size={16} />
-                <div>
-                  <span>Sea state</span>
-                  <strong>{seaState}</strong>
-                </div>
-              </div>
-
-              <div className="map-status-item">
-                <Wind size={16} />
-                <div>
-                  <span>Wind</span>
-                  <strong>
-                    {typeof wind === "number" ? `${wind} kn` : "—"}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="map-status-item">
-                <Waves size={16} />
-                <div>
-                  <span>Waves</span>
-                  <strong>
-                    {typeof waves === "number" ? `${waves.toFixed(1)} m` : "—"}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="map-status-item">
-                <ShieldAlert size={16} />
-                <div>
-                  <span>Risk score</span>
-                  <strong>{riskScore}/100</strong>
-                </div>
-              </div>
-            </footer>
           </section>
 
           {/* SIDEBAR */}
@@ -381,6 +388,10 @@ export default function Map() {
                 <div>
                   <span>Risk score</span>
                   <strong>{riskScore}/100</strong>
+                </div>
+                <div>
+                  <span>Sea state</span>
+                  <strong>{seaState}</strong>
                 </div>
                 <div>
                   <span>Wind</span>

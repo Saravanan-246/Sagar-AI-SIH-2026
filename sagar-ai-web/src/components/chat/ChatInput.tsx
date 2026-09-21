@@ -5,11 +5,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowUp, MapPin, MicOff, Mic, Navigation, Plus } from "lucide-react";
+import { ArrowUp, Loader2, MapPin, MicOff, Mic, Navigation, Plus } from "lucide-react";
 
 import "./ChatInput.css";
 
-export type MicState = "idle" | "listening" | "thinking" | "speaking" | "error";
+export type MicState = "idle" | "listening" | "processing" | "thinking" | "speaking" | "error";
 
 type ChatInputProps = {
   value: string;
@@ -185,10 +185,13 @@ export default function ChatInput({
             className={`chat-input-mic chat-input-mic-${micState}`}
             onClick={onMicPress}
             aria-label={micLabel}
+            aria-pressed={micState === "listening"}
             title={micLabel}
           >
             {micState === "error" ? (
               <MicOff size={18} strokeWidth={2} />
+            ) : micState === "processing" ? (
+              <Loader2 size={18} strokeWidth={2} className="chat-input-mic-spinner" />
             ) : (
               <Mic size={18} strokeWidth={2} />
             )}
@@ -206,10 +209,12 @@ export default function ChatInput({
         </button>
       </div>
 
-      <p className="chat-input-hint">
+      <p className="chat-input-hint" role="status" aria-live="polite">
         {micSupported && micState !== "idle"
           ? micLabel
-          : "Enter to send · Shift + Enter for a new line"}
+          : micSupported
+            ? "Enter to send · Shift + Enter for a new line"
+            : "Enter to send · Shift + Enter for a new line · Voice input isn't supported in this browser"}
       </p>
     </div>
   );

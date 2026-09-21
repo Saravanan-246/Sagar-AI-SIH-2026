@@ -119,12 +119,30 @@ function normalizeAlert(item: any, index: number): Alert {
 
 const normalizedAlerts: Alert[] = rawAlertList.map(normalizeAlert);
 
+/**
+ * An alert is only "active" while its own status says so AND it has
+ * not passed its own validUntil - previously nothing anywhere checked
+ * validUntil against the current time, so a seeded/older alert stayed
+ * visible as "active" indefinitely (getActiveAlerts() didn't actually
+ * filter by status or expiry despite its name). This is the single
+ * place that decision is made; every list-returning export below
+ * reads from currentAlerts() rather than the raw normalized list.
+ */
+function currentAlerts(now: number = Date.now()): Alert[] {
+  return normalizedAlerts.filter((alert) => {
+    if (alert.status && alert.status !== "active") return false;
+    const validUntilMs = Date.parse(alert.validUntil);
+    if (!Number.isFinite(validUntilMs)) return true;
+    return validUntilMs > now;
+  });
+}
+
 export function getAlerts(): Alert[] {
-  return [...normalizedAlerts];
+  return currentAlerts();
 }
 
 export function getActiveAlerts(): Alert[] {
-  return [...normalizedAlerts];
+  return currentAlerts();
 }
 
 function toRadians(degrees: number): number {
@@ -184,13 +202,15 @@ function resolveAreaCoordinates(
  * area, including Thoothukudi, whenever none of them matched by text).
  */
 export function getAlertsByArea(areaName?: string): Alert[] {
+  const active = currentAlerts();
+
   if (!areaName || !areaName.trim()) {
-    return [...normalizedAlerts];
+    return active;
   }
 
   const query = areaName.trim().toLowerCase();
 
-  const textMatched = normalizedAlerts.filter(
+  const textMatched = active.filter(
     (a) =>
       a.location.name.toLowerCase().includes(query) ||
       a.title.toLowerCase().includes(query) ||
@@ -207,7 +227,7 @@ export function getAlertsByArea(areaName?: string): Alert[] {
     return [];
   }
 
-  return normalizedAlerts.filter(
+  return active.filter(
     (a) =>
       haversineDistanceKm(areaCoordinates, {
         latitude: a.location.latitude,
@@ -221,23 +241,25 @@ export function getAlertsByRegion(region: string): Alert[] {
 }
 
 export function getAlertsBySeverity(severity: string): Alert[] {
+  const active = currentAlerts();
   if (!severity || !severity.trim()) {
-    return [...normalizedAlerts];
+    return active;
   }
   const target = severity.trim().toLowerCase();
-  return normalizedAlerts.filter((a) => a.severity.toLowerCase() === target);
+  return active.filter((a) => a.severity.toLowerCase() === target);
 }
 
 export function getAlertsByType(type: string): Alert[] {
+  const active = currentAlerts();
   if (!type || !type.trim()) {
-    return [...normalizedAlerts];
+    return active;
   }
   const target = type.trim().toLowerCase();
-  return normalizedAlerts.filter((a) => a.type.toLowerCase() === target);
+  return active.filter((a) => a.type.toLowerCase() === target);
 }
 
 export function getActiveAlertCount(): number {
-  return normalizedAlerts.length;
+  return currentAlerts().length;
 }
 
 export function getAlertById(id: string): Alert | undefined {
@@ -246,7 +268,7 @@ export function getAlertById(id: string): Alert | undefined {
 }
 
 export function getCriticalAlerts(): Alert[] {
-  return normalizedAlerts.filter(
+  return currentAlerts().filter(
     (a) =>
       a.severity.toLowerCase() === "high" ||
       a.severity.toLowerCase() === "severe" ||
@@ -255,7 +277,7 @@ export function getCriticalAlerts(): Alert[] {
 }
 
 export function hasActiveWarnings(): boolean {
-  return normalizedAlerts.length > 0;
+  return currentAlerts().length > 0;
 }
 
 export default {

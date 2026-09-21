@@ -46,12 +46,15 @@ type MarineMapProps = {
   className?: string;
 
   /** Real marine areas to plot as monitoring-station markers. Falls
-   * back to the local configured dataset when not supplied, so Home
-   * and Route (which render this map without fetching areas
-   * themselves) keep working unchanged. */
+   * back to the local configured dataset when not supplied - only
+   * Route still relies on that fallback (Home fetches and passes its
+   * own areas). */
   areas?: MarineArea[];
-  /** Real active alerts to plot as hazard markers. Falls back to the
-   * local alert dataset when not supplied, for the same reason. */
+  /** Real active alerts to plot as hazard markers, ideally already
+   * scoped to the areas shown (e.g. via useAlerts({ areaId })) - an
+   * unscoped caller falls back to every alert nationwide, which can
+   * surface an unrelated hazard on an area-specific view. Only Route
+   * still relies on that fallback. */
   alerts?: Alert[];
 
   /**
@@ -93,7 +96,7 @@ type MarineMapProps = {
 
   /** A real, already-known connectivity outcome (e.g. from
    * useConnectivity()) - never polled or guessed here. Downgrades the
-   * status pill to OFFLINE instead of the default PROTOTYPE label. */
+   * status pill to OFFLINE instead of the default CONFIGURED label. */
   offline?: boolean;
 };
 
@@ -252,10 +255,28 @@ function timeAgo(iso?: string | null): string | null {
 
 function MapSyncController({ center, zoom }: { center: LatLngExpression; zoom: number }) {
   const map = useMap();
+  const hasSetInitialView = useRef(false);
 
   useEffect(() => {
     if (!map || !map.getContainer()) return;
-    map.setView(center, zoom, { animate: false });
+
+    // The very first view (mount) snaps instantly - there is nothing
+    // to visually transition from yet. Every subsequent center/zoom
+    // change (selecting a different area, a chat handoff, a search
+    // result) eases there instead of an abrupt jump, so picking a new
+    // area actually reads as "the map moved there" rather than a
+    // static screenshot being swapped out. Respects reduced-motion.
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    if (!hasSetInitialView.current || prefersReducedMotion) {
+      hasSetInitialView.current = true;
+      map.setView(center, zoom, { animate: false });
+    } else {
+      map.flyTo(center, zoom, { animate: true, duration: 0.9 });
+    }
+
     const timer = setTimeout(() => {
       if (map && map.getContainer()) map.invalidateSize(false);
     }, 100);
@@ -633,20 +654,34 @@ export default function MarineMap({
         <div className="marine-map-popup">
           <div className="marine-map-popup-head">
             <div className="marine-map-popup-title">Marine model point</div>
-            <span className="marine-map-badge marine-map-badge-simulation">
-              {describeModelFreshness(point.freshness)}
-            </span>
+            <div className="marine-map-popup-badge-group">
+              <span className="marine-map-badge marine-map-badge-model-type">Model output</span>
+              <span className="marine-map-badge marine-map-badge-simulation">
+                {describeModelFreshness(point.freshness)}
+              </span>
+            </div>
           </div>
           {valueLines}
-          <div className="marine-map-popup-data-status">
-            Source: {point.provider} &middot; {point.model}
-            <br />
-            Valid: {formatModelTime(point.generatedAt) ?? "unknown"} &middot; Fetched:{" "}
-            {formatModelTime(point.fetchedAt) ?? "unknown"} ({timeAgo(point.fetchedAt)})
-            <br />
-            Confidence: {point.confidence.level} &mdash; {point.confidence.explanation}
-            <br />
-            <b>Model data &mdash; not a local observation.</b>
+          <div className="marine-map-popup-meta">
+            <div className="marine-map-popup-meta-row">
+              <span>Source</span>
+              <span>{point.provider} &middot; {point.model}</span>
+            </div>
+            <div className="marine-map-popup-meta-row">
+              <span>Valid time</span>
+              <span>{formatModelTime(point.generatedAt) ?? "unknown"}</span>
+            </div>
+            <div className="marine-map-popup-meta-row">
+              <span>Fetched</span>
+              <span>{formatModelTime(point.fetchedAt) ?? "unknown"} ({timeAgo(point.fetchedAt)})</span>
+            </div>
+            <div className="marine-map-popup-meta-row">
+              <span>Confidence</span>
+              <span>{point.confidence.level} &mdash; {point.confidence.explanation}</span>
+            </div>
+          </div>
+          <div className="marine-map-popup-disclaimer">
+            Model output &mdash; not a local observation.
           </div>
         </div>
       </Popup>
@@ -721,13 +756,19 @@ export default function MarineMap({
 
   // Honest map status - never LIVE. SIMULATION only for the demo route
   // playback marker; OFFLINE only when the caller passed a real,
-  // already-observed connectivity outcome; PROTOTYPE otherwise, matching
-  // the same dataStatus.mode disclosure every chat answer already uses.
-  const mapDataState: "OFFLINE" | "SIMULATION" | "PROTOTYPE" = offline
+  // already-observed connectivity outcome; CONFIGURED otherwise - the
+  // areas/zones/routes/alerts geometry shown by default really is
+  // Sagar's own configured dataset (matching the "configured dataset"
+  // wording used everywhere else in the app, e.g. ChatStructuredPanel),
+  // not a placeholder claim that the map itself is unfinished. Model
+  // layers (wind/wave/current/SST/tide), when turned on, get their own
+  // separate "Marine Model Data" pill below - this badge deliberately
+  // never covers them.
+  const mapDataState: "OFFLINE" | "SIMULATION" | "CONFIGURED" = offline
     ? "OFFLINE"
     : journeyMarkerPosition
       ? "SIMULATION"
-      : "PROTOTYPE";
+      : "CONFIGURED";
 
   // A short context subtitle for the status pill - only from real
   // context this render already carries, never invented: an explicit
@@ -877,7 +918,7 @@ export default function MarineMap({
                       return <div>Risk: <b>{overallRisk}</b> ({riskScore}/100)</div>;
                     })()}
                     <div className="marine-map-popup-data-status">
-                      Data: Prototype dataset{liveAreaRisk[area.id] ? " · risk score: same live calculation as Chat" : ""}
+                      Data: Configured dataset{liveAreaRisk[area.id] ? " · risk score: same live calculation as Chat" : ""}
                     </div>
                     <AskSagarButton
                       prompt={`Is it safe to fish near ${area.name} right now?`}
@@ -946,7 +987,7 @@ export default function MarineMap({
                       // list for the zone, not a live/recent observation.
                       <div>Typical species (configured): <i>{zone.fishSpecies.join(", ")}</i></div>
                     )}
-                    <div className="marine-map-popup-data-status">Data: Prototype dataset</div>
+                    <div className="marine-map-popup-data-status">Data: Configured dataset</div>
                     {zoneNearestArea && (
                       <AskSagarButton
                         prompt={`Which fishing zone is better near ${zoneNearestArea}?`}
@@ -1090,7 +1131,7 @@ export default function MarineMap({
                     {route.reason && (
                       <div className="marine-map-popup-reason">{route.reason}</div>
                     )}
-                    <div className="marine-map-popup-data-status">Data: Prototype dataset</div>
+                    <div className="marine-map-popup-data-status">Data: Configured dataset</div>
                     {routeOriginArea && routeDestinationArea && routeOriginArea !== routeDestinationArea && (
                       <AskSagarButton
                         prompt={`Why is the safest route from ${routeOriginArea} to ${routeDestinationArea}?`}
