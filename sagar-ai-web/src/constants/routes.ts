@@ -10,6 +10,7 @@ export const ROUTES = {
   PROFILE: "/profile",
   SST_LAB: "/research/sst",
   MARINE_LAB: "/research/marine-lab",
+  INVESTIGATE_LAB: "/research/investigate",
 
   AREA: (id: string) => `/area/${id}`,
 } as const;

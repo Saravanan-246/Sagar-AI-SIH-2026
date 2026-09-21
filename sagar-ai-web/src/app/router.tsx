@@ -12,6 +12,7 @@ import Sources from "../pages/Sources";
 import Profile from "../pages/Profile";
 import SstResearchLab from "../pages/SstResearchLab";
 import MarineIntelligenceLab from "../pages/MarineIntelligenceLab";
+import InvestigateWithSagar from "../pages/InvestigateWithSagar";
 
 export default function Router() {
   return (
@@ -28,6 +29,7 @@ export default function Router() {
       <Route path="/profile" element={<Profile />} />
       <Route path="/research/sst" element={<SstResearchLab />} />
       <Route path="/research/marine-lab" element={<MarineIntelligenceLab />} />
+      <Route path="/research/investigate" element={<InvestigateWithSagar />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

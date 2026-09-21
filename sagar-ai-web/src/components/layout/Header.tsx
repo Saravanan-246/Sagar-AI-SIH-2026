@@ -15,6 +15,7 @@ const pageTitles: Record<string, string> = {
   "/profile": "Profile",
   "/research/sst": "SST Intelligence",
   "/research/marine-lab": "Marine Intelligence Lab",
+  "/research/investigate": "Investigate with Sagar",
 };
 
 type HeaderProps = {
