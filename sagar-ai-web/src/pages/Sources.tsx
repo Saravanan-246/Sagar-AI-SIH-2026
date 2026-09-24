@@ -14,6 +14,7 @@ import {
   Wind,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import AppShell from "../components/layout/AppShell";
 import PageContainer from "../components/layout/PageContainer";
@@ -232,7 +233,7 @@ export function statusTone(
   }
 }
 
-export default function Sources() {
+export default function Sources({ embedded = false }: { embedded?: boolean }) {
   const [filter, setFilter] = useState<FilterValue>("all");
   const [query, setQuery] = useState("");
   const [refreshed, setRefreshed] = useState(false);
@@ -268,19 +269,27 @@ export default function Sources() {
     window.setTimeout(() => setRefreshed(false), 1200);
   };
 
-  return (
-    <AppShell>
-      <PageContainer className="sources-page">
-        <header className="sources-header">
+  const wrapPage = (content: ReactNode) =>
+    embedded ? (
+      <div className="sources-page">{content}</div>
+    ) : (
+      <AppShell>
+        <PageContainer className="sources-page">{content}</PageContainer>
+      </AppShell>
+    );
+
+  return wrapPage(
+    <>
+      <header className="sources-header">
           <div>
             <div className="sources-eyebrow">
               <Database size={14} />
               <span>Data Architecture</span>
             </div>
-            <h1>Data Sources & Provenance</h1>
+            <h1>Data Sources &amp; Provenance</h1>
             <p>
               Review the marine telemetry, meteorological models, and geospatial
-              layers driving Sagar AI’s decision models.
+              layers driving Sagar AI's decision models.
             </p>
           </div>
 
@@ -500,7 +509,6 @@ export default function Sources() {
             INCOIS ERDDAP connected · IMD not yet connected
           </span>
         </footer>
-      </PageContainer>
-    </AppShell>
+    </>
   );
-}
+}

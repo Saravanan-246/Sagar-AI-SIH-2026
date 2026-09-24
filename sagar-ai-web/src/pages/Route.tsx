@@ -21,6 +21,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
@@ -149,7 +150,7 @@ function buildWhyThisRoute(route: RoutePlan): string[] {
   return reasons;
 }
 
-export default function RoutePage() {
+export default function RoutePage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
 
   const {
@@ -254,47 +255,44 @@ export default function RoutePage() {
     }
   };
 
-  if (loading && !selected) {
-    return (
+  const wrapPage = (content: ReactNode) =>
+    embedded ? (
+      <div className="route-page panel-page-full">{content}</div>
+    ) : (
       <AppShell>
-        <PageContainer className="route-page">
-          <div className="route-loading">
-            <LoadingState label="Analyzing optimal marine routes..." />
-          </div>
-        </PageContainer>
+        <PageContainer className="route-page" fullHeight>{content}</PageContainer>
       </AppShell>
+    );
+
+  if (loading && !selected) {
+    return wrapPage(
+      <div className="route-loading">
+        <LoadingState label="Analyzing optimal marine routes..." />
+      </div>
     );
   }
 
   if (error && !selected) {
-    return (
-      <AppShell>
-        <PageContainer className="route-page">
-          <ErrorState
-            title="Route analysis unavailable"
-            message={error}
-            retry={refresh}
-          />
-        </PageContainer>
-      </AppShell>
+    return wrapPage(
+      <ErrorState
+        title="Route analysis unavailable"
+        message={error}
+        retry={refresh}
+      />
     );
   }
 
   if (!selected) {
-    return (
-      <AppShell>
-        <PageContainer className="route-page">
-          <EmptyState
-            icon={RouteIcon}
-            title="No passage routes available"
-            description="No active marine routes found for the current configuration."
-            action={{
-              label: "Refresh routes",
-              onClick: refresh,
-            }}
-          />
-        </PageContainer>
-      </AppShell>
+    return wrapPage(
+      <EmptyState
+        icon={RouteIcon}
+        title="No passage routes available"
+        description="No active marine routes found for the current configuration."
+        action={{
+          label: "Refresh routes",
+          onClick: refresh,
+        }}
+      />
     );
   }
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { AlertCircle, Info, Loader, MapPin } from "lucide-react";
 
 import AppShell from "../components/layout/AppShell";
@@ -47,7 +48,7 @@ function buildResearchPrompt(locationName: string, prediction: SstPredictionSucc
   );
 }
 
-export default function SstResearchLab() {
+export default function SstResearchLab({ embedded = false }: { embedded?: boolean }) {
   const [selectedLocation, setSelectedLocation] = useState<LocationPreset>(LOCATION_PRESETS[0]!);
   const [customLat, setCustomLat] = useState(selectedLocation.latitude);
   const [customLon, setCustomLon] = useState(selectedLocation.longitude);

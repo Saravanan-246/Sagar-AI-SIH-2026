@@ -14,6 +14,7 @@ import {
   Waves,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import AppShell from "../components/layout/AppShell";
 import PageContainer from "../components/layout/PageContainer";
@@ -224,7 +225,7 @@ function buildAlertAskSagarPrompt(
     : `What does the "${alert.title}" alert mean?`;
 }
 
-export default function Alerts() {
+export default function Alerts({ embedded = false }: { embedded?: boolean }) {
   const {
     alerts: rawAlerts,
     loading,
@@ -276,10 +277,18 @@ export default function Alerts() {
     ["restricted_area", "Restricted"],
   ];
 
-  return (
-    <AppShell>
-      <PageContainer className="alerts-page">
-        <section className="alerts-page-header">
+  const wrapPage = (content: ReactNode) =>
+    embedded ? (
+      <div className="alerts-page">{content}</div>
+    ) : (
+      <AppShell>
+        <PageContainer className="alerts-page">{content}</PageContainer>
+      </AppShell>
+    );
+
+  return wrapPage(
+    <>
+      <section className="alerts-page-header">
           <div>
             <div className="alerts-eyebrow">
               <Bell size={14} />
@@ -563,7 +572,6 @@ export default function Alerts() {
             departure.
           </span>
         </aside>
-      </PageContainer>
-    </AppShell>
+    </>
   );
-}
+}

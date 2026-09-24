@@ -1,277 +1,102 @@
-/* ==========================================================================
-   Chat Input & Composer
-   ========================================================================== */
-
-.chat-input-wrap {
+/* 1. Container - Clean Outer Pill Container */
+.chat-input-box {
   width: 100%;
-  padding: 0;
-}
-
-.chat-input {
-  width: 100%;
-  min-height: 56px;
+  min-height: 52px;
   display: flex;
-  align-items: flex-end;
+  align-items: center; /* Aligns buttons cleanly with single-line text */
   gap: 8px;
-  padding: 8px 10px;
+  padding: 8px 10px 8px 14px;
   background: var(--chat-surface, #ffffff);
-  border: 1px solid var(--chat-border-strong, #d3dae0);
-  border-radius: 16px;
-  box-shadow: 0 2px 6px rgba(14, 32, 43, 0.05);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  border: 1px solid var(--chat-border, rgba(0, 0, 0, 0.12));
+  border-radius: 28px; /* Clean rounded pill style */
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.chat-input:focus-within,
-.chat-input-focused {
-  border-color: var(--chat-accent, #0f6e64);
-  box-shadow: 0 0 0 3px var(--chat-accent-soft, rgba(15, 110, 100, 0.1)), 0 4px 12px rgba(14, 32, 43, 0.06);
+.chat-input-box-focused {
+  border-color: var(--chat-accent, #0f6e64) !important;
+  box-shadow: 0 0 0 2px var(--chat-accent-glow, rgba(15, 110, 100, 0.15)),
+              0 4px 16px rgba(0, 0, 0, 0.06) !important;
 }
 
+/* 2. Textarea - Removes Inner Outlines & Custom Scrollbar */
 .chat-textarea {
   flex: 1;
   min-width: 0;
-  min-height: 38px;
+  min-height: 24px;
   max-height: 160px;
-  resize: none;
-  overflow-y: auto;
-  border: 0;
-  outline: none;
+  resize: none; /* Disables manual resize handle */
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   background: transparent;
   color: var(--chat-text, #14202b);
   font-family: inherit;
-  font-size: 14px;
-  line-height: 20px;
-  padding: 9px 4px;
+  font-size: 15px;
+  line-height: 1.45;
+  padding: 4px 2px;
+  letter-spacing: -0.01em;
+
+  /* Hides default native scrollbars */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Hides Webkit (Chrome/Safari/Edge) scrollbars */
+.chat-textarea::-webkit-scrollbar {
+  display: none;
 }
 
 .chat-textarea::placeholder {
-  color: var(--chat-text-faint, #8894a0);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--chat-text-faint, #9ca3af);
+  font-weight: 400;
 }
 
-.chat-input-menu-wrap {
-  position: relative;
+/* 3. Action Buttons - Fixed Alignment */
+.chat-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex: 0 0 auto;
 }
 
-.chat-input-add,
-.chat-send,
-.chat-input-mic {
+.chat-input-btn {
   flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: transparent;
+  color: var(--chat-text-muted, #6b7280);
   cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+  transition: all 0.15s ease;
 }
 
-.chat-input-add {
-  background: transparent;
-  color: var(--chat-text-muted, #5b6b7a);
+.chat-input-btn:hover:not(:disabled) {
+  background: var(--chat-surface-hover, rgba(0, 0, 0, 0.06));
+  color: var(--chat-text, #111827);
 }
 
-.chat-input-add:hover:not(:disabled),
-.chat-input-add-open {
-  background: var(--chat-surface-sunken, #eef2f5);
-  color: var(--chat-text, #14202b);
-}
-
-.chat-input-menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
-  z-index: 40;
-  width: max-content;
-  min-width: 220px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 6px;
-  border: 1px solid var(--chat-border, #e3e7eb);
-  border-radius: 12px;
-  background: var(--chat-surface, #ffffff);
-  box-shadow: 0 10px 25px rgba(14, 32, 43, 0.14);
-  animation: chat-menu-in 140ms ease-out;
-}
-
-.chat-input-menu button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--chat-text-secondary, #384652);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 140ms ease, color 140ms ease;
-}
-
-.chat-input-menu button:hover {
-  background: var(--chat-accent-soft, rgba(15, 110, 100, 0.1));
-  color: var(--chat-accent, #0f6e64);
-}
-
-.chat-input-menu svg {
-  flex: 0 0 auto;
-  color: var(--chat-accent, #0f6e64);
-}
-
-@keyframes chat-menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.chat-input-mic {
-  background: transparent;
-  color: var(--chat-text-muted, #5b6b7a);
-}
-
-.chat-input-mic:hover:not(:disabled) {
-  background: var(--chat-surface-sunken, #eef2f5);
-  color: var(--chat-text, #14202b);
-}
-
-.chat-input-mic-listening {
-  background: var(--chat-danger, #c23b3b);
-  color: #ffffff;
-  animation: chat-mic-pulse 1.2s ease-in-out infinite;
-}
-
-.chat-input-mic-listening:hover {
-  background: #a52f2f;
-  color: #ffffff;
-}
-
-.chat-input-mic-processing { color: var(--chat-accent, #0f6e64); }
-.chat-input-mic-thinking   { color: var(--chat-accent, #0f6e64); }
-.chat-input-mic-speaking   { color: #159a68; }
-.chat-input-mic-error      { color: var(--chat-danger, #c23b3b); }
-
-@keyframes chat-mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(194, 59, 59, 0.4); }
-  50%      { box-shadow: 0 0 0 6px rgba(194, 59, 59, 0); }
-}
-
-.chat-input-mic-spinner {
-  animation: chat-mic-spin 900ms linear infinite;
-}
-
-@keyframes chat-mic-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-input-mic-spinner {
-    animation: none;
-  }
-}
-
-.chat-send {
-  background: var(--chat-border, #e3e7eb);
-  color: var(--chat-text-faint, #8894a0);
-}
-
+/* Send Button Highlight */
 .chat-send-active {
-  background: var(--chat-accent, #0f6e64);
-  color: #ffffff;
-  cursor: pointer;
+  background: var(--chat-accent, #0f6e64) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(15, 110, 100, 0.25);
 }
 
 .chat-send-active:hover {
-  background: var(--chat-accent-hover, #0b5a52);
-  transform: translateY(-1px);
+  background: var(--chat-accent-hover, #0b5a52) !important;
+  transform: scale(1.03);
 }
 
-.chat-send-active:active {
-  transform: translateY(0);
-}
-
-.chat-input-add:disabled,
-.chat-send:disabled,
-.chat-input-mic:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.chat-input-add:focus-visible,
-.chat-send:focus-visible,
-.chat-input-mic:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--chat-accent-soft, rgba(15, 110, 100, 0.1));
-}
-
+/* Footer Hint */
 .chat-input-hint {
-  margin: 8px 0 0;
+  margin-top: 8px;
   color: var(--chat-text-faint, #8894a0);
-  font-size: 11px;
+  font-size: 11.5px;
   text-align: center;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-input-mic-listening {
-    animation: none;
-  }
-
-  .chat-input-mic-spinner {
-    animation: none;
-  }
-}
-
-/* Mobile: every tappable control in the composer stays at least 44px
-   - the mic in particular is the primary control for the voice
-   feature, so it must never shrink below a comfortable touch target,
-   and the state hint (Listening…/Processing…/…) stays visible rather
-   than hidden, since it's the only text feedback voice state gets on
-   a phone. */
-@media (max-width: 700px) {
-  .chat-input {
-    min-height: 56px;
-    border-radius: 14px;
-    padding: 6px 8px;
-  }
-
-  .chat-input-add,
-  .chat-send,
-  .chat-input-mic {
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
-  }
-
-  .chat-textarea {
-    min-height: 40px;
-    font-size: 14px;
-    padding: 10px 2px;
-  }
-
-  .chat-input-hint {
-    margin-top: 6px;
-    font-size: 10.5px;
-  }
-}
-
-@media (max-width: 420px) {
-  .chat-input {
-    gap: 6px;
-    padding: 5px 6px;
-  }
+  font-weight: 500;
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -103,7 +104,7 @@ function seaStateTone(
   return "normal";
 }
 
-export default function Area() {
+export default function Area({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
@@ -144,50 +145,47 @@ export default function Area() {
     };
   }, [area?.id]);
 
-  if (loading) {
-    return (
+  const wrapPage = (content: ReactNode) =>
+    embedded ? (
+      <div className="area-page">{content}</div>
+    ) : (
       <AppShell>
-        <PageContainer className="area-page">
-          <div className="area-loading">
-            <LoadingState
-              label="Loading marine conditions..."
-            />
-          </div>
-        </PageContainer>
+        <PageContainer className="area-page">{content}</PageContainer>
       </AppShell>
+    );
+
+  if (loading) {
+    return wrapPage(
+      <div className="area-loading">
+        <LoadingState
+          label="Loading marine conditions..."
+        />
+      </div>
     );
   }
 
   if (error) {
-    return (
-      <AppShell>
-        <PageContainer className="area-page">
-          <ErrorState
-            title="Unable to load area"
-            message={error}
-            retry={refresh}
-          />
-        </PageContainer>
-      </AppShell>
+    return wrapPage(
+      <ErrorState
+        title="Unable to load area"
+        message={error}
+        retry={refresh}
+      />
     );
   }
 
   if (!area) {
-    return (
-      <AppShell>
-        <PageContainer className="area-page">
-          <EmptyState
-            icon={MapPin}
-            title="Marine area not found"
-            description="The requested marine area is not available in the current data set."
-            action={{
-              label: "Back to marine map",
-              onClick: () =>
-                navigate(ROUTES.MAP),
-            }}
-          />
-        </PageContainer>
-      </AppShell>
+    return wrapPage(
+      <EmptyState
+        icon={MapPin}
+        title="Marine area not found"
+        description="The requested marine area is not available in the current data set."
+        action={{
+          label: "Back to marine map",
+          onClick: () =>
+            navigate(ROUTES.MAP),
+        }}
+      />
     );
   }
 

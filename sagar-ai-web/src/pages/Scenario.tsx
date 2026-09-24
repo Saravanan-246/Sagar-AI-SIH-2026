@@ -15,7 +15,7 @@ import {
   Wind,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import AppShell from "../components/layout/AppShell";
 import PageContainer from "../components/layout/PageContainer";
@@ -204,7 +204,7 @@ function buildScenarioAskSagarPrompt(
   }
 }
 
-export default function Scenario() {
+export default function Scenario({ embedded = false }: { embedded?: boolean }) {
   const {
     scenarios,
     selectedScenario,
@@ -361,47 +361,46 @@ export default function Scenario() {
     clearResult();
   };
 
-  if (loading && !selected) {
-    return (
+  /** Wraps content in AppShell+PageContainer for direct route, or a plain
+   *  div when rendered inside a Home SidePanel. */
+  const wrapPage = (content: ReactNode) =>
+    embedded ? (
+      <div className="scenario-page">{content}</div>
+    ) : (
       <AppShell>
-        <PageContainer className="scenario-page">
-          <div className="scenario-loading">
-            <LoadingState label="Loading scenario intelligence..." />
-          </div>
-        </PageContainer>
+        <PageContainer className="scenario-page">{content}</PageContainer>
       </AppShell>
+    );
+
+  if (loading && !selected) {
+    return wrapPage(
+      <div className="scenario-loading">
+        <LoadingState label="Loading scenario intelligence..." />
+      </div>
     );
   }
 
   if (error && !selected) {
-    return (
-      <AppShell>
-        <PageContainer className="scenario-page">
-          <ErrorState
-            title="Scenario engine unavailable"
-            message={error}
-            retry={refresh}
-          />
-        </PageContainer>
-      </AppShell>
+    return wrapPage(
+      <ErrorState
+        title="Scenario engine unavailable"
+        message={error}
+        retry={refresh}
+      />
     );
   }
 
   if (!selected) {
-    return (
-      <AppShell>
-        <PageContainer className="scenario-page">
-          <EmptyState
-            icon={SlidersHorizontal}
-            title="No scenarios available"
-            description="No scenario definitions are currently available."
-            action={{
-              label: "Refresh scenarios",
-              onClick: refresh,
-            }}
-          />
-        </PageContainer>
-      </AppShell>
+    return wrapPage(
+      <EmptyState
+        icon={SlidersHorizontal}
+        title="No scenarios available"
+        description="No scenario definitions are currently available."
+        action={{
+          label: "Refresh scenarios",
+          onClick: refresh,
+        }}
+      />
     );
   }
 
@@ -435,10 +434,9 @@ export default function Scenario() {
 
   const hasLightningLevels = activeCategoryId === "lightning";
 
-  return (
-    <AppShell>
-      <PageContainer className="scenario-page">
-        <header className="scenario-header">
+  return wrapPage(
+    <>
+      <header className="scenario-header">
           <div>
             <div className="scenario-eyebrow">
               <SlidersHorizontal size={14} />
@@ -907,8 +905,7 @@ export default function Scenario() {
             </section>
           </aside>
         </div>
-      </PageContainer>
-    </AppShell>
+    </>
   );
 }
 

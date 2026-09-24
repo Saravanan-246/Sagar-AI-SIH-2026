@@ -5,11 +5,25 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowUp, Loader2, MapPin, MicOff, Mic, Navigation, Plus } from "lucide-react";
+import {
+  ArrowUp,
+  Loader2,
+  MapPin,
+  Mic,
+  MicOff,
+  Navigation,
+  Plus,
+} from "lucide-react";
 
 import "./ChatInput.css";
 
-export type MicState = "idle" | "listening" | "processing" | "thinking" | "speaking" | "error";
+export type MicState =
+  | "idle"
+  | "listening"
+  | "processing"
+  | "thinking"
+  | "speaking"
+  | "error";
 
 type ChatInputProps = {
   value: string;
@@ -32,7 +46,7 @@ export default function ChatInput({
   onChange,
   onSend,
   disabled = false,
-  placeholder = "Ask Sagar anything...",
+  placeholder = "Ask Sagar about sea conditions, alerts, fishing zones or routes...",
   micSupported,
   micState,
   micLabel,
@@ -83,7 +97,7 @@ export default function ChatInput({
 
   const resizeTextarea = (element: HTMLTextAreaElement) => {
     element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
+    element.style.height = `${Math.min(element.scrollHeight, 180)}px`;
   };
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -97,6 +111,11 @@ export default function ChatInput({
 
       if (canSend) {
         onSend();
+        requestAnimationFrame(() => {
+          if (textareaRef.current) {
+            textareaRef.current.style.height = "auto";
+          }
+        });
       }
     }
   };
@@ -115,19 +134,26 @@ export default function ChatInput({
 
   return (
     <div className="chat-input-wrap">
-      <div className={`chat-input ${focused ? "chat-input-focused" : ""}`}>
+      <div
+        className={`chat-input-box ${
+          focused ? "chat-input-box-focused" : ""
+        } ${disabled ? "chat-input-box-disabled" : ""}`}
+      >
         <div className="chat-input-menu-wrap">
           <button
             ref={menuButtonRef}
             type="button"
-            className={`chat-input-add ${menuOpen ? "chat-input-add-open" : ""}`}
-            aria-label="Location actions"
+            className={`chat-input-btn chat-input-add ${
+              menuOpen ? "chat-input-add-open" : ""
+            }`}
+            aria-label="Location options"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             disabled={disabled}
             onClick={() => setMenuOpen((open) => !open)}
+            title="Location options"
           >
-            <Plus size={19} strokeWidth={2} />
+            <Plus size={18} strokeWidth={2.2} />
           </button>
 
           {menuOpen && (
@@ -135,30 +161,32 @@ export default function ChatInput({
               ref={menuRef}
               className="chat-input-menu"
               role="menu"
-              aria-label="Location actions"
+              aria-label="Location options"
             >
               <button
                 type="button"
                 role="menuitem"
+                className="chat-menu-item"
                 onClick={() => {
                   setMenuOpen(false);
                   onUseMyLocation();
                 }}
               >
-                <Navigation size={14} strokeWidth={2} />
-                Use my location
+                <Navigation size={15} strokeWidth={2} />
+                <span>Use my location</span>
               </button>
 
               <button
                 type="button"
                 role="menuitem"
+                className="chat-menu-item"
                 onClick={() => {
                   setMenuOpen(false);
                   onChooseArea();
                 }}
               >
-                <MapPin size={14} strokeWidth={2} />
-                Choose a marine area
+                <MapPin size={15} strokeWidth={2} />
+                <span>Choose a marine area</span>
               </button>
             </div>
           )}
@@ -176,45 +204,55 @@ export default function ChatInput({
           rows={1}
           maxLength={4000}
           className="chat-textarea"
-          aria-label="Message Sagar"
+          aria-label="Message Sagar AI"
         />
 
-        {micSupported && (
+        <div className="chat-input-actions">
+          {micSupported && (
+            <button
+              type="button"
+              className={`chat-input-btn chat-input-mic chat-input-mic-${micState}`}
+              onClick={onMicPress}
+              aria-label={micLabel}
+              aria-pressed={micState === "listening"}
+              title={micLabel}
+              disabled={disabled}
+            >
+              {micState === "error" ? (
+                <MicOff size={18} strokeWidth={2} />
+              ) : micState === "processing" || micState === "thinking" ? (
+                <Loader2
+                  size={18}
+                  strokeWidth={2}
+                  className="chat-mic-spinner"
+                />
+              ) : (
+                <Mic size={18} strokeWidth={2} />
+              )}
+            </button>
+          )}
+
           <button
             type="button"
-            className={`chat-input-mic chat-input-mic-${micState}`}
-            onClick={onMicPress}
-            aria-label={micLabel}
-            aria-pressed={micState === "listening"}
-            title={micLabel}
+            className={`chat-input-btn chat-send ${
+              canSend ? "chat-send-active" : ""
+            }`}
+            onClick={handleSend}
+            disabled={!canSend}
+            aria-label="Send message"
+            title="Send message"
           >
-            {micState === "error" ? (
-              <MicOff size={18} strokeWidth={2} />
-            ) : micState === "processing" ? (
-              <Loader2 size={18} strokeWidth={2} className="chat-input-mic-spinner" />
-            ) : (
-              <Mic size={18} strokeWidth={2} />
-            )}
+            <ArrowUp size={18} strokeWidth={2.4} />
           </button>
-        )}
-
-        <button
-          type="button"
-          className={`chat-send ${canSend ? "chat-send-active" : ""}`}
-          onClick={handleSend}
-          disabled={!canSend}
-          aria-label="Send message"
-        >
-          <ArrowUp size={19} strokeWidth={2.4} />
-        </button>
+        </div>
       </div>
 
       <p className="chat-input-hint" role="status" aria-live="polite">
         {micSupported && micState !== "idle"
           ? micLabel
           : micSupported
-            ? "Enter to send · Shift + Enter for a new line"
-            : "Enter to send · Shift + Enter for a new line · Voice input isn't supported in this browser"}
+          ? "Press Enter to send · Shift + Enter for a new line"
+          : "Press Enter to send · Voice input unavailable in this browser"}
       </p>
     </div>
   );

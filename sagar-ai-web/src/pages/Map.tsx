@@ -9,6 +9,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
@@ -91,7 +92,7 @@ function buildSearchIndex(): SearchResult[] {
   return results;
 }
 
-export default function Map() {
+export default function Map({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
 
   const clearPendingMapFocus = useAppStore(
@@ -245,10 +246,17 @@ export default function Map() {
     navigate(ROUTES.CHAT);
   };
 
-  return (
-    <AppShell>
-      <PageContainer className="map-page" fullHeight>
-        <div className="map-workspace">
+  const wrapPage = (content: ReactNode) =>
+    embedded ? (
+      <div className="map-page panel-page-full">{content}</div>
+    ) : (
+      <AppShell>
+        <PageContainer className="map-page" fullHeight>{content}</PageContainer>
+      </AppShell>
+    );
+
+  return wrapPage(
+    <div className="map-workspace">
           {/* MAIN MAP CONTAINER - the map is the primary experience on
               this page, so the chrome around it stays to a single
               compact row; area/risk/condition detail lives in the
@@ -539,7 +547,5 @@ export default function Map() {
             </section>
           </aside>
         </div>
-      </PageContainer>
-    </AppShell>
   );
 }

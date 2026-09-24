@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Compass,
   Database,
+  FlaskConical,
   Home,
   Map,
   Route,
@@ -14,25 +15,25 @@ import { NavLink } from "react-router-dom";
 
 import "./Sidebar.css";
 
-const primaryNavigation = [
+const mainNavigation = [
   {
     label: "Home",
     path: "/",
     icon: Home,
   },
   {
-    label: "Marine Map",
-    path: "/map",
-    icon: Map,
-  },
-  {
-    label: "Ask Sagar",
+    label: "Sagar AI",
     path: "/chat",
     icon: Sparkles,
   },
 ];
 
-const operationsNavigation = [
+const toolsNavigation = [
+  {
+    label: "Marine Map",
+    path: "/map",
+    icon: Map,
+  },
   {
     label: "Route Planning",
     path: "/route",
@@ -48,9 +49,14 @@ const operationsNavigation = [
     path: "/alerts",
     icon: AlertTriangle,
   },
+  {
+    label: "Research",
+    path: "/research/marine-lab",
+    icon: FlaskConical,
+  },
 ];
 
-const informationNavigation = [
+const accountNavigation = [
   {
     label: "Activity",
     path: "/activity",
@@ -62,7 +68,7 @@ const informationNavigation = [
     icon: Database,
   },
   {
-    label: "Profile",
+    label: "Settings",
     path: "/profile",
     icon: Settings,
   },
@@ -95,18 +101,18 @@ export default function Sidebar() {
 
         <nav className="sidebar-nav" aria-label="Main navigation">
           <SidebarGroup
-            title="Workspace"
-            items={primaryNavigation}
+            title="Main"
+            items={mainNavigation}
           />
 
           <SidebarGroup
-            title="Operations"
-            items={operationsNavigation}
+            title="Tools"
+            items={toolsNavigation}
           />
 
           <SidebarGroup
-            title="System"
-            items={informationNavigation}
+            title="Account"
+            items={accountNavigation}
           />
         </nav>
 

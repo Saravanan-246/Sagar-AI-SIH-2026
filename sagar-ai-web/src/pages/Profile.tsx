@@ -12,6 +12,7 @@ import {
   Waves,
 } from "lucide-react";
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
@@ -85,7 +86,7 @@ function readAlertPreferences(): AlertPreference {
   }
 }
 
-export default function Profile() {
+export default function Profile({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
 
   const language = useAppStore((state) => state.language);
@@ -129,10 +130,18 @@ export default function Profile() {
     }));
   };
 
-  return (
-    <AppShell>
-      <PageContainer className="profile-page">
-        <div className="profile-layout-container">
+  const wrapPage = (content: ReactNode) =>
+    embedded ? (
+      <div className="profile-page">{content}</div>
+    ) : (
+      <AppShell>
+        <PageContainer className="profile-page">{content}</PageContainer>
+      </AppShell>
+    );
+
+  return wrapPage(
+    <>
+      <div className="profile-layout-container">
           
           {/* HEADER */}
           <header className="profile-header">
@@ -333,9 +342,8 @@ export default function Profile() {
             </aside>
           </div>
 
-        </div>
-      </PageContainer>
-    </AppShell>
+      </div>
+    </>
   );
 }
 

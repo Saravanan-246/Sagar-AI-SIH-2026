@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-
 import "./ChatMessage.css";
 
 import ChatStructuredPanel, {
@@ -19,9 +18,7 @@ type ChatMessageProps = {
   locationLabel?: string;
 };
 
-/** A short, glanceable local time (e.g. "12:09 PM") - the raw ISO
- * timestamp the backend sends is internal-looking and was never meant
- * to be read directly by a user. */
+/** A short, glanceable local time (e.g. "12:09 PM") */
 function displayTime(timestamp?: string): string | null {
   if (!timestamp || !isValidDate(timestamp)) {
     return null;
@@ -49,11 +46,13 @@ export default function ChatMessage({
             <div className="chat-bubble-text">{children}</div>
           </div>
 
-          {time && (
-            <span className="chat-message-time chat-message-time-user">
-              {time}
-            </span>
-          )}
+          <div className="chat-message-footer chat-message-footer-user">
+            {time && (
+              <span className="chat-message-time chat-message-time-user">
+                {time}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -62,15 +61,31 @@ export default function ChatMessage({
   return (
     <div className="chat-message-row chat-message-row-assistant">
       <div className="chat-avatar" aria-hidden="true">
-        S
+        <span className="chat-avatar-sparkle">S</span>
       </div>
 
       <div className="chat-message-content chat-message-content-assistant">
-        <span className="chat-assistant-name">Sagar AI</span>
+        <div className="chat-assistant-header">
+          <span className="chat-assistant-name">Sagar AI</span>
 
-        {locationLabel && (
-          <span className="chat-location-badge">📍 {locationLabel}</span>
-        )}
+          {locationLabel && (
+            <span className="chat-location-badge">
+              <svg
+                className="chat-location-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              {locationLabel}
+            </span>
+          )}
+        </div>
 
         <div className="chat-assistant-text">{children}</div>
 
@@ -83,7 +98,9 @@ export default function ChatMessage({
             </span>
           )}
 
-          {voiceControl}
+          {voiceControl && (
+            <div className="chat-voice-wrapper">{voiceControl}</div>
+          )}
         </div>
       </div>
     </div>

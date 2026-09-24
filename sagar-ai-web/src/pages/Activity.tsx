@@ -15,6 +15,7 @@ import {
   Waves,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 import AppShell from "../components/layout/AppShell";
 import PageContainer from "../components/layout/PageContainer";
@@ -173,7 +174,7 @@ function getTone(type: ActivityType) {
   }
 }
 
-export default function Activity() {
+export default function Activity({ embedded = false }: { embedded?: boolean }) {
   const [activities, setActivities] = useState<ActivityItem[]>(() =>
     readActivities()
   );
@@ -218,10 +219,19 @@ export default function Activity() {
     }
   };
 
-  return (
-    <AppShell>
-      <PageContainer className="activity-page">
-        <section className="activity-page-header">
+
+  const wrapPage = (content: ReactNode) =>
+    embedded ? (
+      <div className="activity-page">{content}</div>
+    ) : (
+      <AppShell>
+        <PageContainer className="activity-page">{content}</PageContainer>
+      </AppShell>
+    );
+
+  return wrapPage(
+    <>
+      <section className="activity-page-header">
           <div className="activity-title-block">
             <div className="activity-eyebrow">
               <ActivityIcon size={14} />
@@ -456,7 +466,6 @@ export default function Activity() {
             official marine warnings or navigation guidance.
           </span>
         </aside>
-      </PageContainer>
-    </AppShell>
+    </>
   );
-}
+}

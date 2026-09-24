@@ -1,0 +1,149 @@
+/* ==========================================================================
+   SidePanel — reusable right-hand drawer / full-viewport workspace overlay
+   Sizes: default (480px), wide (720px), full (entire content area)
+   ========================================================================== */
+
+/* Backdrop */
+.sp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(15, 23, 42, 0.38);
+  animation: sp-fade-in 0.18s ease;
+}
+
+/* Panel shell */
+.sp-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 401;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  box-shadow: -2px 0 24px rgba(15, 23, 42, 0.1), -1px 0 0 #e2e8f0;
+  animation: sp-slide-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+/* ─── Size variants ─────────────────────────────────────────────────────── */
+
+.sp-panel[data-size="default"] {
+  width: min(480px, 100vw);
+}
+
+.sp-panel[data-size="wide"] {
+  width: min(720px, 100vw);
+}
+
+/* Full: covers everything to the right of the desktop sidebar */
+.sp-panel[data-size="full"] {
+  left: 240px; /* matches .app-sidebar width at ≥1000px */
+  width: auto;
+}
+
+@media (max-width: 1000px) {
+  .sp-panel[data-size="full"] {
+    left: 216px; /* matches sidebar at 800-1000px */
+  }
+}
+
+/* ─── Header ────────────────────────────────────────────────────────────── */
+
+.sp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  background: #ffffff;
+}
+
+.sp-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sp-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.sp-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+/* ─── Scrollable body ───────────────────────────────────────────────────── */
+
+.sp-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Panels that render full-height content (Map, Route map section)
+     need display:flex so children can stretch to fill. */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Animations ────────────────────────────────────────────────────────── */
+
+@keyframes sp-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes sp-slide-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+/* ─── Mobile overrides ──────────────────────────────────────────────────── */
+
+@media (max-width: 800px) {
+  /* Full-size panel covers full screen on mobile */
+  .sp-panel[data-size="full"] {
+    left: 0;
+  }
+
+  /* Default/wide become bottom sheets */
+  .sp-panel[data-size="default"],
+  .sp-panel[data-size="wide"] {
+    top: auto;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-height: 90dvh;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 32px rgba(15, 23, 42, 0.14);
+    animation: sp-slide-up 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+
+@keyframes sp-slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}

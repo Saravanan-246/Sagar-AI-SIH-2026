@@ -1,13 +1,25 @@
 /* ==========================================================================
-   Chat Messages, Bubbles & Thread History
+   Chat Messages, Bubbles & Thread History (Gemini Modern UI)
    ========================================================================== */
 
 .chat-message-row {
   width: 100%;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 14px;
+  margin-bottom: 24px;
+  animation: fadeInMsg 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeInMsg {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .chat-message-row-user {
@@ -18,19 +30,34 @@
   justify-content: flex-start;
 }
 
+/* Avatar Styling with Gemini Sparkle Gradient */
 .chat-avatar {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  background: var(--chat-navy, #0e2a43);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0e2a43 0%, #1a4971 100%);
   color: #ffffff;
   font-size: 13px;
   font-weight: 700;
   user-select: none;
+  box-shadow: 0 2px 8px rgba(14, 42, 67, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-avatar:hover {
+  transform: scale(1.04);
+  box-shadow: 0 4px 12px rgba(14, 42, 67, 0.25);
+}
+
+.chat-avatar-sparkle {
+  background: linear-gradient(135deg, #ffffff 0%, #a5d8ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .chat-message-content {
@@ -46,62 +73,88 @@
 
 .chat-message-content-assistant {
   align-items: flex-start;
-  max-width: min(88%, 760px);
+  max-width: min(88%, 780px);
   flex: 1;
 }
 
+/* User Message Bubble */
 .chat-bubble {
-  padding: 12px 16px;
-  border-radius: 14px;
+  padding: 12px 18px;
+  border-radius: 18px;
   word-break: break-word;
   overflow-wrap: anywhere;
 }
 
 .chat-bubble-user {
-  background: var(--chat-user-bubble, #0e2a43);
+  background: var(--chat-user-bubble, linear-gradient(135deg, #0e2a43 0%, #163857 100%));
   color: #ffffff;
   border-bottom-right-radius: 4px;
-  box-shadow: 0 2px 6px rgba(14, 32, 43, 0.16);
+  box-shadow: 0 3px 12px rgba(14, 42, 67, 0.15);
+  transition: box-shadow 0.2s ease;
+}
+
+.chat-bubble-user:hover {
+  box-shadow: 0 4px 16px rgba(14, 42, 67, 0.22);
 }
 
 .chat-bubble-text {
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
   white-space: pre-wrap;
 }
 
-.chat-assistant-name {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--chat-text, #14202b);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-/* The real configured area this answer is about, shown only when one
-   actually resolved - never a fallback/default name. */
-.chat-location-badge {
-  display: inline-block;
-  margin-bottom: 6px;
-  color: var(--chat-text-muted, #5b6b7a);
-  font-size: 11.5px;
-  font-weight: 700;
-}
-
-.chat-assistant-text {
-  color: var(--chat-text, #14202b);
-  font-size: 14px;
-  line-height: 22px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.chat-message-footer {
+/* Assistant Header & Location Badge */
+.chat-assistant-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.chat-assistant-name {
+  color: var(--chat-text, #14202b);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.chat-location-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--chat-badge-bg, rgba(14, 42, 67, 0.06));
+  color: var(--chat-text-muted, #4b5a68);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.chat-location-icon {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+}
+
+/* Assistant Text Formatting */
+.chat-assistant-text {
+  color: var(--chat-text, #14202b);
+  font-size: 14.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  letter-spacing: -0.01em;
+}
+
+/* Footer & Timestamps */
+.chat-message-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-top: 6px;
   padding: 0 2px;
 }
@@ -118,46 +171,54 @@
   font-size: 11px;
   line-height: 14px;
   color: var(--chat-text-faint, #8894a0);
+  font-weight: 500;
 }
 
+.chat-voice-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Responsive UI Adjustments */
 @media (max-width: 700px) {
   .chat-message-row {
     gap: 10px;
-    margin-bottom: 16px;
+    margin-bottom: 18px;
   }
 
   .chat-avatar {
-    width: 28px;
-    height: 28px;
-    flex-basis: 28px;
-    border-radius: 6px;
-    font-size: 11px;
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+    border-radius: 8px;
+    font-size: 12px;
   }
 
   .chat-message-content-user,
   .chat-message-content-assistant {
-    max-width: 88%;
+    max-width: 90%;
   }
 
   .chat-bubble {
-    padding: 10px 14px;
-    border-radius: 12px;
+    padding: 10px 15px;
+    border-radius: 15px;
   }
 
   .chat-bubble-text,
   .chat-assistant-text {
     font-size: 13.5px;
-    line-height: 20px;
+    line-height: 1.5;
   }
 }
 
 @media (max-width: 420px) {
   .chat-message-content-user,
   .chat-message-content-assistant {
-    max-width: 92%;
+    max-width: 95%;
   }
 
   .chat-bubble {
-    padding: 9px 12px;
+    padding: 9px 13px;
   }
 }

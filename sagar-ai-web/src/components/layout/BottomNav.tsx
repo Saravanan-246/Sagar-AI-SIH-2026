@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
+  Activity,
   Compass,
   Database,
-  Grid2X2,
+  FlaskConical,
   Home,
   MapPin,
   Route,
+  Settings,
   ShieldAlert,
   SlidersHorizontal,
   User,
@@ -35,14 +37,14 @@ function SagarCoreButton({ isActive }: { isActive: boolean }) {
   );
 }
 
+/** Primary 4-item dock: Home · Map · Sagar AI · Tools */
 const primaryNav = [
   { label: "Home", path: "/", icon: Home },
   { label: "Map", path: "/map", icon: MapPin },
   { label: "Sagar AI", path: "/chat", isCore: true },
-  { label: "Activity", path: "/activity", icon: Grid2X2 },
-  { label: "Profile", path: "/profile", icon: User },
 ];
 
+/** Tools drawer — secondary tools + account links */
 const drawerTools = [
   {
     label: "Route Planning",
@@ -66,11 +68,32 @@ const drawerTools = [
     desc: "Active severe weather & hazard bulletins",
   },
   {
+    label: "Research",
+    path: "/research/marine-lab",
+    icon: FlaskConical,
+    badge: "Lab",
+    desc: "SST, marine intelligence & investigation tools",
+  },
+  {
     label: "Data Sources",
     path: "/sources",
     icon: Database,
     badge: "INCOIS",
     desc: "Oceanographic models & satellite telemetry",
+  },
+  {
+    label: "Activity",
+    path: "/activity",
+    icon: Activity,
+    badge: "Log",
+    desc: "Recent Sagar questions, routes and scenarios",
+  },
+  {
+    label: "Settings",
+    path: "/profile",
+    icon: Settings,
+    badge: "Prefs",
+    desc: "Language, area and alert preferences",
   },
 ];
 
@@ -104,13 +127,13 @@ export default function BottomNav() {
         className={`dock-drawer ${sheetOpen ? "open" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-label="Extended Maritime Tools"
+        aria-label="Maritime Tools"
       >
         <div className="dock-drawer-handle" aria-hidden="true" />
         <div className="dock-drawer-head">
           <div>
             <h3 className="dock-drawer-title">Maritime Intelligence</h3>
-            <p className="dock-drawer-subtitle">Advanced navigation tools</p>
+            <p className="dock-drawer-subtitle">Tools, research & account</p>
           </div>
           <button
             type="button"
@@ -157,6 +180,7 @@ export default function BottomNav() {
 
       <nav className="dock-surface" aria-label="Bottom Navigation">
         <div className="dock-wrapper">
+          {/* Home + Map + Sagar AI */}
           {primaryNav.map((item) => {
             if (item.isCore) {
               return (
@@ -205,11 +229,12 @@ export default function BottomNav() {
             );
           })}
 
+          {/* Tools button — opens the sheet */}
           <button
             type="button"
             className={`dock-item ${sheetOpen ? "active" : ""}`}
             onClick={() => setSheetOpen((prev) => !prev)}
-            aria-label="More navigation options"
+            aria-label="More tools and account"
             aria-expanded={sheetOpen}
           >
             <div className="dock-icon-box">
