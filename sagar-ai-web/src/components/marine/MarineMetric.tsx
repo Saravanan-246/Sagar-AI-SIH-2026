@@ -1,6 +1,18 @@
 import type { LucideIcon } from "lucide-react";
 
+import type { DataState } from "../../utils/freshness";
+import FreshnessBadge from "./FreshnessBadge";
+
 import "./MarineMetric.css";
+
+/** Where a value came from and how current it is - rendered as a
+ * compact footer so every number carries its own context. */
+export type MetricProvenance = {
+  source: string;
+  /** Pre-formatted time, e.g. "Valid 14:00 IST · 20 min ago". */
+  time?: string | null;
+  state: DataState;
+};
 
 type MarineMetricProps = {
   label: string;
@@ -10,6 +22,7 @@ type MarineMetricProps = {
   status?: "normal" | "warning" | "danger" | "muted";
   trend?: "up" | "down" | "stable";
   detail?: string;
+  provenance?: MetricProvenance;
 };
 
 export default function MarineMetric({
@@ -20,6 +33,7 @@ export default function MarineMetric({
   status = "normal",
   trend,
   detail,
+  provenance,
 }: MarineMetricProps) {
   return (
     <div
@@ -74,6 +88,18 @@ export default function MarineMetric({
         <span className="marine-metric-detail">
           {detail}
         </span>
+      )}
+
+      {provenance && (
+        <div className="marine-metric-provenance">
+          <div className="marine-metric-provenance-text">
+            <span className="marine-metric-source">{provenance.source}</span>
+            {provenance.time && (
+              <span className="marine-metric-time">{provenance.time}</span>
+            )}
+          </div>
+          <FreshnessBadge state={provenance.state} />
+        </div>
       )}
     </div>
   );

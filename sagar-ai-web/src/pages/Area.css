@@ -64,6 +64,17 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+.area-risk-basis {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  max-width: 60ch;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .area-status-row {
   display: flex;
   align-items: center;

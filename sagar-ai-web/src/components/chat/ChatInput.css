@@ -100,3 +100,187 @@
   text-align: center;
   font-weight: 500;
 }
+.chat-input-wrap {
+  width: 100%;
+}
+
+.chat-input-box-disabled {
+  opacity: 0.85;
+}
+
+/* 4. Location menu - anchored above the "+" button, never in-flow */
+.chat-input-menu-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.chat-input-add-open {
+  background: var(--chat-surface-sunken, #eef2f5);
+  color: var(--chat-text, #14202b);
+}
+
+.chat-input-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 40;
+  width: max-content;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--chat-border, #e3e7eb);
+  border-radius: 12px;
+  background: var(--chat-surface, #ffffff);
+  box-shadow: 0 10px 25px rgba(14, 32, 43, 0.14);
+}
+
+.chat-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chat-text-secondary, #384652);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-menu-item svg {
+  flex: 0 0 auto;
+  color: var(--chat-accent, #0f6e64);
+}
+
+.chat-menu-item:hover,
+.chat-menu-item:focus-visible {
+  background: var(--chat-accent-soft, rgba(15, 110, 100, 0.1));
+  color: var(--chat-accent, #0f6e64);
+  outline: none;
+}
+
+/* 5. Microphone - each class mirrors a real recognizer state */
+.chat-input-mic-listening {
+  background: var(--chat-accent, #0f6e64);
+  color: #ffffff;
+  box-shadow: 0 0 0 0 rgba(15, 110, 100, 0.35);
+  animation: chat-mic-listening 1.6s ease-out infinite;
+}
+
+.chat-input-mic-listening:hover:not(:disabled) {
+  background: var(--chat-accent-hover, #0b5a52);
+  color: #ffffff;
+}
+
+.chat-input-mic-processing,
+.chat-input-mic-ready,
+.chat-input-mic-thinking {
+  color: var(--chat-accent, #0f6e64);
+}
+
+.chat-input-mic-speaking {
+  color: var(--chat-accent, #0f6e64);
+  background: var(--chat-accent-soft, rgba(15, 110, 100, 0.1));
+}
+
+.chat-input-mic-error {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.chat-input-mic-unavailable {
+  color: var(--chat-text-faint, #9ca3af);
+  cursor: not-allowed;
+}
+
+.chat-input-mic-unavailable:hover {
+  background: transparent !important;
+  color: var(--chat-text-faint, #9ca3af) !important;
+}
+
+@keyframes chat-mic-listening {
+  0% { box-shadow: 0 0 0 0 rgba(15, 110, 100, 0.35); }
+  100% { box-shadow: 0 0 0 9px rgba(15, 110, 100, 0); }
+}
+
+.chat-mic-spinner {
+  animation: chat-mic-spin 900ms linear infinite;
+}
+
+@keyframes chat-mic-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 6. Send / shared states */
+.chat-send {
+  color: var(--chat-text-faint, #9ca3af);
+}
+
+.chat-input-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.chat-send-active:disabled {
+  opacity: 1;
+}
+
+.chat-input-btn:focus-visible {
+  outline: 2px solid var(--chat-accent, #0f6e64);
+  outline-offset: 2px;
+}
+
+.chat-input-hint-listening,
+.chat-input-hint-processing,
+.chat-input-hint-ready {
+  color: var(--chat-accent, #0f6e64);
+}
+
+.chat-input-hint-error {
+  color: #b45309;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-input-mic-listening,
+  .chat-mic-spinner {
+    animation: none;
+  }
+
+  .chat-input-mic-listening {
+    box-shadow: 0 0 0 3px rgba(15, 110, 100, 0.25);
+  }
+}
+
+/* Mobile: the mic is a primary control, so every composer button keeps
+   a 44px touch target and the state hint stays visible. */
+@media (max-width: 700px) {
+  .chat-input-box {
+    padding: 6px 6px 6px 8px;
+    gap: 4px;
+  }
+
+  .chat-input-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .chat-input-actions {
+    gap: 2px;
+  }
+
+  .chat-textarea {
+    font-size: 16px; /* prevents iOS zoom-on-focus */
+  }
+
+  .chat-input-hint {
+    margin-top: 6px;
+    font-size: 11px;
+  }
+}

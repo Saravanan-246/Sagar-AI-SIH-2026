@@ -16,6 +16,8 @@ import {
   getDefaultMarineArea,
 } from "../marine/marineData";
 
+import { resolveMarineDecisionInputs } from "../marine/marineDecisionInputs";
+
 import type { AlertSeverity } from "../../types/alert";
 import type { MarineArea } from "../../types/marine";
 
@@ -206,7 +208,15 @@ function mergeHazards(
   area: MarineArea,
   alerts: ReturnType<
     typeof getActiveAlerts
-  >
+  >,
+  // The configured area's roughSea/strongWind flags restate its own
+  // configured wave/wind values. When waves/wind come from the model
+  // instead, those flags would reintroduce the prototype reading, so
+  // only alert-derived flags are kept for that phenomenon.
+  useConfiguredFlags: { roughSea: boolean; strongWind: boolean } = {
+    roughSea: true,
+    strongWind: true,
+  }
 ): WeatherAgentData["hazards"] {
   const areaHazards =
     getHazardsFromArea(
@@ -228,11 +238,11 @@ function mergeHazards(
       alertHazards.cyclone,
 
     roughSea:
-      areaHazards.roughSea ||
+      (useConfiguredFlags.roughSea && areaHazards.roughSea) ||
       alertHazards.roughSea,
 
     strongWind:
-      areaHazards.strongWind ||
+      (useConfiguredFlags.strongWind && areaHazards.strongWind) ||
       alertHazards.strongWind,
   };
 }
@@ -703,7 +713,7 @@ function buildRecommendation(
     return "Review the active marine alerts before departure and follow their recommendations.";
   }
 
-  return "Current configured weather conditions appear generally manageable, subject to normal operational checks.";
+  return "Current assessed weather conditions appear generally manageable, subject to normal operational checks.";
 }
 
 export async function runWeatherAgent(
@@ -725,23 +735,39 @@ export async function runWeatherAgent(
           alert.severity === "critical"
       );
 
+    // Model wind/waves when available (same grid the app displays),
+    // otherwise the configured values - each labelled in marineInputs.
+    const marineInputs =
+      await resolveMarineDecisionInputs(area);
+
     const hazards =
       mergeHazards(
         area,
-        alerts
+        alerts,
+        {
+          roughSea: marineInputs.waveHeightM?.kind !== "model",
+          strongWind: marineInputs.windSpeedKnots?.kind !== "model",
+        }
       );
 
     const windSpeedKnots =
+      marineInputs.windSpeedKnots?.value ??
       area.conditions
         .windSpeedKnots;
 
     const waveHeightM =
+      marineInputs.waveHeightM?.value ??
       area.conditions
         .waveHeightM;
 
     const visibilityKm =
+      marineInputs.visibilityKm?.value ??
       area.conditions
         .visibilityKm;
+
+    const usesModel =
+      marineInputs.basis === "model" ||
+      marineInputs.basis === "partial-model";
 
     const windAssessment =
       evaluateWind(
@@ -862,26 +888,31 @@ export async function runWeatherAgent(
 
           type: "weather",
 
-          title: `${area.name} weather observations`,
+          title: `${area.name} marine conditions`,
 
-          source:
-            "Configured marine weather dataset",
+          source: [
+            `Waves: ${marineInputs.waveHeightM?.source ?? "unavailable"}`,
+            `Wind: ${marineInputs.windSpeedKnots?.source ?? "unavailable"}`,
+            `Visibility: ${marineInputs.visibilityKm?.source ?? "unavailable"}`,
+          ].join("; "),
 
-          timestamp:
-            area.updatedAt,
+          timestamp: usesModel
+            ? marineInputs.modelPoint?.validAt
+            : area.updatedAt,
 
           summary:
             `Wind ${windSpeedKnots.toFixed(
               1
-            )} knots, ${waveHeightM.toFixed(
+            )} knots (${marineInputs.windSpeedKnots?.kind ?? "configured"}), ${waveHeightM.toFixed(
               1
-            )} m waves and ${visibilityKm.toFixed(
+            )} m waves (${marineInputs.waveHeightM?.kind ?? "configured"}) and ${visibilityKm.toFixed(
               1
-            )} km visibility.`,
+            )} km visibility (configured).`,
 
           data: {
             conditions:
               area.conditions,
+            marineInputs,
           },
         },
         ...alerts
@@ -943,6 +974,8 @@ export async function runWeatherAgent(
       waveHeightM,
 
       visibilityKm,
+
+      marineInputs,
     };
 
     return {

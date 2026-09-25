@@ -14,6 +14,9 @@ import { getMarineAreas } from "../../services/marine/marineData";
 import { getAlerts } from "../../services/alerts/alertService";
 import { nearestMarineAreaName } from "../../utils/geo";
 import { useMarineModelGrid } from "../../hooks/useMarineModelGrid";
+import { formatIST } from "../../utils/freshness";
+import { describeRiskBasis } from "../../utils/riskBasis";
+import type { RiskBasis } from "../../services/agents/agentTypes";
 import { fetchRisk, type MarineModelGridPoint } from "../../services/api/sagarApiClient";
 import {
   alertSeverityColor,
@@ -421,7 +424,7 @@ export default function MarineMap({
   // the static field (unchanged) while loading, offline, or on error -
   // never blocks the popup on this fetch.
   const [liveAreaRisk, setLiveAreaRisk] = useState<
-    Record<string, { riskScore: number; riskLevel: string }>
+    Record<string, { riskScore: number; riskLevel: string; basis?: RiskBasis }>
   >({});
 
   useEffect(() => {
@@ -436,13 +439,20 @@ export default function MarineMap({
         fetchRisk({ areaId: area.id })
           .then((response) => {
             if (!response.data) return null;
-            return [area.id, { riskScore: response.data.riskScore, riskLevel: response.data.riskLevel }] as const;
+            return [
+              area.id,
+              {
+                riskScore: response.data.riskScore,
+                riskLevel: response.data.riskLevel,
+                basis: response.data.basis,
+              },
+            ] as const;
           })
           .catch(() => null)
       )
     ).then((results) => {
       if (cancelled) return;
-      const next: Record<string, { riskScore: number; riskLevel: string }> = {};
+      const next: Record<string, { riskScore: number; riskLevel: string; basis?: RiskBasis }> = {};
       for (const entry of results) {
         if (entry) next[entry[0]] = entry[1];
       }
@@ -633,8 +643,16 @@ export default function MarineMap({
     points: modelPoints,
     loading: modelLoading,
     error: modelError,
-    lastFetchedAt: modelFetchedAt,
-  } = useMarineModelGrid({ enabled: anyModelLayerActive, offline });
+    data: modelData,
+  } = useMarineModelGrid({
+    enabled: anyModelLayerActive,
+    offline,
+    // Keeps visible model layers current; the grid is shared with any
+    // other screen using it, so this never doubles requests.
+    pollIntervalMs: APP_CONFIG.marine.modelGrid.pollIntervalMs,
+  });
+  const modelValidAt = formatIST(modelData?.generatedAt);
+  const hasModelPoints = modelPoints.length > 0;
 
   const windIcon = useMemo(
     () => (point: MarineModelGridPoint) =>
@@ -904,22 +922,53 @@ export default function MarineMap({
                     {area.conditions?.seaState && (
                       <div>Sea state: <b>{formatAlertType(area.conditions.seaState)}</b></div>
                     )}
-                    {typeof area.conditions?.waveHeightM === "number" && (
-                      <div>Wave height: {area.conditions.waveHeightM} m</div>
-                    )}
-                    {typeof area.conditions?.windSpeedKnots === "number" && (
-                      <div>Wind speed: {area.conditions.windSpeedKnots} kn</div>
-                    )}
                     {(() => {
+                      // Wave/wind shown here are the values the risk
+                      // score below was calculated from, each labelled
+                      // with its source - never the configured values
+                      // beside a model-based score.
                       const live = liveAreaRisk[area.id];
+                      const inputs = live?.basis?.inputs;
+                      const wave = inputs?.waveHeightM;
+                      const wind = inputs?.windSpeedKnots;
+                      const kindLabel = (kind?: string) =>
+                        kind === "model" ? "model" : "configured (prototype)";
                       const riskScore = live?.riskScore ?? area.safety?.riskScore;
                       const overallRisk = live?.riskLevel ?? area.safety?.overallRisk;
-                      if (typeof riskScore !== "number") return null;
-                      return <div>Risk: <b>{overallRisk}</b> ({riskScore}/100)</div>;
+
+                      return (
+                        <>
+                          {wave ? (
+                            <div>
+                              Wave height: {wave.value.toFixed(1)} m{" "}
+                              <span className="marine-map-popup-kind">{kindLabel(wave.kind)}</span>
+                            </div>
+                          ) : typeof area.conditions?.waveHeightM === "number" ? (
+                            <div>
+                              Wave height: {area.conditions.waveHeightM} m{" "}
+                              <span className="marine-map-popup-kind">configured (prototype)</span>
+                            </div>
+                          ) : null}
+                          {wind ? (
+                            <div>
+                              Wind speed: {wind.value.toFixed(1)} kn{" "}
+                              <span className="marine-map-popup-kind">{kindLabel(wind.kind)}</span>
+                            </div>
+                          ) : typeof area.conditions?.windSpeedKnots === "number" ? (
+                            <div>
+                              Wind speed: {area.conditions.windSpeedKnots} kn{" "}
+                              <span className="marine-map-popup-kind">configured (prototype)</span>
+                            </div>
+                          ) : null}
+                          {typeof riskScore === "number" && (
+                            <div>Risk: <b>{overallRisk}</b> ({riskScore}/100)</div>
+                          )}
+                          <div className="marine-map-popup-data-status">
+                            {describeRiskBasis(live?.basis, { serviceFailed: !live }).text}
+                          </div>
+                        </>
+                      );
                     })()}
-                    <div className="marine-map-popup-data-status">
-                      Data: Configured dataset{liveAreaRisk[area.id] ? " · risk score: same live calculation as Chat" : ""}
-                    </div>
                     <AskSagarButton
                       prompt={`Is it safe to fish near ${area.name} right now?`}
                       label="Ask Sagar"
@@ -1363,24 +1412,27 @@ export default function MarineMap({
         {anyModelLayerActive && (
           <div
             className={`marine-map-model-status ${
-              modelLoading
+              modelLoading && !hasModelPoints
                 ? "marine-map-model-status-loading"
                 : modelError
                   ? "marine-map-model-status-unavailable"
                   : ""
             }`}
+            role="status"
           >
             <span className="marine-map-model-status-dot" />
             <span className="marine-map-model-status-text">
-              {modelLoading
+              {modelLoading && !hasModelPoints
                 ? "Loading marine model…"
                 : modelError
-                  ? "Marine model unavailable"
-                  : "Marine Model Data"}
-              {!modelLoading && !modelError && modelFetchedAt && (
+                  ? hasModelPoints
+                    ? "Model refresh failed · last known"
+                    : "Marine model unavailable"
+                  : "Marine model output"}
+              {hasModelPoints && modelValidAt && (
                 <span className="marine-map-model-status-time">
                   {" "}
-                  &middot; Updated {timeAgo(modelFetchedAt)}
+                  &middot; valid {modelValidAt}
                 </span>
               )}
             </span>

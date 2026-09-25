@@ -39,7 +39,7 @@ const LOCALE_BY_LANGUAGE: Record<AppLanguage, string> = {
   hi: "hi-IN",
 };
 
-type MicState = "idle" | "listening" | "processing" | "thinking" | "speaking" | "error";
+type MicState = "idle" | "listening" | "processing" | "ready" | "thinking" | "speaking" | "error";
 
 /*
  * A small, per-string translation table for the mic's own chrome text
@@ -60,27 +60,33 @@ const MIC_LABELS: Record<
   en: {
     idle: "Tap to speak",
     listening: "Listening…",
-    processing: "Processing…",
+    processing: "Processing speech…",
+    ready: "Got it — sending to Sagar…",
     thinking: "Sagar is analyzing…",
     speaking: "Sagar is responding…",
     errors: {
-      denied: "Mic permission blocked — allow it in your browser, then tap to retry",
+      denied: "Microphone permission required — allow it in your browser, then tap to retry",
       "no-speech": "Didn't catch that — tap to try again",
-      unsupported: "Voice input isn't supported in this browser",
+      unsupported: "Voice input unavailable in this browser — use text input",
+      insecure: "Voice input needs a secure (https) connection — use text input",
+      "audio-capture": "No microphone found — check your device, then tap to retry",
       network: "Voice recognition needs an internet connection — tap to retry",
-      unknown: "Couldn't hear that — tap to retry",
+      unknown: "Voice input failed — tap to retry, or type instead",
     },
   },
   ta: {
     idle: "பேச தட்டவும்",
     listening: "கேட்கிறேன்…",
     processing: "செயலாக்குகிறேன்…",
+    ready: "புரிந்தது — சாகருக்கு அனுப்புகிறேன்…",
     thinking: "சாகர் பகுப்பாய்வு செய்கிறார்…",
     speaking: "சாகர் பதிலளிக்கிறார்…",
     errors: {
-      denied: "மைக் அனுமதி தடுக்கப்பட்டது — உலாவியில் அனுமதி அளித்து மீண்டும் தட்டவும்",
+      denied: "மைக் அனுமதி தேவை — உலாவியில் அனுமதி அளித்து மீண்டும் தட்டவும்",
       "no-speech": "கேட்கவில்லை — மீண்டும் தட்டவும்",
-      unsupported: "இந்த உலாவியில் குரல் உள்ளீடு ஆதரிக்கப்படவில்லை",
+      unsupported: "இந்த உலாவியில் குரல் உள்ளீடு இல்லை — தட்டச்சு செய்யவும்",
+      insecure: "குரல் உள்ளீட்டுக்கு பாதுகாப்பான (https) இணைப்பு தேவை — தட்டச்சு செய்யவும்",
+      "audio-capture": "மைக்ரோஃபோன் கிடைக்கவில்லை — சாதனத்தைச் சரிபார்த்து மீண்டும் தட்டவும்",
       network: "குரல் அறிதலுக்கு இணைய இணைப்பு தேவை — மீண்டும் தட்டவும்",
       unknown: "கேட்க முடியவில்லை — மீண்டும் தட்டவும்",
     },
@@ -89,12 +95,15 @@ const MIC_LABELS: Record<
     idle: "बोलने के लिए टैप करें",
     listening: "सुन रहा हूँ…",
     processing: "प्रोसेस कर रहा हूँ…",
+    ready: "समझ गया — सागर को भेज रहा हूँ…",
     thinking: "सागर विश्लेषण कर रहा है…",
     speaking: "सागर जवाब दे रहा है…",
     errors: {
-      denied: "माइक अनुमति अवरुद्ध — ब्राउज़र में अनुमति दें, फिर टैप करें",
+      denied: "माइक अनुमति आवश्यक — ब्राउज़र में अनुमति दें, फिर टैप करें",
       "no-speech": "कुछ सुनाई नहीं दिया — फिर से टैप करें",
-      unsupported: "इस ब्राउज़र में वॉइस इनपुट समर्थित नहीं है",
+      unsupported: "इस ब्राउज़र में वॉइस इनपुट उपलब्ध नहीं — टाइप करें",
+      insecure: "वॉइस इनपुट के लिए सुरक्षित (https) कनेक्शन चाहिए — टाइप करें",
+      "audio-capture": "माइक्रोफ़ोन नहीं मिला — डिवाइस जाँचें, फिर टैप करें",
       network: "वॉइस पहचान के लिए इंटरनेट कनेक्शन चाहिए — फिर से टैप करें",
       unknown: "सुनाई नहीं दिया — फिर से टैप करें",
     },
@@ -127,46 +136,53 @@ function getThinkingInfo(
   }
 
   const text = lastUserMessage.toLowerCase();
-  const locationStage = hasLocation ? ["Location identified"] : [];
+  // Each stage names an operation the backend's chat pipeline really
+  // performs for this kind of question (intent classification, area
+  // resolution, marine data retrieval with freshness classification,
+  // risk/route/zone scoring) - shown as pending, never as completed.
+  const understand = "Understanding request…";
+  const locationStage = hasLocation ? ["Resolving your area…"] : [];
+  const fetchMarine = "Fetching marine conditions…";
+  const freshness = "Checking data freshness…";
 
   if (/\broute|path|passage|sail\b/.test(text)) {
     return {
       label: "Sagar is plotting the safest route…",
-      stages: [...locationStage, "Marine data checked", "Risk evaluated"],
+      stages: [understand, ...locationStage, fetchMarine, "Assessing route impact…"],
     };
   }
 
   if (/\bzone|fishing|pfz\b/.test(text)) {
     return {
       label: "Sagar is scanning fishing zones…",
-      stages: [...locationStage, "Marine data checked"],
+      stages: [understand, ...locationStage, fetchMarine, "Ranking fishing zones…"],
     };
   }
 
   if (/\bwind|storm|cyclone|weather|what if\b/.test(text)) {
     return {
       label: "Sagar is modelling the scenario…",
-      stages: [...locationStage, "Marine data checked", "Risk evaluated"],
+      stages: [understand, ...locationStage, fetchMarine, "Assessing risk…"],
     };
   }
 
   if (/\balert|warning\b/.test(text)) {
     return {
       label: "Sagar is checking active alerts…",
-      stages: [...locationStage, "Marine data checked"],
+      stages: [understand, ...locationStage, "Checking active alerts…"],
     };
   }
 
   if (/\bwhy|what data|what sources|what evidence|show me the evidence\b/.test(text)) {
     return {
       label: "Sagar is gathering the evidence…",
-      stages: [...locationStage, "Marine data checked"],
+      stages: [understand, ...locationStage, fetchMarine, freshness],
     };
   }
 
   return {
     label: "Sagar is checking marine conditions…",
-    stages: [...locationStage, "Marine data checked", "Risk evaluated"],
+    stages: [understand, ...locationStage, fetchMarine, freshness, "Assessing risk…"],
   };
 }
 
@@ -339,7 +355,9 @@ export default function Chat() {
       ? "listening"
       : voiceInput.status === "processing"
         ? "processing"
-        : voiceInput.status === "error"
+        : voiceInput.status === "ready"
+          ? "ready"
+          : voiceInput.status === "error"
           ? "error"
           : loading
             ? "thinking"
@@ -353,6 +371,7 @@ export default function Chat() {
     idle: micLabelSet.idle,
     listening: micLabelSet.listening,
     processing: micLabelSet.processing,
+    ready: micLabelSet.ready,
     thinking: micLabelSet.thinking,
     speaking: micLabelSet.speaking,
     error:
@@ -638,8 +657,15 @@ export default function Chat() {
   };
 
   const handleMicPress = () => {
-    if (micState === "listening" || micState === "processing") {
+    // Listening -> stop and keep what was heard; a second tap while the
+    // recognizer is still finalising discards the attempt instead.
+    if (micState === "listening") {
       voiceInput.stop();
+      return;
+    }
+
+    if (micState === "processing" || micState === "ready") {
+      voiceInput.cancel();
       return;
     }
 
@@ -857,8 +883,11 @@ export default function Chat() {
               onChange={setInput}
               onSend={handleSend}
               disabled={loading}
-              placeholder="Message Sagar about sea conditions, alerts, fishing zones or routes..."
+              placeholder="Ask Sagar about sea conditions, alerts, fishing zones or routes…"
               micSupported={voiceInput.isSupported}
+              micUnavailableLabel={
+                micLabelSet.errors[voiceInput.unavailableReason ?? "unsupported"]
+              }
               micState={micState}
               micLabel={micLabel[micState]}
               onMicPress={handleMicPress}

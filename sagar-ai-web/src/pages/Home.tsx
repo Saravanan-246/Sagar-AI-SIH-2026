@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Bot,
+  Cloud,
   Compass,
   Fish,
   FlaskConical,
@@ -14,7 +15,7 @@ import {
   Waves,
   Wind,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
@@ -22,12 +23,20 @@ import PageContainer from "../components/layout/PageContainer";
 import Card from "../components/ui/Card";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
+import MarineConditionsPanel from "../components/marine/MarineConditionsPanel";
+import FreshnessBadge from "../components/marine/FreshnessBadge";
 import { ROUTES } from "../constants/routes";
+import { useConnectivity } from "../hooks/useConnectivity";
+import { useMarineConditions } from "../hooks/useMarineConditions";
 import { useMarineData } from "../hooks/useMarineData";
 import { useAlerts } from "../hooks/useAlerts";
-import { fetchRisk } from "../services/api/sagarApiClient";
+import { useAreaRisk } from "../hooks/useAreaRisk";
+import { describeRiskBasis } from "../utils/riskBasis";
 import { useAppStore } from "../store/appStore";
 import { alertTypeIcon, formatAlertType } from "../utils/alertPresentation";
+import { haversineDistanceKm } from "../utils/geo";
+import { getRoutes } from "../services/routes/routeService";
+import type { MarineArea } from "../types/marine";
 
 import "./Home.css";
 
@@ -41,57 +50,115 @@ const ASK_SAGAR_PROMPTS: Array<{ icon: typeof ShieldAlert; label: string }> = [
   { icon: AlertTriangle, label: "Why is the risk high?" },
 ];
 
+const COMPASS_ABBREVIATIONS: Record<string, string> = {
+  north: "N",
+  "north-east": "NE",
+  east: "E",
+  "south-east": "SE",
+  south: "S",
+  "south-west": "SW",
+  west: "W",
+  "north-west": "NW",
+};
+
+function abbreviateDirection(direction?: string): string {
+  if (!direction) return "";
+  return COMPASS_ABBREVIATIONS[direction.toLowerCase()] ?? direction;
+}
+
+function formatCoordinates(latitude: number, longitude: number): string {
+  const lat = `${Math.abs(latitude).toFixed(3)}°${latitude >= 0 ? "N" : "S"}`;
+  const lng = `${Math.abs(longitude).toFixed(3)}°${longitude >= 0 ? "E" : "W"}`;
+  return `${lat}, ${lng}`;
+}
+
+// Plain weather description from the configured cloud cover / rain
+// probability - the same area profile the sea state comes from.
+function describeWeather(area: MarineArea | null): string | null {
+  const conditions = area?.conditions;
+  if (!conditions) return null;
+  const { cloudCover, rainProbability } = conditions;
+  if (typeof rainProbability === "number" && rainProbability >= 60) return "Rain likely";
+  if (typeof rainProbability === "number" && rainProbability >= 40) return "Showers possible";
+  if (typeof cloudCover !== "number") return null;
+  if (cloudCover >= 70) return "Overcast";
+  if (cloudCover >= 30) return "Partly cloudy";
+  return "Clear";
+}
+
+// Lowest-risk configured route departing near this area - null when no
+// route starts within reach, rather than borrowing one from elsewhere.
+const ROUTE_ORIGIN_MAX_KM = 25;
+
+function nearestRoute(area: MarineArea | null) {
+  if (!area?.coordinates) return null;
+  return (
+    getRoutes()
+      .filter((route) => haversineDistanceKm(route.origin, area.coordinates) <= ROUTE_ORIGIN_MAX_KM)
+      .sort((a, b) => a.risk.score - b.risk.score)[0] ?? null
+  );
+}
+
 export default function Home() {
   const navigate = useNavigate();
   const setPendingChatPrompt = useAppStore((state) => state.setPendingChatPrompt);
 
-  const { area, loading } = useMarineData();
+  const { area, loading, origin, error: marineError } = useMarineData();
+  const connectivity = useConnectivity();
+  const offline = connectivity.status === "offline";
+  const conditions = useMarineConditions(area, { offline });
   // Scoped to the resolved area, same as Map.tsx - never the unscoped
   // "every alert nationwide" fallback, which could otherwise surface an
   // unrelated hazard (e.g. a Chennai alert) on this area's safety card.
   const { alerts, loading: alertsLoading } = useAlerts({ areaId: area?.id });
 
-  // The same live, deterministic risk result Chat/Map/Area already use
-  // (via /api/risk - see riskAgent.ts), so this page never shows a
-  // different score for the same area than Sagar just gave elsewhere.
-  // Falls back to the area's own static safety.riskScore fixture field
-  // (unchanged) while loading, offline, or on error - same pattern as
-  // Area.tsx/MarineMap.tsx.
-  const [liveRisk, setLiveRisk] = useState<{ riskScore: number; riskLevel: string } | null>(null);
+  // The same backend risk result Chat uses (/api/risk), recalculated
+  // whenever the displayed model run changes so the risk and the
+  // conditions shown below come from the same data. Only if the risk
+  // service fails does the page fall back to the area's pre-set
+  // prototype score - labelled as such via riskBasis.
+  const { risk: liveRisk, status: riskStatus } = useAreaRisk(area?.id, conditions.validAt);
+  const riskServiceFailed = riskStatus === "failed";
+  const riskBasis = describeRiskBasis(liveRisk?.basis, {
+    loading: riskStatus === "loading" || riskStatus === "idle",
+    serviceFailed: riskServiceFailed,
+  });
 
-  useEffect(() => {
-    if (!area?.id) {
-      setLiveRisk(null);
-      return;
-    }
+  // No invented defaults: when there is no area/risk, say so ("—")
+  // rather than showing a plausible-looking number.
+  const marineRisk =
+    liveRisk?.riskLevel ?? (riskServiceFailed ? area?.safety?.overallRisk : null) ?? null;
+  const riskScore =
+    liveRisk?.riskScore ?? (riskServiceFailed ? area?.safety?.riskScore : null) ?? null;
+  const seaState = area?.conditions?.seaState
+    ? area.conditions.seaState
+        .replaceAll("_", " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+    : "—";
 
-    let cancelled = false;
-    setLiveRisk(null);
+  // Wave/wind come from the Open-Meteo model reading only - the
+  // configured prototype values are shown separately and labelled.
+  const modelWave = conditions.readings?.waveHeight;
+  const modelWind = conditions.readings?.wind;
+  const modelSst = conditions.readings?.seaSurfaceTemperature;
 
-    fetchRisk({ areaId: area.id })
-      .then((response) => {
-        if (cancelled || !response.data) return;
-        setLiveRisk({ riskScore: response.data.riskScore, riskLevel: response.data.riskLevel });
-      })
-      .catch(() => {
-        if (!cancelled) setLiveRisk(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [area?.id]);
-
-  const marineRisk = liveRisk?.riskLevel ?? area?.safety?.overallRisk ?? "low";
-  const riskScore = liveRisk?.riskScore ?? area?.safety?.riskScore ?? 12;
-  const seaStateRaw = area?.conditions?.seaState ?? "slight";
-  const waveHeight = area?.conditions?.waveHeightM;
-  const windSpeed = area?.conditions?.windSpeedKnots;
-  const sst = area?.marineIndicators?.seaSurfaceTemperatureC;
-
-  const seaState = seaStateRaw
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  // Once the model has settled without a value, fall back to the
+  // configured area profile - badged FALLBACK, never shown as model data.
+  const modelSettled = conditions.status !== "loading";
+  const profileWind =
+    !modelWind && modelSettled && typeof area?.conditions?.windSpeedKnots === "number"
+      ? area.conditions
+      : null;
+  const profileWave =
+    !modelWave && modelSettled && typeof area?.conditions?.waveHeightM === "number"
+      ? area.conditions.waveHeightM
+      : null;
+  const profileSst =
+    !modelSst && modelSettled && typeof area?.marineIndicators?.seaSurfaceTemperatureC === "number"
+      ? area.marineIndicators.seaSurfaceTemperatureC
+      : null;
+  const weather = describeWeather(area);
+  const route = useMemo(() => nearestRoute(area), [area]);
 
   const getRiskTone = (risk: string): "success" | "warning" | "danger" | "neutral" => {
     switch (risk.toLowerCase()) {
@@ -132,38 +199,109 @@ export default function Home() {
             <div className="home-situation-top">
               <div className="home-eyebrow">
                 <Waves size={15} />
-                <span>Marine Situation</span>
+                <span>Marine Status</span>
               </div>
-              <Badge tone={getRiskTone(marineRisk)} size="sm">
-                {marineRisk.toUpperCase()}
-              </Badge>
+              {marineRisk && (
+                <Badge tone={getRiskTone(marineRisk)} size="sm">
+                  {marineRisk.toUpperCase()}
+                </Badge>
+              )}
             </div>
 
             <h1 className="home-situation-title">
-              {loading ? "Loading conditions…" : area?.name ?? "Thoothukudi Coast"}
+              {loading ? "Loading conditions…" : area?.name ?? "Marine data unavailable"}
             </h1>
-            <p className="home-situation-region">{area?.region ?? "Gulf of Mannar, Tamil Nadu"}</p>
+            {area && (
+              <p className="home-situation-region">
+                {[area.region, formatCoordinates(area.coordinates.latitude, area.coordinates.longitude)]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
+            {!loading && !area && (
+              <p className="home-situation-region">
+                {marineError ?? "No configured marine area could be loaded."}
+              </p>
+            )}
 
             <div className="home-situation-risk">
-              <span className="home-situation-risk-score">{riskScore}</span>
+              <span className="home-situation-risk-score">{riskScore ?? "—"}</span>
               <span className="home-situation-risk-label">/100 risk score</span>
             </div>
+            {area && (
+              <p className="home-situation-source">
+                <FreshnessBadge state={riskBasis.state} /> {riskBasis.text}
+              </p>
+            )}
 
             <div className="home-situation-conditions">
               <div className="home-situation-condition">
                 <Waves size={14} />
                 <span>Sea state</span>
                 <strong>{seaState}</strong>
+                {area?.conditions?.seaState && <FreshnessBadge state="FALLBACK" />}
               </div>
               <div className="home-situation-condition">
                 <Wind size={14} />
                 <span>Wind</span>
-                <strong>{typeof windSpeed === "number" ? `${windSpeed} kn` : "—"}</strong>
+                <strong>
+                  {typeof modelWind?.value === "number"
+                    ? `${modelWind.value} kn`
+                    : profileWind
+                      ? `${profileWind.windSpeedKnots} kn ${abbreviateDirection(profileWind.windDirection)}`.trim()
+                      : "—"}
+                </strong>
+                {modelWind ? (
+                  <FreshnessBadge state={modelWind.state} />
+                ) : (
+                  profileWind && <FreshnessBadge state="FALLBACK" />
+                )}
               </div>
               <div className="home-situation-condition">
                 <Waves size={14} />
                 <span>Waves</span>
-                <strong>{typeof waveHeight === "number" ? `${waveHeight.toFixed(1)} m` : "—"}</strong>
+                <strong>
+                  {typeof modelWave?.value === "number"
+                    ? `${modelWave.value.toFixed(1)} m`
+                    : profileWave !== null
+                      ? `${profileWave.toFixed(1)} m`
+                      : "—"}
+                </strong>
+                {modelWave ? (
+                  <FreshnessBadge state={modelWave.state} />
+                ) : (
+                  profileWave !== null && <FreshnessBadge state="FALLBACK" />
+                )}
+              </div>
+              <div className="home-situation-condition">
+                <Thermometer size={14} />
+                <span>Sea temp</span>
+                <strong>
+                  {typeof modelSst?.value === "number"
+                    ? `${modelSst.value.toFixed(1)} °C`
+                    : profileSst !== null
+                      ? `${profileSst.toFixed(1)} °C`
+                      : "—"}
+                </strong>
+                {modelSst ? (
+                  <FreshnessBadge state={modelSst.state} />
+                ) : (
+                  profileSst !== null && <FreshnessBadge state="FALLBACK" />
+                )}
+              </div>
+              <div className="home-situation-condition">
+                <Cloud size={14} />
+                <span>Weather</span>
+                <strong>{weather ?? "—"}</strong>
+                {weather && <FreshnessBadge state="FALLBACK" />}
+              </div>
+              <div className="home-situation-condition" title={route?.name}>
+                <Navigation size={14} />
+                <span>Route status</span>
+                <strong>
+                  {route ? route.status.charAt(0).toUpperCase() + route.status.slice(1) : "—"}
+                </strong>
+                {route && <FreshnessBadge state="FALLBACK" />}
               </div>
             </div>
 
@@ -200,7 +338,7 @@ export default function Home() {
 
             <button type="button" className="home-sagar-composer" onClick={() => navigate(ROUTES.CHAT)}>
               <Sparkles size={16} />
-              <span>Ask Sagar anything about the sea...</span>
+              <span>Ask Sagar about sea conditions, alerts, fishing zones or routes…</span>
             </button>
 
             <div className="home-sagar-suggestions">
@@ -273,40 +411,17 @@ export default function Home() {
             </Button>
           </Card>
 
-          {/* MARINE CONDITIONS */}
+          {/* MARINE CONDITIONS - model values with source / valid time /
+              freshness, plus the configured profile clearly labelled */}
           <Card className="home-metrics-card" padding="lg">
-            <div className="home-metrics-header">
-              <span className="home-eyebrow-plain">Marine Conditions</span>
-              <h2>{area?.name ?? "Current area"}</h2>
-            </div>
-
-            <div className="home-metrics-grid">
-              <div className="home-metric-tile">
-                <Wind size={16} />
-                <span>Wind</span>
-                <strong>{typeof windSpeed === "number" ? `${windSpeed} kn` : "—"}</strong>
-              </div>
-              <div className="home-metric-tile">
-                <Waves size={16} />
-                <span>Waves</span>
-                <strong>{typeof waveHeight === "number" ? `${waveHeight.toFixed(1)} m` : "—"}</strong>
-              </div>
-              <div className="home-metric-tile">
-                <Waves size={16} />
-                <span>Sea state</span>
-                <strong>{seaState}</strong>
-              </div>
-              <div className="home-metric-tile">
-                <Thermometer size={16} />
-                <span>SST</span>
-                <strong>{typeof sst === "number" ? `${sst.toFixed(1)} °C` : "—"}</strong>
-              </div>
-              <div className="home-metric-tile">
-                <Compass size={16} />
-                <span>Current</span>
-                <strong>—</strong>
-              </div>
-            </div>
+            <MarineConditionsPanel
+              area={area}
+              conditions={conditions}
+              offline={offline}
+              title="Current conditions"
+              origin={origin}
+              riskBasis={liveRisk?.basis?.conditions ?? null}
+            />
           </Card>
 
           {/* QUICK ACTIONS */}

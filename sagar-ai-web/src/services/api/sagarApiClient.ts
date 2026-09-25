@@ -436,9 +436,12 @@ export interface MarineModelGridResponse {
   message?: string;
 }
 
-export async function fetchMarineModelGrid(): Promise<MarineModelGridResponse> {
+export async function fetchMarineModelGrid(
+  options: { signal?: AbortSignal; timeoutMs?: number } = {}
+): Promise<MarineModelGridResponse> {
   const { data } = await apiClient.get<MarineModelGridResponse>(
-    "/api/marine-model/grid"
+    "/api/marine-model/grid",
+    { signal: options.signal, timeout: options.timeoutMs }
   );
 
   return data;

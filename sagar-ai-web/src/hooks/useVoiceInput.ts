@@ -1,13 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type VoiceInputStatus = "idle" | "listening" | "processing" | "error";
+/**
+ * idle -> listening -> processing -> ready -> idle, driven only by the
+ * browser recognizer's own events (onstart / onspeechend / final
+ * onresult / onend) - never a timer or a guessed transition.
+ * "ready" means a final transcript was captured and handed to the
+ * caller; it resolves back to idle when the recognizer ends.
+ */
+export type VoiceInputStatus =
+  | "idle"
+  | "listening"
+  | "processing"
+  | "ready"
+  | "error";
 
 export type VoiceInputErrorReason =
   | "denied"
   | "no-speech"
   | "unsupported"
+  | "insecure"
+  | "audio-capture"
   | "network"
   | "unknown";
+
+/** Coarse, UI-facing classification of a voice failure. */
+export type VoiceInputErrorCode =
+  | "VOICE_UNAVAILABLE"
+  | "MICROPHONE_PERMISSION_REQUIRED"
+  | "VOICE_INPUT_FAILED";
+
+export function voiceErrorCode(
+  reason: VoiceInputErrorReason | null,
+): VoiceInputErrorCode | null {
+  switch (reason) {
+    case null:
+      return null;
+    case "unsupported":
+    case "insecure":
+      return "VOICE_UNAVAILABLE";
+    case "denied":
+    case "audio-capture":
+      return "MICROPHONE_PERMISSION_REQUIRED";
+    default:
+      return "VOICE_INPUT_FAILED";
+  }
+}
 
 interface UseVoiceInputOptions {
   /** BCP-47 locale, e.g. "en-IN", "ta-IN". This is a real requirement
@@ -35,6 +72,37 @@ function getSpeechRecognitionCtor(): (new () => any) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+/**
+ * Browsers only grant microphone access on a secure origin (https or
+ * localhost). On plain http - e.g. testing the dev server from a phone
+ * via a LAN IP - the recognizer still exists but every start() fails
+ * with "not-allowed", which would otherwise be misreported as the user
+ * having blocked the mic.
+ */
+function unavailableReason(): VoiceInputErrorReason | null {
+  if (!getSpeechRecognitionCtor()) {
+    return "unsupported";
+  }
+
+  if (typeof window !== "undefined" && window.isSecureContext === false) {
+    return "insecure";
+  }
+
+  return null;
+}
+
+/** Detaches every handler so a recognizer we are discarding can never
+ * push its late events (notably the "aborted" error and onend that
+ * abort() itself triggers) into the state of the next session. */
+function detach(recognition: any) {
+  if (!recognition) return;
+  recognition.onstart = null;
+  recognition.onresult = null;
+  recognition.onspeechend = null;
+  recognition.onerror = null;
+  recognition.onend = null;
+}
+
 export function useVoiceInput({
   language = "en-IN",
   onResult,
@@ -52,31 +120,56 @@ export function useVoiceInput({
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
 
-  const isSupported = getSpeechRecognitionCtor() !== null;
+  const blockedReason = unavailableReason();
+  const isSupported = blockedReason === null;
+
+  const discardCurrent = useCallback(() => {
+    const current = recognitionRef.current;
+    recognitionRef.current = null;
+
+    if (!current) return;
+
+    detach(current);
+    try {
+      current.abort?.();
+    } catch {
+      // Already stopped.
+    }
+  }, []);
 
   const start = useCallback(() => {
-    const Ctor = getSpeechRecognitionCtor();
+    const blocked = unavailableReason();
 
-    if (!Ctor) {
+    if (blocked) {
       setStatus("error");
-      setErrorReason("unsupported");
+      setErrorReason(blocked);
       return;
     }
 
-    recognitionRef.current?.abort?.();
+    const Ctor = getSpeechRecognitionCtor()!;
+
+    // Only one recognizer may own the microphone at a time.
+    discardCurrent();
 
     const recognition = new Ctor();
     recognition.lang = language;
     recognition.interimResults = true;
+    recognition.continuous = false;
     recognition.maxAlternatives = 1;
 
+    // Every handler checks it still belongs to the active session.
+    const isCurrent = () => recognitionRef.current === recognition;
+
     recognition.onstart = () => {
+      if (!isCurrent()) return;
       setStatus("listening");
       setErrorReason(null);
       setInterimTranscript("");
     };
 
     recognition.onresult = (event: any) => {
+      if (!isCurrent()) return;
+
       let finalTranscript = "";
       let interim = "";
 
@@ -93,6 +186,7 @@ export function useVoiceInput({
 
       if (finalTranscript.trim()) {
         setInterimTranscript("");
+        setStatus("ready");
         onResultRef.current(finalTranscript.trim());
       } else {
         setInterimTranscript(interim);
@@ -104,21 +198,33 @@ export function useVoiceInput({
     // browser (not fabricated) for a genuine "still processing what
     // you said" moment between listening and the result arriving.
     recognition.onspeechend = () => {
+      if (!isCurrent()) return;
       setStatus((current) => (current === "listening" ? "processing" : current));
     };
 
     recognition.onerror = (event: any) => {
+      if (!isCurrent()) return;
+
+      const code = event?.error;
+
+      // "aborted" is only ever the result of our own abort() call - not
+      // a failure the user needs to hear about.
+      if (code === "aborted") {
+        return;
+      }
+
       let reason: VoiceInputErrorReason = "unknown";
 
-      if (
-        event?.error === "not-allowed" ||
-        event?.error === "service-not-allowed"
-      ) {
-        reason = "denied";
-      } else if (event?.error === "no-speech") {
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        reason = window.isSecureContext === false ? "insecure" : "denied";
+      } else if (code === "no-speech") {
         reason = "no-speech";
-      } else if (event?.error === "network") {
+      } else if (code === "audio-capture") {
+        reason = "audio-capture";
+      } else if (code === "network") {
         reason = "network";
+      } else if (code === "language-not-supported") {
+        reason = "unsupported";
       }
 
       setInterimTranscript("");
@@ -127,13 +233,13 @@ export function useVoiceInput({
     };
 
     recognition.onend = () => {
+      if (!isCurrent()) return;
+      recognitionRef.current = null;
       // Always resolves back to idle from any in-progress state - never
       // leaves the UI stuck showing "Listening…"/"Processing…" if the
       // engine ends without ever firing a result or error.
       setInterimTranscript("");
-      setStatus((current) =>
-        current === "listening" || current === "processing" ? "idle" : current
-      );
+      setStatus((current) => (current === "error" ? current : "idle"));
     };
 
     recognitionRef.current = recognition;
@@ -141,50 +247,55 @@ export function useVoiceInput({
     try {
       recognition.start();
     } catch {
+      detach(recognition);
+      recognitionRef.current = null;
       setStatus("error");
       setErrorReason("unknown");
     }
-  }, [language]);
+  }, [language, discardCurrent]);
 
+  /** Stop listening but keep what was heard: the recognizer still
+   * delivers its final result for the audio so far, then ends - so the
+   * honest state until then is "processing", not "idle". */
   const stop = useCallback(() => {
-    try {
-      recognitionRef.current?.stop?.();
-    } catch {
-      // Ignore - recognition may already be stopped.
-    }
-    setInterimTranscript("");
-    setStatus("idle");
-  }, []);
+    const current = recognitionRef.current;
 
-  const cancel = useCallback(() => {
-    try {
-      recognitionRef.current?.abort?.();
-    } catch {
-      // Ignore.
+    if (!current) {
+      setInterimTranscript("");
+      setStatus((s) => (s === "error" ? s : "idle"));
+      return;
     }
+
+    try {
+      current.stop?.();
+      setStatus((s) => (s === "listening" ? "processing" : s));
+    } catch {
+      discardCurrent();
+      setInterimTranscript("");
+      setStatus("idle");
+    }
+  }, [discardCurrent]);
+
+  /** Abandon the session and discard anything heard. */
+  const cancel = useCallback(() => {
+    discardCurrent();
     setInterimTranscript("");
     setStatus("idle");
     setErrorReason(null);
-  }, []);
+  }, [discardCurrent]);
 
   const retry = useCallback(() => {
     setErrorReason(null);
     start();
   }, [start]);
 
-  useEffect(() => {
-    return () => {
-      try {
-        recognitionRef.current?.abort?.();
-      } catch {
-        // Ignore on unmount.
-      }
-    };
-  }, []);
+  useEffect(() => discardCurrent, [discardCurrent]);
 
   return {
     status,
     errorReason,
+    errorCode: voiceErrorCode(status === "error" ? errorReason : null),
+    unavailableReason: blockedReason,
     interimTranscript,
     isSupported,
     start,

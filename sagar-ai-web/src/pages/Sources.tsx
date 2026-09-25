@@ -153,13 +153,13 @@ export const SOURCES: DataSource[] = [
     category: "operational",
     status: "available",
     description:
-      "Synchronized hazard registry aggregating severe squalls, rough swell alerts, and localized naval exclusion advisories.",
+      "Sagar's configured hazard registry of squall, rough-swell and navigation advisories (a local prototype dataset, not a live warning feed - always check official IMD/INCOIS broadcasts).",
     datasets: [
       "Swell Surge Advisories",
       "Localized Squall Alerts",
       "Active Navigation Notices",
     ],
-    role: "Real-Time Hazard Index",
+    role: "Configured Hazard Index",
   },
 ];
 
@@ -511,4 +511,4 @@ export default function Sources({ embedded = false }: { embedded?: boolean }) {
         </footer>
     </>
   );
-}
+}

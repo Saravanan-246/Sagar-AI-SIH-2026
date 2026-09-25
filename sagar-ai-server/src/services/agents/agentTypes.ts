@@ -1,3 +1,7 @@
+import type {
+  MarineConditionsBasis,
+  MarineDecisionInputs,
+} from "../marine/marineDecisionInputs";
 import type { ChatContext, ChatIntent, ChatLanguage } from "../../types/chat";
 import type { MarineArea } from "../../types/marine";
 import type { Alert } from "../../types/alert";
@@ -148,6 +152,10 @@ export interface WeatherAgentData {
   windSpeedKnots?: number;
   waveHeightM?: number;
   visibilityKm?: number;
+
+  /** Where windSpeedKnots / waveHeightM / visibilityKm came from (model
+   * vs configured fallback), with valid time and freshness per value. */
+  marineInputs?: MarineDecisionInputs;
 }
 
 export interface OceanAgentData {
@@ -183,6 +191,18 @@ export interface RiskAgentData {
   recommendation: string;
 
   factors: AgentFinding[];
+
+  /** Traceability: which marine values this score was calculated from. */
+  basis?: RiskBasis;
+}
+
+export interface RiskBasis {
+  conditions: MarineConditionsBasis;
+  inputs?: MarineDecisionInputs;
+  /** True when the score was floored at 75% of the configured area's
+   * pre-set prototype risk score (only in configured-fallback mode). */
+  prototypeBaselineApplied: boolean;
+  thresholds: string;
 }
 
 export interface RouteAgentData {

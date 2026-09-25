@@ -165,3 +165,77 @@
     line-height: 24px;
   }
 }
+
+/* Provenance footer - source, time and freshness for this value */
+.marine-metric-provenance {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.marine-metric-provenance-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.marine-metric-source,
+.marine-metric-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.marine-metric-source {
+  color: #475569;
+  font-weight: 600;
+}
+
+.marine-metric-time {
+  color: #64748b;
+}
+
+/* Freshness badge: blue = available, amber = stale / fallback,
+   grey = unavailable. Red and green are reserved for risk/approval. */
+.freshness-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.freshness-badge-live,
+.freshness-badge-recent {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.freshness-badge-stale,
+.freshness-badge-fallback {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.freshness-badge-unavailable {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #475569;
+}

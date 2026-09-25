@@ -3,7 +3,17 @@ import type {
   AgentRequest,
   AgentResponse,
   RiskAgentData,
+  RiskBasis,
 } from "./agentTypes";
+import type {
+  MarineDecisionInputs,
+  MarineDecisionValue,
+} from "../marine/marineDecisionInputs";
+
+// Every wind/wave/visibility band and factor weight in this file is a
+// Sagar team-set prototype value, not an official safety limit.
+const THRESHOLDS_NOTE =
+  "Sagar prototype thresholds (team-set, not official safety limits)";
 
 type RiskLevel =
   | "low"
@@ -24,6 +34,8 @@ interface WeatherData {
   windSpeedKnots?: number;
   waveHeightM?: number;
   visibilityKm?: number;
+
+  marineInputs?: MarineDecisionInputs;
 }
 
 interface OceanData {
@@ -199,6 +211,29 @@ function addFactor(
     impact,
     explanation,
   });
+}
+
+/** " (Open-Meteo model, valid 2026-09-24T12:00Z)" / " (configured
+ * prototype dataset)" - appended to a factor explanation so each one
+ * names the data it came from. */
+function sourceNote(input: MarineDecisionValue | undefined): string {
+  if (!input) return "";
+  if (input.kind === "model") {
+    return ` (Open-Meteo model output${input.timestamp ? `, valid ${input.timestamp}` : ""})`;
+  }
+  return " (configured prototype dataset)";
+}
+
+function withSource(
+  factors: RiskFactor[],
+  from: number,
+  input: MarineDecisionValue | undefined
+) {
+  const note = sourceNote(input);
+  if (!note) return;
+  for (let i = from; i < factors.length; i += 1) {
+    factors[i].explanation = factors[i].explanation.replace(/\.$/, `${note}.`);
+  }
 }
 
 function assessWind(
@@ -713,7 +748,7 @@ function buildRecommendation(
     return "Operations may be possible with caution. Monitor marine conditions and reassess before departure.";
   }
 
-  return "Current configured conditions appear generally favourable, subject to normal operational checks.";
+  return "Current assessed conditions appear generally favourable, subject to normal operational checks.";
 }
 
 function buildFinding(
@@ -721,7 +756,8 @@ function buildFinding(
   score: number,
   level: RiskLevel,
   recommendation: string,
-  factors: RiskFactor[]
+  factors: RiskFactor[],
+  basis: RiskBasis
 ): AgentFinding {
   const keyFactors =
     factors
@@ -768,6 +804,8 @@ function buildFinding(
 
       factorCount:
         factors.length,
+
+      basis,
     },
   };
 }
@@ -792,36 +830,59 @@ export async function runRiskAgent(
 
     const factors: RiskFactor[] = [];
 
+    const inputs =
+      weather?.marineInputs;
+
+    // Without the weather agent's inputs, conditions come straight from
+    // the configured area record (the original behaviour).
+    const conditionsBasis: RiskBasis["conditions"] =
+      inputs?.basis ?? "configured-fallback";
+
     /*
-     * Marine baseline.
+     * Marine baseline: the configured area's pre-set prototype score.
+     * It was derived from the configured conditions, so it is only
+     * applied when the conditions themselves are the configured
+     * fallback - flooring a model-based result with it would mix the
+     * two sources.
      */
+    const prototypeBaselineApplied =
+      conditionsBasis === "configured-fallback" &&
+      typeof marine?.area?.safety?.riskScore === "number";
+
     const marineBaseScore =
-      marine?.area?.safety
-        ?.riskScore;
+      prototypeBaselineApplied
+        ? marine?.area?.safety?.riskScore
+        : undefined;
 
     /*
      * Environmental conditions.
      */
+    let mark = factors.length;
     assessWind(
       weather?.windSpeedKnots ??
         marine?.area?.conditions
           ?.windSpeedKnots,
       factors
     );
+    withSource(factors, mark, inputs?.windSpeedKnots);
 
+    mark = factors.length;
     assessWaves(
       weather?.waveHeightM ??
         marine?.area?.conditions
           ?.waveHeightM,
       factors
     );
+    withSource(factors, mark, inputs?.waveHeightM);
 
+    mark = factors.length;
     assessVisibility(
       weather?.visibilityKm ??
         marine?.area?.conditions
           ?.visibilityKm,
       factors
     );
+    withSource(factors, mark, inputs?.visibilityKm);
 
     /*
      * Weather hazards.
@@ -875,13 +936,21 @@ export async function runRiskAgent(
         geoRestrictions
       );
 
+    const basis: RiskBasis = {
+      conditions: conditionsBasis,
+      inputs,
+      prototypeBaselineApplied,
+      thresholds: THRESHOLDS_NOTE,
+    };
+
     const findings = [
       buildFinding(
         request,
         score,
         riskLevel,
         recommendation,
-        factors
+        factors,
+        basis
       ),
     ];
 
@@ -993,6 +1062,8 @@ export async function runRiskAgent(
 
       factors:
         findings,
+
+      basis,
     };
 
     return {

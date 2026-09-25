@@ -8,12 +8,13 @@ import {
   Filter,
   MapPin,
   RefreshCw,
+  Route,
   ShieldAlert,
   Siren,
   Wind,
   Waves,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import AppShell from "../components/layout/AppShell";
@@ -60,7 +61,23 @@ type MarineAlert = {
   summary: string;
   description: string;
   recommendation: string;
+  source: string;
+  // Decision context from the record's metadata: what the condition
+  // change means for the planned route, and that the response is a
+  // proposal for human review - Sagar never changes the route itself.
+  impact: string;
+  routeName: string;
+  routeImpact: string;
+  routeSegments: string[];
+  affectedSegments: string[];
+  requiresReview: boolean;
 };
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
 
 function getSeverityTone(severity: AlertSeverity) {
   switch (severity) {
@@ -148,6 +165,11 @@ function normalizeAlert(alert: unknown): MarineAlert | null {
       ? (value.location as Record<string, unknown>)
       : {};
 
+  const metadata =
+    typeof value.metadata === "object" && value.metadata !== null
+      ? (value.metadata as Record<string, unknown>)
+      : {};
+
   return {
     id: value.id,
     type:
@@ -196,6 +218,25 @@ function normalizeAlert(alert: unknown): MarineAlert | null {
       typeof value.recommendation === "string"
         ? value.recommendation
         : "",
+    source:
+      typeof value.source === "string"
+        ? value.source
+        : "",
+    impact:
+      typeof metadata.impact === "string"
+        ? metadata.impact
+        : "",
+    routeName:
+      typeof metadata.routeName === "string"
+        ? metadata.routeName
+        : "",
+    routeImpact:
+      typeof metadata.routeImpact === "string"
+        ? metadata.routeImpact
+        : "",
+    routeSegments: stringList(metadata.routeSegments),
+    affectedSegments: stringList(metadata.affectedSegments),
+    requiresReview: metadata.requiresReview === true,
   };
 }
 
@@ -275,6 +316,7 @@ export default function Alerts({ embedded = false }: { embedded?: boolean }) {
     ["rough_sea", "Rough sea"],
     ["visibility", "Visibility"],
     ["restricted_area", "Restricted"],
+    ["rapid_weather_change", "Changing conditions"],
   ];
 
   const wrapPage = (content: ReactNode) =>
@@ -521,6 +563,16 @@ export default function Alerts({ embedded = false }: { embedded?: boolean }) {
                           </div>
                         )}
 
+                        {alert.routeImpact && (
+                          <div className="alert-detail">
+                            <Route size={14} />
+                            <div>
+                              <span>Route impact</span>
+                              <strong>{alert.routeImpact}</strong>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="alert-detail">
                           <Clock3 size={14} />
                           <div>
@@ -537,18 +589,49 @@ export default function Alerts({ embedded = false }: { embedded?: boolean }) {
                         </div>
                       )}
 
+                      {alert.impact && (
+                        <div className="alert-description">
+                          <span>Impact</span>
+                          <p>{alert.impact}</p>
+                          {alert.routeSegments.length > 0 && (
+                            <p>
+                              {alert.routeName ? `${alert.routeName}: ` : "Planned route: "}
+                              {alert.routeSegments.map((segment, index) => (
+                                <Fragment key={segment}>
+                                  {index > 0 && " → "}
+                                  {alert.affectedSegments.includes(segment) ? (
+                                    <strong>{segment} (affected)</strong>
+                                  ) : (
+                                    segment
+                                  )}
+                                </Fragment>
+                              ))}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       {alert.recommendation && (
                         <div className="alert-recommendation">
                           <ShieldAlert size={16} />
                           <div>
-                            <span>Recommended action</span>
+                            <span>Recommended response</span>
                             <p>{alert.recommendation}</p>
+                            {alert.requiresReview && (
+                              <p>
+                                Proposed for your review - Sagar does not change the route
+                                automatically.
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}
 
                       <div className="alert-issued">
-                        <span>Issued {formatDateTime(alert.issuedAt)}</span>
+                        <span>
+                          Recorded {formatDateTime(alert.issuedAt)}
+                          {alert.source ? ` · Source: ${alert.source}` : ""}
+                        </span>
                       </div>
 
                       <AskSagarButton

@@ -15,12 +15,17 @@ import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import PageContainer from "../components/layout/PageContainer";
 import MarineMap from "../components/map/MarineMap";
+import FreshnessBadge from "../components/marine/FreshnessBadge";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import { ROUTES } from "../constants/routes";
 import { useActiveAlerts } from "../hooks/useAlerts";
 import { useConnectivity } from "../hooks/useConnectivity";
+import { useMarineConditions } from "../hooks/useMarineConditions";
 import { useMarineData } from "../hooks/useMarineData";
+import { formatIST } from "../utils/freshness";
+import { useAreaRisk } from "../hooks/useAreaRisk";
+import { describeRiskBasis } from "../utils/riskBasis";
 import { getMarineAreas } from "../services/marine/marineData";
 import { useAppStore } from "../store/appStore";
 import {
@@ -113,6 +118,11 @@ export default function Map({ embedded = false }: { embedded?: boolean }) {
   });
 
   const connectivity = useConnectivity();
+  // Same shared, polled model grid the map's own layers use - one
+  // request serves both.
+  const conditions = useMarineConditions(area, {
+    offline: connectivity.status === "offline",
+  });
 
   const searchIndex = useMemo(() => buildSearchIndex(), []);
   const [searchQuery, setSearchQuery] = useState("");
@@ -200,16 +210,29 @@ export default function Map({ embedded = false }: { embedded?: boolean }) {
       .slice(0, 3);
   }, [alerts]);
 
-  const risk = area?.safety?.overallRisk ?? "low";
-  const riskScore = area?.safety?.riskScore ?? 0;
-  const wind = area?.conditions?.windSpeedKnots;
-  const waves = area?.conditions?.waveHeightM;
+  // No invented defaults - a missing value shows as "—".
+  // Same backend risk result as Chat/Home/Area, recalculated when the
+  // displayed model run changes. The area's pre-set prototype score is
+  // only shown if the risk service fails (and is labelled).
+  const { risk: areaRisk, status: riskStatus } = useAreaRisk(area?.id, conditions.validAt);
+  const riskServiceFailed = riskStatus === "failed";
+  const riskBasis = describeRiskBasis(areaRisk?.basis, {
+    loading: riskStatus === "loading" || riskStatus === "idle",
+    serviceFailed: riskServiceFailed,
+  });
+  const risk =
+    areaRisk?.riskLevel ?? (riskServiceFailed ? area?.safety?.overallRisk : null) ?? null;
+  const riskScore =
+    areaRisk?.riskScore ?? (riskServiceFailed ? area?.safety?.riskScore : null) ?? null;
+  const wind = conditions.readings?.wind;
+  const waves = conditions.readings?.waveHeight;
+  const modelValidAt = formatIST(conditions.validAt, conditions.now);
 
   const seaState = area?.conditions?.seaState
     ? area.conditions.seaState
         .replaceAll("_", " ")
         .replace(/\b\w/g, (c) => c.toUpperCase())
-    : "Slight";
+    : "—";
 
   const getRiskTone = (
     severity: string
@@ -266,11 +289,13 @@ export default function Map({ embedded = false }: { embedded?: boolean }) {
               <div className="map-header-compact-row">
                 <MapIcon size={15} />
                 <h1>{searchFocus?.label ?? area?.name ?? "Marine Map"}</h1>
-                <Badge tone={getRiskTone(risk)} size="sm">
-                  {risk.toUpperCase()}
-                </Badge>
+                {risk && (
+                  <Badge tone={getRiskTone(risk)} size="sm">
+                    {risk.toUpperCase()}
+                  </Badge>
+                )}
               </div>
-              <p>{area?.region ?? "Gulf of Mannar, Tamil Nadu"}</p>
+              {area?.region && <p>{area.region}</p>}
             </header>
 
             <div className="map-search-row">
@@ -383,9 +408,11 @@ export default function Map({ embedded = false }: { embedded?: boolean }) {
                   <span className="panel-sub">Current Area</span>
                   <h2>{area?.name ?? "Marine Area"}</h2>
                 </div>
-                <Badge tone={getRiskTone(risk)} size="sm">
-                  {risk.toUpperCase()}
-                </Badge>
+                {risk && (
+                  <Badge tone={getRiskTone(risk)} size="sm">
+                    {risk.toUpperCase()}
+                  </Badge>
+                )}
               </div>
 
               <div className="map-area-grid">
@@ -395,7 +422,7 @@ export default function Map({ embedded = false }: { embedded?: boolean }) {
                 </div>
                 <div>
                   <span>Risk score</span>
-                  <strong>{riskScore}/100</strong>
+                  <strong>{riskScore !== null ? `${riskScore}/100` : "—"}</strong>
                 </div>
                 <div>
                   <span>Sea state</span>
@@ -403,15 +430,29 @@ export default function Map({ embedded = false }: { embedded?: boolean }) {
                 </div>
                 <div>
                   <span>Wind</span>
-                  <strong>{typeof wind === "number" ? `${wind} kn` : "—"}</strong>
+                  <strong>{typeof wind?.value === "number" ? `${wind.value} kn` : "—"}</strong>
+                  {wind && <FreshnessBadge state={wind.state} />}
                 </div>
                 <div>
                   <span>Waves</span>
                   <strong>
-                    {typeof waves === "number" ? `${waves.toFixed(1)} m` : "—"}
+                    {typeof waves?.value === "number" ? `${waves.value.toFixed(1)} m` : "—"}
                   </strong>
+                  {waves && <FreshnessBadge state={waves.state} />}
                 </div>
               </div>
+
+              <p className="map-area-provenance">
+                <FreshnessBadge state={riskBasis.state} /> {riskBasis.text}{" "}
+                Sea state: configured dataset (prototype).{" "}
+                {waves || wind
+                  ? `Wind & waves: Open-Meteo model${modelValidAt ? `, valid ${modelValidAt}` : ""}${
+                      conditions.status === "last-known" ? " (last known)" : ""
+                    }.`
+                  : conditions.status === "loading"
+                    ? "Fetching model wind & waves…"
+                    : "Model wind & waves unavailable."}
+              </p>
 
               <button
                 type="button"

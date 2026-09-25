@@ -1,0 +1,175 @@
+.marine-conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.marine-conditions-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.marine-conditions-eyebrow {
+  display: block;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.marine-conditions-header h2 {
+  margin: 2px 0 0;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.marine-conditions-refresh {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+}
+
+.marine-conditions-refresh:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.marine-conditions-refresh:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.marine-conditions-refresh:focus-visible,
+.marine-conditions-status button:focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.marine-conditions-spin {
+  animation: marine-conditions-spin 900ms linear infinite;
+}
+
+@keyframes marine-conditions-spin {
+  to { transform: rotate(360deg); }
+}
+
+.marine-conditions-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.marine-conditions-status span {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.marine-conditions-status svg {
+  flex: 0 0 auto;
+}
+
+.marine-conditions-status-warn {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.marine-conditions-status button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.marine-conditions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.marine-conditions-configured {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.marine-conditions-configured-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.marine-conditions-configured-text strong {
+  color: #0f172a;
+  font-size: 12px;
+}
+
+.marine-conditions-configured-meta {
+  color: #64748b;
+  font-size: 11.5px;
+}
+
+.marine-conditions-footnote {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 480px) {
+  .marine-conditions-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .marine-conditions-grid .marine-metric {
+    padding: 12px;
+  }
+
+  .marine-conditions-grid .marine-metric-provenance {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marine-conditions-spin {
+    animation: none;
+  }
+}

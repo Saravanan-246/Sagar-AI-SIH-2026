@@ -1,37 +1,77 @@
 {
   "alerts": [
     {
-      "id": "alert-palk-squall",
-      "title": "Squall Line Warning",
-      "type": "Squall",
-      "severity": "Severe",
-      "region": "Palk Strait & Rameswaram Coast",
-      "latitude": 9.4200,
-      "longitude": 79.2800,
-      "message": "Gusty squalls exceeding 45 km/h detected along the IMBL corridor. High seas expected.",
-      "issuedAt": "2026-09-14T06:00:00Z"
+      "id": "alert-thoothukudi-route-wind",
+      "title": "Strong Wind Conditions Along Planned Route",
+      "type": "strong_wind",
+      "severity": "high",
+      "status": "active",
+      "region": "Thoothukudi Coast",
+      "latitude": 8.465,
+      "longitude": 78.265,
+      "radiusKm": 12,
+      "summary": "Wind 22 kn SW",
+      "description": "Wind speed approximately 22 kn from the southwest.",
+      "recommendation": "Review the affected route segment (S3) before departure and consider the safer alternative suggested by Sagar.",
+      "source": "Sagar alert dataset (stored records, not an official warning)",
+      "issuedAt": "2026-09-25T00:30:00Z",
+      "validUntil": "2026-10-31T18:30:00Z",
+      "metadata": {
+        "impact": "Affects an exposed section of the planned marine route.",
+        "routeName": "Thoothukudi Deep Sea Corridor",
+        "routeSegments": ["S1", "S2", "S3", "S4"],
+        "affectedSegments": ["S3"],
+        "routeImpact": "S3",
+        "requiresReview": true
+      }
     },
     {
-      "id": "alert-kanyakumari-swell",
-      "title": "High Wave / Swell Alert",
-      "type": "Rough Sea",
-      "severity": "Warning",
-      "region": "Kanyakumari Offing",
-      "latitude": 7.9500,
-      "longitude": 77.6200,
-      "message": "Swell surge waves between 2.5m and 3.1m forecast during high tide cycles.",
-      "issuedAt": "2026-09-14T07:30:00Z"
+      "id": "alert-gulf-mannar-waves",
+      "title": "Elevated Wave Conditions",
+      "type": "high_waves",
+      "severity": "moderate",
+      "status": "active",
+      "region": "Gulf of Mannar",
+      "latitude": 8.41,
+      "longitude": 78.3,
+      "radiusKm": 15,
+      "summary": "Waves 1.8 m",
+      "description": "Wave height approximately 1.8 m.",
+      "recommendation": "Review sea-state conditions before continuing. Reassess before departure.",
+      "source": "Sagar alert dataset (stored records, not an official warning)",
+      "issuedAt": "2026-09-25T00:30:00Z",
+      "validUntil": "2026-10-31T18:30:00Z",
+      "metadata": {
+        "impact": "Moderate impact on the exposed route segment.",
+        "routeName": "Thoothukudi Deep Sea Corridor",
+        "routeImpact": "Exposed segment",
+        "requiresReview": true
+      }
     },
     {
-      "id": "alert-chennai-lightning",
-      "title": "Convective Cloud Activity",
-      "type": "Lightning",
-      "severity": "Moderate",
-      "region": "Ennore & North Chennai Coast",
-      "latitude": 13.2800,
-      "longitude": 80.3500,
-      "message": "Isolated thunderstorm activity with lightning risks within 15 nautical miles of the coast.",
-      "issuedAt": "2026-09-14T08:00:00Z"
+      "id": "alert-thoothukudi-condition-change",
+      "title": "Changing Marine Conditions",
+      "type": "rapid weather change",
+      "severity": "moderate",
+      "status": "active",
+      "region": "Thoothukudi Coast",
+      "latitude": 8.465,
+      "longitude": 78.265,
+      "radiusKm": 12,
+      "summary": "Marine condition change detected",
+      "description": "Marine conditions have changed from the previously recorded route context.",
+      "recommendation": "Review the proposed repair for segment S3 rather than changing the entire journey.",
+      "source": "Sagar alert dataset (stored records, not an official warning)",
+      "issuedAt": "2026-09-25T00:30:00Z",
+      "validUntil": "2026-10-31T18:30:00Z",
+      "metadata": {
+        "impact": "One route segment requires reassessment.",
+        "routeName": "Thoothukudi Deep Sea Corridor",
+        "routeSegments": ["S1", "S2", "S3", "S4"],
+        "affectedSegments": ["S3"],
+        "routeImpact": "S3",
+        "requiresReview": true
+      }
     }
   ]
 }

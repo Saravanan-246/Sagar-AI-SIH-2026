@@ -21,6 +21,7 @@ export type MicState =
   | "idle"
   | "listening"
   | "processing"
+  | "ready"
   | "thinking"
   | "speaking"
   | "error";
@@ -33,6 +34,9 @@ type ChatInputProps = {
   placeholder?: string;
 
   micSupported: boolean;
+  /** Shown instead of the mic's normal label when voice can't be used
+   * at all here (unsupported browser / insecure origin). */
+  micUnavailableLabel?: string;
   micState: MicState;
   micLabel: string;
   onMicPress: () => void;
@@ -48,6 +52,7 @@ export default function ChatInput({
   disabled = false,
   placeholder = "Ask Sagar about sea conditions, alerts, fishing zones or routes...",
   micSupported,
+  micUnavailableLabel = "Voice input unavailable in this browser — use text input",
   micState,
   micLabel,
   onMicPress,
@@ -208,7 +213,7 @@ export default function ChatInput({
         />
 
         <div className="chat-input-actions">
-          {micSupported && (
+          {micSupported ? (
             <button
               type="button"
               className={`chat-input-btn chat-input-mic chat-input-mic-${micState}`}
@@ -220,7 +225,7 @@ export default function ChatInput({
             >
               {micState === "error" ? (
                 <MicOff size={18} strokeWidth={2} />
-              ) : micState === "processing" || micState === "thinking" ? (
+              ) : micState === "processing" || micState === "ready" ? (
                 <Loader2
                   size={18}
                   strokeWidth={2}
@@ -229,6 +234,17 @@ export default function ChatInput({
               ) : (
                 <Mic size={18} strokeWidth={2} />
               )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="chat-input-btn chat-input-mic chat-input-mic-unavailable"
+              aria-label={micUnavailableLabel}
+              aria-disabled="true"
+              title={micUnavailableLabel}
+              onClick={() => textareaRef.current?.focus()}
+            >
+              <MicOff size={18} strokeWidth={2} />
             </button>
           )}
 
@@ -247,12 +263,20 @@ export default function ChatInput({
         </div>
       </div>
 
-      <p className="chat-input-hint" role="status" aria-live="polite">
+      <p
+        className={`chat-input-hint ${
+          micSupported && micState !== "idle"
+            ? `chat-input-hint-${micState}`
+            : ""
+        }`}
+        role="status"
+        aria-live="polite"
+      >
         {micSupported && micState !== "idle"
           ? micLabel
           : micSupported
           ? "Press Enter to send · Shift + Enter for a new line"
-          : "Press Enter to send · Voice input unavailable in this browser"}
+          : micUnavailableLabel}
       </p>
     </div>
   );

@@ -183,6 +183,48 @@ export interface RiskAgentData {
   recommendation: string;
 
   factors: AgentFinding[];
+
+  /** Which marine values this score was calculated from (mirrors the
+   * backend's RiskBasis). Absent from older backends. */
+  basis?: RiskBasis;
+}
+
+/** Mirrors sagar-ai-server marineDecisionInputs.ts. */
+export type MarineConditionsBasis =
+  | "model"
+  | "partial-model"
+  | "configured-fallback"
+  | "unavailable";
+
+export interface MarineDecisionValue {
+  value: number;
+  unit: "kn" | "m" | "km";
+  kind: "model" | "configured";
+  source: string;
+  timestamp?: string;
+  freshness: string;
+}
+
+export interface MarineDecisionInputs {
+  basis: MarineConditionsBasis;
+  fallbackReason?: string;
+  modelPoint?: {
+    latitude: number;
+    longitude: number;
+    distanceKm: number;
+    validAt?: string;
+    fetchedAt: string;
+  };
+  windSpeedKnots?: MarineDecisionValue;
+  waveHeightM?: MarineDecisionValue;
+  visibilityKm?: MarineDecisionValue;
+}
+
+export interface RiskBasis {
+  conditions: MarineConditionsBasis;
+  inputs?: MarineDecisionInputs;
+  prototypeBaselineApplied: boolean;
+  thresholds: string;
 }
 
 export interface RouteAgentData {

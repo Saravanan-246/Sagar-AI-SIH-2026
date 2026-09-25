@@ -111,6 +111,7 @@ function normalizeAlert(item: any, index: number): Alert {
     recommendation: item.recommendation || buildRecommendation(type),
 
     metadata: {
+      ...(item.metadata ?? {}),
       region,
       rawType: item.type,
       rawSeverity: item.severity,

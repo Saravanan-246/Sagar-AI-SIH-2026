@@ -132,7 +132,8 @@ function buildConditionsFinding(
       `${conditions.windSpeedKnots} kn wind, ` +
       `${conditions.waveHeightM} m waves, ` +
       `${conditions.seaState} sea state, ` +
-      `${conditions.visibilityKm} km visibility.`,
+      `${conditions.visibilityKm} km visibility ` +
+      `(configured prototype profile - risk uses model wind/waves when available).`,
 
     severity:
       area.safety.overallRisk,
@@ -405,14 +406,14 @@ function buildEvidence(
     {
       id: `marine-condition-source-${area.id}`,
       type: "marine",
-      title: "Marine condition observations",
+      title: "Configured area profile (prototype)",
       source:
-        "Configured marine observation dataset",
+        "Sagar configured marine dataset (prototype) - not an observation",
       timestamp:
         area.updatedAt,
 
       summary:
-        `${area.conditions.windSpeedKnots} kn wind, ${area.conditions.waveHeightM} m waves and ${area.conditions.seaState} sea state.`,
+        `${area.conditions.windSpeedKnots} kn wind, ${area.conditions.waveHeightM} m waves and ${area.conditions.seaState} sea state (configured prototype values).`,
 
       data: {
         conditions:

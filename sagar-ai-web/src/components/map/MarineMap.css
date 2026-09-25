@@ -1056,3 +1056,10 @@
   line-height: 16px;
   font-weight: 600;
 }
+.marine-map-popup-kind {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}

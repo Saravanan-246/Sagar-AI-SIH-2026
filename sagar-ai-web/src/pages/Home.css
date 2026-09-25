@@ -114,6 +114,18 @@
   font-weight: 700;
 }
 
+.home-situation-source {
+  margin: 0;
+  color: #64748b;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.home-situation-source .freshness-badge {
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
 /* ===== Ask Sagar ===== */
 .home-ask-card {
   display: flex;

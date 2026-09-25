@@ -25,6 +25,18 @@ export const APP_CONFIG = {
       latitude: 10.2000,
       longitude: 79.2000,
     },
+
+    // Open-Meteo marine model grid (via Sagar's backend, which caches it
+    // for 30 min). Polling faster than the backend cache only returns
+    // the same answer, so 15 min is the useful floor.
+    modelGrid: {
+      pollIntervalMs: 15 * 60 * 1000,
+      requestTimeoutMs: 12000,
+      retryBaseDelayMs: 30 * 1000,
+      // Farthest a grid point may be from an area and still be shown
+      // as that area's model reading (grid spacing is ~25 x 46 km).
+      maxPointDistanceKm: 40,
+    },
   },
 
   ai: {

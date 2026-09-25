@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import {
   AlertTriangle,
@@ -26,11 +25,19 @@ import Button from "../components/ui/Button";
 import EmptyState from "../components/ui/EmptyState";
 import LoadingState from "../components/ui/LoadingState";
 import ErrorState from "../components/ui/ErrorState";
-import MarineMetric from "../components/marine/MarineMetric";
+import MarineMetric, { type MetricProvenance } from "../components/marine/MarineMetric";
+import MarineConditionsPanel from "../components/marine/MarineConditionsPanel";
 import RiskIndicator from "../components/marine/RiskIndicator";
 import SituationPanel from "../components/marine/SituationPanel";
 import { useMarineArea } from "../hooks/useMarineData";
-import { fetchRisk } from "../services/api/sagarApiClient";
+import { useConnectivity } from "../hooks/useConnectivity";
+import {
+  CONFIGURED_SOURCE_LABEL,
+  useMarineConditions,
+} from "../hooks/useMarineConditions";
+import FreshnessBadge from "../components/marine/FreshnessBadge";
+import { useAreaRisk } from "../hooks/useAreaRisk";
+import { describeRiskBasis } from "../utils/riskBasis";
 import { ROUTES } from "../constants/routes";
 
 import "./Area.css";
@@ -112,38 +119,28 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
     area,
     loading,
     error,
+    origin,
     refresh,
   } = useMarineArea(id);
 
-  // The same live, deterministic risk result Chat/Map/What-If already
-  // use (via /api/risk - see riskAgent.ts), so this page never shows a
-  // different score for the same area than Sagar just gave in Chat.
-  // Falls back to the area's own static safety.riskScore fixture field
-  // (unchanged) while loading, offline, or on error.
-  const [liveRisk, setLiveRisk] = useState<{ riskScore: number; riskLevel: string } | null>(null);
+  const connectivity = useConnectivity();
+  const offline = connectivity.status === "offline";
+  const modelConditions = useMarineConditions(area, { offline });
 
-  useEffect(() => {
-    if (!area?.id) {
-      setLiveRisk(null);
-      return;
-    }
-
-    let cancelled = false;
-    setLiveRisk(null);
-
-    fetchRisk({ areaId: area.id })
-      .then((response) => {
-        if (cancelled || !response.data) return;
-        setLiveRisk({ riskScore: response.data.riskScore, riskLevel: response.data.riskLevel });
-      })
-      .catch(() => {
-        if (!cancelled) setLiveRisk(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [area?.id]);
+  // The same backend risk result Chat uses (/api/risk), recalculated
+  // when the displayed model run changes so the risk and the model
+  // conditions on this page share one source. The area's pre-set
+  // prototype score is only used if the risk service fails, and is
+  // labelled as such.
+  const { risk: liveRisk, status: riskStatus } = useAreaRisk(
+    area?.id,
+    modelConditions.validAt,
+  );
+  const riskServiceFailed = riskStatus === "failed";
+  const riskBasis = describeRiskBasis(liveRisk?.basis, {
+    loading: riskStatus === "loading" || riskStatus === "idle",
+    serviceFailed: riskServiceFailed,
+  });
 
   const wrapPage = (content: ReactNode) =>
     embedded ? (
@@ -190,13 +187,33 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
   }
 
   const riskScore =
-    liveRisk?.riskScore ?? area.safety?.riskScore ?? 0;
+    liveRisk?.riskScore ??
+    (riskServiceFailed ? area.safety?.riskScore : undefined);
 
   const riskLevel =
-    liveRisk?.riskLevel ?? area.safety?.overallRisk ?? "unknown";
+    liveRisk?.riskLevel ??
+    (riskServiceFailed ? area.safety?.overallRisk : undefined) ??
+    "unknown";
 
   const conditions =
     area.conditions;
+
+  // Recorded time of the configured profile - shown as-is, never as
+  // "current".
+  const configuredRecorded = area.updatedAt
+    ? new Date(area.updatedAt).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "Asia/Kolkata",
+      })
+    : null;
+
+  const configuredProvenance: MetricProvenance = {
+    source: CONFIGURED_SOURCE_LABEL,
+    time: configuredRecorded ? `Recorded ${configuredRecorded}` : null,
+    state: "FALLBACK",
+  };
 
   const tide =
     area.tide;
@@ -281,8 +298,13 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
               </Badge>
 
               <span>
-                Risk score {riskScore}/100
+                Risk score {riskScore ?? "—"}/100
               </span>
+            </div>
+
+            <div className="area-risk-basis">
+              <FreshnessBadge state={riskBasis.state} />
+              <span>{riskBasis.text}</span>
             </div>
           </div>
 
@@ -290,8 +312,9 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
             <div className="area-updated">
               <ClockIcon />
               <span>
-                Updated from current marine
-                data
+                {configuredRecorded
+                  ? `Configured dataset · recorded ${configuredRecorded}`
+                  : "Configured dataset · no recorded time"}
               </span>
             </div>
           </div>
@@ -351,18 +374,30 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
         </section>
 
         <section className="area-section">
+          <MarineConditionsPanel
+            area={area}
+            conditions={modelConditions}
+            offline={offline}
+            origin={origin}
+            title="Model conditions"
+            riskBasis={liveRisk?.basis?.conditions ?? null}
+          />
+        </section>
+
+        <section className="area-section">
           <div className="area-section-heading">
             <div>
               <span className="area-section-eyebrow">
-                Marine conditions
+                Prototype dataset · not current observations
               </span>
 
-              <h2>Current sea conditions</h2>
+              <h2>Configured area profile</h2>
             </div>
           </div>
 
           <div className="area-metrics-grid">
             <MarineMetric
+              provenance={configuredProvenance}
               label="Wind"
               value={formatNumber(
                 conditions?.windSpeedKnots,
@@ -386,6 +421,8 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
             />
 
             <MarineMetric
+
+              provenance={configuredProvenance}
               label="Wave height"
               value={formatNumber(
                 conditions?.waveHeightM,
@@ -409,6 +446,8 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
             />
 
             <MarineMetric
+
+              provenance={configuredProvenance}
               label="Visibility"
               value={formatNumber(
                 conditions?.visibilityKm,
@@ -427,6 +466,8 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
             />
 
             <MarineMetric
+
+              provenance={configuredProvenance}
               label="Sea state"
               value={
                 conditions?.seaState
@@ -444,6 +485,8 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
             />
 
             <MarineMetric
+
+              provenance={configuredProvenance}
               label="Rain probability"
               value={formatNumber(
                 conditions?.rainProbability,
@@ -459,6 +502,8 @@ export default function Area({ embedded = false }: { embedded?: boolean }) {
             />
 
             <MarineMetric
+
+              provenance={configuredProvenance}
               label="Air temperature"
               value={formatNumber(
                 conditions?.airTemperatureC,

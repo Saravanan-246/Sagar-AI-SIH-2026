@@ -297,6 +297,24 @@
 }
 
 /* Area Grid */
+.map-area-grid .freshness-badge {
+  display: inline-flex;
+  margin-top: 4px;
+  font-size: 9.5px;
+}
+
+.map-area-provenance .freshness-badge {
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.map-area-provenance {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .map-area-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
