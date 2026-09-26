@@ -16,6 +16,7 @@ import routesRoutes from "./api/routes.routes";
 import riskRoutes from "./api/risk.routes";
 import scenariosRoutes from "./api/scenarios.routes";
 import researchRoutes from "./api/research.routes";
+import decisionsRoutes from "./api/decisions.routes";
 
 export function createApp(): Express {
   const app = express();
@@ -52,6 +53,7 @@ export function createApp(): Express {
   app.use("/api/risk", riskRoutes);
   app.use("/api/scenarios", scenariosRoutes);
   app.use("/api/research", researchRoutes);
+  app.use("/api/decisions", decisionsRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

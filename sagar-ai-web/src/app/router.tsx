@@ -6,6 +6,7 @@ import Chat from "../pages/Chat";
 import RoutePage from "../pages/Route";
 import Scenario from "../pages/Scenario";
 import Alerts from "../pages/Alerts";
+import Decisions from "../pages/Decisions";
 import Activity from "../pages/Activity";
 import Area from "../pages/Area";
 import Sources from "../pages/Sources";
@@ -23,6 +24,7 @@ export default function Router() {
       <Route path="/route" element={<RoutePage />} />
       <Route path="/scenario" element={<Scenario />} />
       <Route path="/alerts" element={<Alerts />} />
+      <Route path="/decisions" element={<Decisions />} />
       <Route path="/activity" element={<Activity />} />
       <Route path="/area/:id" element={<Area />} />
       <Route path="/sources" element={<Sources />} />

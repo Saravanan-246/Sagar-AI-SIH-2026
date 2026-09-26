@@ -4,6 +4,7 @@ import {
   Compass,
   Database,
   FlaskConical,
+  GitBranch,
   Home,
   Map,
   Route,
@@ -48,6 +49,11 @@ const toolsNavigation = [
     label: "Marine Alerts",
     path: "/alerts",
     icon: AlertTriangle,
+  },
+  {
+    label: "Marine Decision Watch",
+    path: "/decisions",
+    icon: GitBranch,
   },
   {
     label: "Research",

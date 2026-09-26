@@ -128,7 +128,9 @@ function extractJsonObject(text: string): unknown {
  */
 export async function classifyWithAi(
   message: string,
-  history: ConversationTurn[] = []
+  history: ConversationTurn[] = [],
+  /** Caller's remaining request budget; omitted = provider default. */
+  timeoutMs?: number
 ): Promise<AiClassification | null> {
   const raw = await requestLlmCompletion(
     [
@@ -147,7 +149,8 @@ export async function classifyWithAi(
     // MIN_MAX_TOKENS in ollamaProvider.ts), since local tokens are free
     // and a truncated JSON line would just fail to parse.
     //
-    // No timeoutMs override here (deliberately, not an oversight): each
+    // No fixed short timeoutMs here (deliberately, not an oversight) -
+    // only the chat route's remaining request budget, when passed: each
     // provider already carries its own well-tuned default -
     // OpenRouter's own client always uses its fast fixed cloud timeout
     // regardless of what's passed, while Ollama's is set generously
@@ -160,7 +163,7 @@ export async function classifyWithAi(
     // Slightly larger than the JSON object alone strictly needs, since
     // the added "clarity" field and the richer guidance above give the
     // model a bit more to work through before it settles on the answer.
-    { temperature: 0, maxTokens: 150 }
+    { temperature: 0, maxTokens: 150, timeoutMs }
   );
 
   if (!raw) {

@@ -42,19 +42,51 @@ export default function ChatWindow({
   renderVoiceControl,
 }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Whether the user is reading the latest message (vs scrolled up to
+  // older ones) - only then do resizes pull the view to the bottom.
+  const pinnedToBottom = useRef(true);
+
+  // Scrolls only the conversation container. scrollIntoView would also
+  // scroll every ancestor, including the page itself, which on mobile
+  // shoves the whole layout (and the composer) out of place.
+  const scrollToBottom = (behavior: ScrollBehavior) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  };
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
-    });
+    pinnedToBottom.current = true;
+    scrollToBottom("smooth");
   }, [messages, loading]);
+
+  // Opening the keyboard shrinks this container; keep the newest
+  // message in view instead of leaving it hidden behind the composer.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      if (pinnedToBottom.current) scrollToBottom("instant");
+    });
+    observer.observe(el);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    pinnedToBottom.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
 
   const isEmpty = messages.length === 0;
 
   return (
     <div className="chat-window">
-      <div className="chat-window-scroll">
+      <div className="chat-window-scroll" ref={scrollRef} onScroll={handleScroll}>
         <div className="chat-window-content">
           {isEmpty ? (
             <ChatWelcome

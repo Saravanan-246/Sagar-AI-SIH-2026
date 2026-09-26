@@ -260,6 +260,23 @@ function buildSituationSummary(
         )
     );
 
+  // A sea/wave/wind/weather question is answered with the weather
+  // agent's own wave and wind findings (model values with provenance),
+  // not whichever finding happens to come first - previously the SST /
+  // chlorophyll line answered "how are the waves?".
+  // Only the wave and wind assessments (value + what it means) - the
+  // overview repeats them and alert findings belong to the risk line.
+  const conditionFindings =
+    request.intent === "marine_conditions"
+      ? ["weather-wave-", "weather-wind-"]
+          .map((prefix) =>
+            findings.find(
+              (finding) => finding.agent === "weather" && finding.id.startsWith(prefix)
+            )
+          )
+          .filter((finding): finding is AgentFinding => Boolean(finding))
+      : [];
+
   const primaryFinding = !riskFinding
     ? findPrimaryFinding(request, findings)
     : undefined;
@@ -282,6 +299,16 @@ function buildSituationSummary(
   // into the same closing sentence.
   const withLocation = (summary: string) =>
     `${summary.replace(/\.\s*$/, "")}${location}.`;
+
+  if (conditionFindings.length > 0) {
+    const conditions = conditionFindings
+      .map((finding) => finding.summary.trim())
+      .join(" ");
+    // Any elevated risk still follows the conditions it comes from.
+    return riskFinding
+      ? `${withLocation(conditions)} ${riskFinding.summary.trim()}`
+      : withLocation(conditions);
+  }
 
   if (riskFinding) {
     return withLocation(riskFinding.summary);

@@ -58,6 +58,23 @@ type ChatInput = z.infer<typeof chatInputSchema>;
 const router = Router();
 
 /*
+ * Total time a chat request may spend waiting on the LLM, across the AI
+ * classifier and narration together. Each call used to get the
+ * provider's full default (Ollama 30 s) back to back, so an ambiguous
+ * message could take ~60 s, with the web client waiting on it.
+ * A call that runs out of budget returns null and the existing
+ * deterministic answer is used.
+ * The classifier's share is capped so narration always keeps some.
+ */
+const LLM_BUDGET_MS = 20000;
+const CLASSIFIER_MAX_MS = 12000;
+const MIN_LLM_CALL_MS = 2500;
+
+function remainingLlmBudget(requestStart: number): number {
+  return Math.max(MIN_LLM_CALL_MS, LLM_BUDGET_MS - (performance.now() - requestStart));
+}
+
+/*
  * Opt-in per-stage latency breakdown for diagnosing chat response time -
  * classification / agent pipeline / narration each get their own
  * measured duration, plus the orchestrator's own per-agent traces. Zero
@@ -321,6 +338,29 @@ function applyOceanAnswer(shaped: StructuredSagarResponse): boolean {
   return true;
 }
 
+// SST / temperature / chlorophyll questions are answered from the ocean
+// indicators; every other sea-condition question from waves and wind.
+const OCEAN_INDICATOR_QUESTION = /\b(sst|temperature|temp|chlorophyll)\b/i;
+
+/** Sea/wave/wind/weather question: the reporting agent's situation
+ * already leads with the weather agent's wave and wind findings (model
+ * values with provenance), so keep it and add the ocean indicators
+ * after it rather than replacing it with them. */
+function applyConditionsAnswer(shaped: StructuredSagarResponse): boolean {
+  if (!shaped.situation) {
+    return false;
+  }
+
+  const ocean = shaped.evidence?.find((item) => item.type === "ocean" && item.summary)?.summary;
+
+  if (ocean && !shaped.situation.includes(ocean)) {
+    shaped.situation = `${shaped.situation} ${ocean}`;
+  }
+  shaped.answer = `${shaped.situation} ${shaped.recommendation ?? ""}`.trim();
+
+  return true;
+}
+
 /*
  * "What data are you using?" / "Why is this risky?" / "Where is this?" -
  * answered directly from fields the pipeline already computed for the
@@ -499,8 +539,10 @@ function isFillerOnlyMessage(message: string): boolean {
  * Chennai?") never matches this pattern since it isn't just asking to
  * define a bare term.
  */
+// "sst" is deliberately not listed: "what is the SST?" asks for today's
+// reading and is answered from the ocean indicators, not defined.
 const DEFINITIONAL_QUESTION_PATTERN =
-  /^(?:what\s*(?:'s|is)|what\s+does)\s+(?:a\s+|an\s+|the\s+)?(pfz|sst|ais|incois|imd|isro|geofence|eta)\b(?:\s+(?:mean|stand\s+for))?\s*\??$/i;
+  /^(?:what\s*(?:'s|is)|what\s+does)\s+(?:a\s+|an\s+|the\s+)?(pfz|ais|incois|imd|isro|geofence|eta)\b(?:\s+(?:mean|stand\s+for))?\s*\??$/i;
 
 function isDefinitionalQuestion(message: string): boolean {
   return DEFINITIONAL_QUESTION_PATTERN.test(message.trim());
@@ -788,7 +830,11 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
 
   const classification = needsAiClassification
     ? await timed(debugTiming, "classifyWithAi", () =>
-        classifyWithAi(input.message, history).catch(() => null)
+        classifyWithAi(
+          input.message,
+          history,
+          Math.min(CLASSIFIER_MAX_MS, remainingLlmBudget(requestStart))
+        ).catch(() => null)
       )
     : null;
 
@@ -940,7 +986,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
               recentContext,
               language: gateLanguage,
               isUnclear,
-            }).catch(() => null)
+            }, remainingLlmBudget(requestStart)).catch(() => null)
           )
         : null;
 
@@ -1205,8 +1251,9 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     // templates (fallbackNarrator.ts) - the same fallback they already
     // get whenever narration fails today, not a new/changed language
     // path.
-    answerFinalizedDeterministically =
-      applyOceanAnswer(shaped) || applySafetyAnswer(shaped);
+    answerFinalizedDeterministically = OCEAN_INDICATOR_QUESTION.test(input.message)
+      ? applyOceanAnswer(shaped) || applySafetyAnswer(shaped)
+      : applyConditionsAnswer(shaped) || applyOceanAnswer(shaped) || applySafetyAnswer(shaped);
   } else if (!answerFinalizedDeterministically && shaped.intent === "evidence") {
     answerFinalizedDeterministically =
       applyEvidenceAnswer(shaped) || answerFinalizedDeterministically;
@@ -1292,7 +1339,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
         recentContext,
         dataSources: shaped.dataSources,
         language: resolvedLanguage,
-      }).catch(() => null)
+      }, remainingLlmBudget(requestStart)).catch(() => null)
     );
   }
 

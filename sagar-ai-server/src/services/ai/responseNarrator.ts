@@ -107,7 +107,9 @@ function buildFactsText(facts: NarrationFacts): string {
  * caller falls back to the existing deterministic narrative text.
  */
 export async function narrateResponse(
-  facts: NarrationFacts
+  facts: NarrationFacts,
+  /** Caller's remaining request budget; omitted = provider default. */
+  timeoutMs?: number
 ): Promise<string | null> {
   const languageName = LANGUAGE_NAMES[facts.language] ?? "English";
 
@@ -128,14 +130,15 @@ export async function narrateResponse(
     // the configured OpenRouter account has little balance left, and
     // avoids paying for output the UI would truncate anyway.
     //
-    // No timeoutMs override (see the matching note in
+    // No fixed short timeoutMs - only the caller's remaining request
+    // budget, when passed (see the matching note in
     // intentClassifier.ts) - each provider's own configured timeout is
     // already tuned for it: OpenRouter's client always uses its fixed
     // fast cloud timeout, and Ollama's generous default accounts for
     // real local-generation latency instead of forcing an always-correct
     // narrated answer to lose to an arbitrary short clock and fall back
     // to the plainer deterministic text.
-    { temperature: 0.4, maxTokens: 100 }
+    { temperature: 0.4, maxTokens: 100, timeoutMs }
   );
 }
 
@@ -180,7 +183,9 @@ STRICT RULES:
  * falls back to Sagar's existing static general-chat reply.
  */
 export async function narrateGeneralReply(
-  input: GeneralChatInput
+  input: GeneralChatInput,
+  /** Caller's remaining request budget; omitted = provider default. */
+  timeoutMs?: number
 ): Promise<string | null> {
   const languageName = LANGUAGE_NAMES[input.language] ?? "English";
 
@@ -202,7 +207,7 @@ export async function narrateGeneralReply(
     ],
     // See the timeout note on narrateResponse above - no override here
     // either, for the same reason.
-    { temperature: 0.5, maxTokens: 100 }
+    { temperature: 0.5, maxTokens: 100, timeoutMs }
   );
 }
 

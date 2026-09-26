@@ -37,7 +37,17 @@ if (import.meta.env.PROD && !configuredApiBaseUrl) {
   );
 }
 
-const API_BASE_URL = configuredApiBaseUrl ?? "http://localhost:4000";
+/*
+ * Dev fallback follows whatever host served the page, swapping the port
+ * to 4000: desktop at localhost:5174 -> localhost:4000, a phone on the
+ * LAN at 192.168.1.39:5174 -> 192.168.1.39:4000. A hardcoded localhost
+ * would point the phone at itself.
+ */
+const API_BASE_URL =
+  configuredApiBaseUrl ??
+  (typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:4000`
+    : "http://localhost:4000");
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -178,16 +188,17 @@ export interface SagarChatResponse {
 /*
  * A single /api/chat call can make up to two sequential local-LLM
  * calls server-side (intent classification, then narration of the
- * verified facts), each individually allowed up to the backend's own
- * 30s Ollama timeout - comfortably longer than the shared client's
- * default 15s. Without a longer timeout here, a real (if slow) answer
- * gets aborted client-side and silently replaced by the offline
- * fallback responder, which has no structured marine data at all -
- * so a genuine PFZ/route/safety answer would render as plain text
- * with none of its risk/zone/evidence presentation. This only widens
- * the ceiling for chat; it never makes a fast answer wait longer.
+ * verified facts). The backend caps them together at a 20 s LLM budget
+ * (LLM_BUDGET_MS in chat.routes.ts), plus at most 5 s waiting on the
+ * marine model - longer than the shared client's default 15 s. Without
+ * a longer timeout here, a real (if slow) answer gets aborted
+ * client-side and silently replaced by the offline fallback responder,
+ * which has no structured marine data at all. 30 s sits just above the
+ * backend's bound, so a server that never answers still releases the
+ * UI instead of leaving it on the thinking state for a minute. It never
+ * makes a fast answer wait longer.
  */
-const CHAT_TIMEOUT_MS = 65000;
+const CHAT_TIMEOUT_MS = 30000;
 
 export async function askSagarBackend(
   message: string,
@@ -542,6 +553,192 @@ export async function fetchSstPrediction(
   const { data } = await apiClient.get<SstPredictionResult>(
     `/api/research/sst/predict?latitude=${latitude}&longitude=${longitude}`
   );
+  return data;
+}
+
+/* ------------------------------------------------------------------ */
+/* Versioned marine decisions (/api/decisions)                         */
+/* ------------------------------------------------------------------ */
+
+export interface DecisionConstraints {
+  maxWaveHeightM: number;
+  maxWindKnots: number;
+}
+
+export interface DecisionCellDependency {
+  cellId: string;
+  latitude: number;
+  longitude: number;
+  segments: number[];
+  boundWaveHeightM?: number;
+  boundWindSpeedKnots?: number;
+}
+
+export interface DecisionViolation {
+  cellId: string;
+  segments: number[];
+  constraint: "max-wave-height" | "max-wind" | "data-available";
+  field: "waveHeightM" | "windSpeedKnots";
+  limit?: number;
+  value?: number;
+  previousValue?: number;
+  message: string;
+}
+
+export interface DecisionCellChange {
+  cellId: string;
+  latitude: number;
+  longitude: number;
+  field: "waveHeightM" | "windSpeedKnots";
+  previousValue?: number;
+  newValue?: number;
+}
+
+export type DecisionRepair =
+  | {
+      type: "alternative-route";
+      route: RoutePlan;
+      distanceDeltaKm: number;
+      durationDeltaHours: number;
+      rule: string;
+    }
+  | { type: "hold"; rule: string };
+
+export interface DecisionInvalidation {
+  cycleId: string;
+  detectedAt: string;
+  changes: DecisionCellChange[];
+  violations: DecisionViolation[];
+  repair: DecisionRepair;
+}
+
+export interface DecisionVersion {
+  version: number;
+  createdAt: string;
+  routeId: string;
+  routeName: string;
+  route: RoutePlan;
+  constraints: DecisionConstraints;
+  dependencies: DecisionCellDependency[];
+  uncoveredSegments: number[];
+  boundToCycleId: string;
+  reason: string;
+  hold?: boolean;
+}
+
+export interface DecisionAuditEvent {
+  at: string;
+  type:
+    | "committed"
+    | "skipped"
+    | "revalidated"
+    | "invalidated"
+    | "repair-accepted"
+    | "repair-declined"
+    | "renamed";
+  cycleId?: string;
+  version: number;
+  summary: string;
+}
+
+export interface MarineDecision {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt?: string;
+  state: "valid" | "invalidated" | "active-with-warning";
+  activeVersion: number;
+  versions: DecisionVersion[];
+  pending?: DecisionInvalidation;
+  warning?: DecisionInvalidation;
+  history: DecisionAuditEvent[];
+}
+
+export type DecisionCycleOutcome = {
+  decisionId: string;
+  name: string;
+  version: number;
+  result: "skipped" | "revalidated" | "invalidated";
+  reason?: string;
+  changedDependencies?: DecisionCellChange[];
+  violations?: DecisionViolation[];
+};
+
+export interface DecisionCycleReport {
+  cycleId: string;
+  source: "live-model" | "replay";
+  label: string;
+  at: string;
+  changedCells: DecisionCellChange[];
+  outcomes: DecisionCycleOutcome[];
+}
+
+export interface DecisionState {
+  decisions: MarineDecision[];
+  snapshot: {
+    cycleId: string;
+    source: "live-model" | "replay";
+    label: string;
+    validAt?: string;
+    createdAt: string;
+    cellCount: number;
+  };
+  lastReport: DecisionCycleReport | null;
+  replayCycles: { id: string; label: string; description: string }[];
+}
+
+export async function fetchDecisionState(): Promise<DecisionState> {
+  const { data } = await apiClient.get<DecisionState>("/api/decisions");
+  return data;
+}
+
+export async function commitDecisionRemote(
+  input: { routeId: string; name?: string } & Partial<DecisionConstraints>
+): Promise<MarineDecision> {
+  const { data } = await apiClient.post<{ decision: MarineDecision }>(
+    "/api/decisions",
+    input
+  );
+  return data.decision;
+}
+
+export async function runDecisionCycle(
+  input: { mode: "live" } | { mode: "replay"; replayId: string }
+): Promise<DecisionCycleReport> {
+  const { data } = await apiClient.post<{ report: DecisionCycleReport }>(
+    "/api/decisions/cycle",
+    input
+  );
+  return data.report;
+}
+
+export async function resolveDecisionRepair(
+  id: string,
+  action: "accept" | "decline"
+): Promise<MarineDecision> {
+  const { data } = await apiClient.post<{ decision: MarineDecision }>(
+    `/api/decisions/${encodeURIComponent(id)}/${action}`
+  );
+  return data.decision;
+}
+
+export async function renameDecisionRemote(
+  id: string,
+  name: string
+): Promise<MarineDecision> {
+  const { data } = await apiClient.patch<{ decision: MarineDecision }>(
+    `/api/decisions/${encodeURIComponent(id)}`,
+    { name }
+  );
+  return data.decision;
+}
+
+export async function deleteDecisionRemote(id: string): Promise<void> {
+  await apiClient.delete(`/api/decisions/${encodeURIComponent(id)}`);
+}
+
+export async function resetDecisionsRemote(): Promise<DecisionState> {
+  const { data } = await apiClient.post<DecisionState>("/api/decisions/reset");
   return data;
 }
 

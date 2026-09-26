@@ -1,0 +1,178 @@
+{
+  "_note": "REPLAY/SCENARIO DATA - not live. 'baseline' is a recorded copy of the real Open-Meteo marine-model grid fetched by /api/marine-model/grid; 'cycles' are scripted changes applied on top of the current snapshot to demonstrate selective invalidation deterministically.",
+  "baseline": {
+    "label": "Recorded Open-Meteo grid",
+    "recordedFrom": "Open-Meteo marine + forecast model (via /api/marine-model/grid)",
+    "validAt": "2026-09-26T06:15:00.000Z",
+    "fetchedAt": "2026-09-26T06:18:29.048Z",
+    "cells": [
+      {
+        "latitude": 8.375,
+        "longitude": 78.125,
+        "waveHeightM": 1.4,
+        "windSpeedKnots": 5.6
+      },
+      {
+        "latitude": 8.375,
+        "longitude": 78.4584,
+        "waveHeightM": 1.86,
+        "windSpeedKnots": 15.5
+      },
+      {
+        "latitude": 8.375,
+        "longitude": 78.875,
+        "waveHeightM": 1.96,
+        "windSpeedKnots": 16.7
+      },
+      {
+        "latitude": 8.375,
+        "longitude": 79.2917,
+        "waveHeightM": 1.88,
+        "windSpeedKnots": 17.9
+      },
+      {
+        "latitude": 8.4583,
+        "longitude": 78.2084,
+        "waveHeightM": 1.38,
+        "windSpeedKnots": 4.2
+      },
+      {
+        "latitude": 8.625,
+        "longitude": 78.4584,
+        "waveHeightM": 1.58,
+        "windSpeedKnots": 15.5
+      },
+      {
+        "latitude": 8.625,
+        "longitude": 78.875,
+        "waveHeightM": 1.78,
+        "windSpeedKnots": 15.7
+      },
+      {
+        "latitude": 8.625,
+        "longitude": 79.2917,
+        "waveHeightM": 1.8,
+        "windSpeedKnots": 16
+      },
+      {
+        "latitude": 8.875,
+        "longitude": 78.0417,
+        "waveHeightM": null,
+        "windSpeedKnots": 14.1
+      },
+      {
+        "latitude": 8.875,
+        "longitude": 78.4584,
+        "waveHeightM": 1.3,
+        "windSpeedKnots": 15
+      },
+      {
+        "latitude": 8.875,
+        "longitude": 78.875,
+        "waveHeightM": 1.56,
+        "windSpeedKnots": 13.9
+      },
+      {
+        "latitude": 8.875,
+        "longitude": 79.2917,
+        "waveHeightM": 1.64,
+        "windSpeedKnots": 13.6
+      },
+      {
+        "latitude": 9.0417,
+        "longitude": 78.0417,
+        "waveHeightM": null,
+        "windSpeedKnots": 8.5
+      },
+      {
+        "latitude": 9.0417,
+        "longitude": 78.4584,
+        "waveHeightM": 1.08,
+        "windSpeedKnots": 9.8
+      },
+      {
+        "latitude": 9.0417,
+        "longitude": 78.875,
+        "waveHeightM": 1.18,
+        "windSpeedKnots": 12.3
+      },
+      {
+        "latitude": 9.0417,
+        "longitude": 79.2917,
+        "waveHeightM": 1.54,
+        "windSpeedKnots": 12.4
+      },
+      {
+        "latitude": 9.2917,
+        "longitude": 78.0417,
+        "waveHeightM": null,
+        "windSpeedKnots": 7.6
+      },
+      {
+        "latitude": 9.125,
+        "longitude": 78.4584,
+        "waveHeightM": 0.96,
+        "windSpeedKnots": 9.1
+      },
+      {
+        "latitude": 9.2917,
+        "longitude": 78.9584,
+        "waveHeightM": 0.78,
+        "windSpeedKnots": 11.3
+      },
+      {
+        "latitude": 9.2917,
+        "longitude": 79.2917,
+        "waveHeightM": 0.84,
+        "windSpeedKnots": 9.9
+      }
+    ]
+  },
+  "cycles": [
+    {
+      "id": "replay-palk-swell",
+      "label": "Replay: swell rise in northern Gulf / Palk approach",
+      "description": "Waves rise near Rameswaram and in the south-east Gulf. No Thoothukudi corridor depends on these cells.",
+      "overrides": [
+        {
+          "latitude": 9.2917,
+          "longitude": 79.2917,
+          "waveHeightM": 1.3,
+          "windSpeedKnots": 15.0
+        },
+        {
+          "latitude": 8.375,
+          "longitude": 78.875,
+          "waveHeightM": 2.1,
+          "windSpeedKnots": 18.5
+        }
+      ]
+    },
+    {
+      "id": "replay-central-gulf-moderate",
+      "label": "Replay: moderate change in central Gulf (within limits)",
+      "description": "Waves and wind rise at the central-Gulf cell off Vembar, but stay inside typical small-craft limits.",
+      "overrides": [
+        {
+          "latitude": 8.875,
+          "longitude": 78.4584,
+          "waveHeightM": 1.7,
+          "windSpeedKnots": 17.0
+        }
+      ]
+    },
+    {
+      "id": "replay-central-gulf-rough",
+      "label": "Replay: rough sea in central Gulf",
+      "description": "Waves and wind at the central-Gulf cell off Vembar rise above typical small-craft limits.",
+      "overrides": [
+        {
+          "latitude": 8.875,
+          "longitude": 78.4584,
+          "waveHeightM": 2.4,
+          "windSpeedKnots": 22.0
+        }
+      ]
+    }
+  ]
+}

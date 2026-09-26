@@ -610,7 +610,9 @@
   }
 
   .map-workspace {
-    grid-template-columns: 1fr;
+    /* minmax(0, ...) so long unwrapped sidebar text can never size the
+       single column (and the page) wider than the viewport. */
+    grid-template-columns: minmax(0, 1fr);
     height: auto;
   }
 
@@ -623,10 +625,43 @@
   }
 }
 
-@media (max-width: 600px) {
+/* Phone layout (same breakpoint as the bottom dock in BottomNav.css). */
+@media (max-width: 800px) {
+  /* .app-content already provides the mobile gutter and the clearance
+     for the fixed bottom dock - a second padding layer here only
+     squeezed the map. */
   .map-page {
-    padding: 12px;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
   }
+
+  /* Size the map to the visible phone viewport (dvh excludes the
+     Android browser toolbar) minus the app header, the compact
+     header / search / chip rows above it and the bottom dock below
+     it, so the whole map - including its bottom-right controls -
+     is visible without scrolling. */
+  .map-canvas {
+    flex: 0 0 auto;
+    height: clamp(300px, calc(100vh - 290px), 640px);
+    height: clamp(300px, calc(100dvh - 290px - env(safe-area-inset-bottom)), 640px);
+    min-height: 0;
+    border-radius: 12px;
+  }
+
+  /* MarineMap's own 420px floor would otherwise overflow the shorter
+     canvas and clip the zoom/locate controls on small phones. */
+  .map-canvas .marine-map,
+  .map-canvas .marine-map-canvas {
+    min-height: 0;
+  }
+
+  .map-canvas .marine-map {
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 600px) {
 
   .map-area-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

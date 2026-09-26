@@ -72,8 +72,6 @@ function formatCoordinates(latitude: number, longitude: number): string {
   return `${lat}, ${lng}`;
 }
 
-// Plain weather description from the configured cloud cover / rain
-// probability - the same area profile the sea state comes from.
 function describeWeather(area: MarineArea | null): string | null {
   const conditions = area?.conditions;
   if (!conditions) return null;
@@ -86,8 +84,6 @@ function describeWeather(area: MarineArea | null): string | null {
   return "Clear";
 }
 
-// Lowest-risk configured route departing near this area - null when no
-// route starts within reach, rather than borrowing one from elsewhere.
 const ROUTE_ORIGIN_MAX_KM = 25;
 
 function nearestRoute(area: MarineArea | null) {
@@ -107,16 +103,8 @@ export default function Home() {
   const connectivity = useConnectivity();
   const offline = connectivity.status === "offline";
   const conditions = useMarineConditions(area, { offline });
-  // Scoped to the resolved area, same as Map.tsx - never the unscoped
-  // "every alert nationwide" fallback, which could otherwise surface an
-  // unrelated hazard (e.g. a Chennai alert) on this area's safety card.
   const { alerts, loading: alertsLoading } = useAlerts({ areaId: area?.id });
 
-  // The same backend risk result Chat uses (/api/risk), recalculated
-  // whenever the displayed model run changes so the risk and the
-  // conditions shown below come from the same data. Only if the risk
-  // service fails does the page fall back to the area's pre-set
-  // prototype score - labelled as such via riskBasis.
   const { risk: liveRisk, status: riskStatus } = useAreaRisk(area?.id, conditions.validAt);
   const riskServiceFailed = riskStatus === "failed";
   const riskBasis = describeRiskBasis(liveRisk?.basis, {
@@ -124,8 +112,6 @@ export default function Home() {
     serviceFailed: riskServiceFailed,
   });
 
-  // No invented defaults: when there is no area/risk, say so ("—")
-  // rather than showing a plausible-looking number.
   const marineRisk =
     liveRisk?.riskLevel ?? (riskServiceFailed ? area?.safety?.overallRisk : null) ?? null;
   const riskScore =
@@ -136,14 +122,10 @@ export default function Home() {
         .replace(/\b\w/g, (c) => c.toUpperCase())
     : "—";
 
-  // Wave/wind come from the Open-Meteo model reading only - the
-  // configured prototype values are shown separately and labelled.
   const modelWave = conditions.readings?.waveHeight;
   const modelWind = conditions.readings?.wind;
   const modelSst = conditions.readings?.seaSurfaceTemperature;
 
-  // Once the model has settled without a value, fall back to the
-  // configured area profile - badged FALLBACK, never shown as model data.
   const modelSettled = conditions.status !== "loading";
   const profileWind =
     !modelWind && modelSettled && typeof area?.conditions?.windSpeedKnots === "number"
@@ -311,7 +293,7 @@ export default function Home() {
             </Button>
           </Card>
 
-          {/* ASK SAGAR - primary action */}
+          {/* ASK SAGAR */}
           <Card className="home-ask-card" padding="lg">
             <header className="home-sagar-header">
               <div className="home-sagar-profile">
@@ -411,8 +393,7 @@ export default function Home() {
             </Button>
           </Card>
 
-          {/* MARINE CONDITIONS - model values with source / valid time /
-              freshness, plus the configured profile clearly labelled */}
+          {/* MARINE CONDITIONS */}
           <Card className="home-metrics-card" padding="lg">
             <MarineConditionsPanel
               area={area}

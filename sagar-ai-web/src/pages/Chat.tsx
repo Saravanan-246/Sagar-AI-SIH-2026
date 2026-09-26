@@ -15,6 +15,7 @@ import { useOfflineSync, describeSnapshotAge } from "../hooks/useOfflineSync";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useVoiceInput, type VoiceInputErrorReason } from "../hooks/useVoiceInput";
+import { useKeyboardViewport } from "../hooks/useKeyboardViewport";
 import { useVoiceOutput } from "../hooks/useVoiceOutput";
 import { getMarineAreas } from "../services/marine/marineData";
 import { getSuggestedQuestions } from "../utils/chatSuggestions";
@@ -336,6 +337,9 @@ export default function Chat() {
   // to "automatic" available: correct whenever the conversation stays
   // in one language (the common case), and always overridable via the
   // manual voice-language setting in Settings for anyone who needs it.
+  const shellRef = useRef<HTMLDivElement>(null);
+  useKeyboardViewport(shellRef);
+
   const voiceInput = useVoiceInput({
     language: locale,
     onResult: handleVoiceTranscript,
@@ -734,7 +738,7 @@ export default function Chat() {
   }, [mobileSidebarOpen]);
 
   return (
-    <div className="chat-shell">
+    <div className="chat-shell" ref={shellRef}>
       <ChatSidebar
         chats={savedChats}
         activeChatId={currentChatId}

@@ -1,20 +1,4 @@
-import {
-  ChangeEvent,
-  KeyboardEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import {
-  ArrowUp,
-  Loader2,
-  MapPin,
-  Mic,
-  MicOff,
-  Navigation,
-  Plus,
-} from "lucide-react";
-
+import { useEffect, useRef, useState } from "react";
 import "./ChatInput.css";
 
 export type MicState =
@@ -34,8 +18,6 @@ type ChatInputProps = {
   placeholder?: string;
 
   micSupported: boolean;
-  /** Shown instead of the mic's normal label when voice can't be used
-   * at all here (unsupported browser / insecure origin). */
   micUnavailableLabel?: string;
   micState: MicState;
   micLabel: string;
@@ -50,9 +32,9 @@ export default function ChatInput({
   onChange,
   onSend,
   disabled = false,
-  placeholder = "Ask Sagar about sea conditions, alerts, fishing zones or routes...",
+  placeholder = "Ask Sagar...",
   micSupported,
-  micUnavailableLabel = "Voice input unavailable in this browser — use text input",
+  micUnavailableLabel = "Voice input unavailable",
   micState,
   micLabel,
   onMicPress,
@@ -60,224 +42,154 @@ export default function ChatInput({
   onChooseArea,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-
-  const [focused, setFocused] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [showActions, setShowActions] = useState(false);
 
   const canSend = value.trim().length > 0 && !disabled;
 
   useEffect(() => {
-    if (!menuOpen) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
 
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
+    // Scroll only once the cap is reached; otherwise sub-pixel rounding
+    // shows an empty scrollbar track (a thin vertical line) on Android.
+    textarea.style.overflowY = textarea.scrollHeight > 140 ? "auto" : "hidden";
+  }, [value]);
 
+  const isRecording = micState === "listening";
+  const micText = !micSupported
+    ? micUnavailableLabel
+    : isRecording
+      ? "Stop recording"
+      : micLabel;
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (
-        menuRef.current?.contains(target) ||
-        menuButtonRef.current?.contains(target)
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
       ) {
-        return;
-      }
-
-      setMenuOpen(false);
-    };
-
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMenuOpen(false);
-        menuButtonRef.current?.focus();
+        setShowActions(false);
       }
     };
 
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
+    if (showActions) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("touchstart", handleClickOutside);
+    }
 
     return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
     };
-  }, [menuOpen]);
+  }, [showActions]);
 
-  const resizeTextarea = (element: HTMLTextAreaElement) => {
-    element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, 180)}px`;
-  };
-
-  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    onChange(event.target.value);
-    resizeTextarea(event.target);
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-
       if (canSend) {
         onSend();
-        requestAnimationFrame(() => {
-          if (textareaRef.current) {
-            textareaRef.current.style.height = "auto";
-          }
-        });
       }
     }
   };
 
-  const handleSend = () => {
-    if (!canSend) return;
-
-    onSend();
-
-    requestAnimationFrame(() => {
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-      }
-    });
-  };
-
   return (
-    <div className="chat-input-wrap">
-      <div
-        className={`chat-input-box ${
-          focused ? "chat-input-box-focused" : ""
-        } ${disabled ? "chat-input-box-disabled" : ""}`}
-      >
-        <div className="chat-input-menu-wrap">
-          <button
-            ref={menuButtonRef}
-            type="button"
-            className={`chat-input-btn chat-input-add ${
-              menuOpen ? "chat-input-add-open" : ""
-            }`}
-            aria-label="Location options"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            disabled={disabled}
-            onClick={() => setMenuOpen((open) => !open)}
-            title="Location options"
-          >
-            <Plus size={18} strokeWidth={2.2} />
-          </button>
-
-          {menuOpen && (
-            <div
-              ref={menuRef}
-              className="chat-input-menu"
-              role="menu"
-              aria-label="Location options"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                className="chat-menu-item"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onUseMyLocation();
-                }}
-              >
-                <Navigation size={15} strokeWidth={2} />
-                <span>Use my location</span>
-              </button>
-
-              <button
-                type="button"
-                role="menuitem"
-                className="chat-menu-item"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onChooseArea();
-                }}
-              >
-                <MapPin size={15} strokeWidth={2} />
-                <span>Choose a marine area</span>
-              </button>
-            </div>
-          )}
-        </div>
+    <div className="sagar-input-area" ref={containerRef}>
+      <div className="sagar-composer">
+        <button
+          type="button"
+          className={`sagar-composer-action ${showActions ? "active" : ""}`}
+          aria-label="More options"
+          onClick={() => setShowActions((prev) => !prev)}
+          disabled={disabled}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
 
         <textarea
           ref={textareaRef}
           value={value}
-          onChange={handleChange}
+          onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          className="sagar-textarea"
           placeholder={placeholder}
-          disabled={disabled}
           rows={1}
-          maxLength={4000}
-          className="chat-textarea"
-          aria-label="Message Sagar AI"
+          disabled={disabled}
+          aria-label="Message Sagar"
         />
 
-        <div className="chat-input-actions">
-          {micSupported ? (
-            <button
-              type="button"
-              className={`chat-input-btn chat-input-mic chat-input-mic-${micState}`}
-              onClick={onMicPress}
-              aria-label={micLabel}
-              aria-pressed={micState === "listening"}
-              title={micLabel}
-              disabled={disabled}
-            >
-              {micState === "error" ? (
-                <MicOff size={18} strokeWidth={2} />
-              ) : micState === "processing" || micState === "ready" ? (
-                <Loader2
-                  size={18}
-                  strokeWidth={2}
-                  className="chat-mic-spinner"
-                />
-              ) : (
-                <Mic size={18} strokeWidth={2} />
-              )}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="chat-input-btn chat-input-mic chat-input-mic-unavailable"
-              aria-label={micUnavailableLabel}
-              aria-disabled="true"
-              title={micUnavailableLabel}
-              onClick={() => textareaRef.current?.focus()}
-            >
-              <MicOff size={18} strokeWidth={2} />
-            </button>
-          )}
+        <div className="sagar-composer-right">
+          {/* Same button and handler in both states: while recording it
+              becomes a filled Stop button, and onMicPress stops the
+              recognizer (handleMicPress in Chat.tsx). */}
+          <button
+            type="button"
+            className={`sagar-composer-action ${isRecording ? "is-recording" : ""}`}
+            aria-label={micText}
+            aria-pressed={isRecording}
+            title={micText}
+            onClick={onMicPress}
+            disabled={!micSupported || (disabled && !isRecording)}
+          >
+            {isRecording ? (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect className="sagar-stop-icon" x="7" y="7" width="10" height="10" rx="2" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="9" y="3" width="6" height="12" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+              </svg>
+            )}
+          </button>
 
           <button
             type="button"
-            className={`chat-input-btn chat-send ${
-              canSend ? "chat-send-active" : ""
-            }`}
-            onClick={handleSend}
-            disabled={!canSend}
+            className={`sagar-send-button ${canSend ? "active" : ""}`}
             aria-label="Send message"
-            title="Send message"
+            onClick={onSend}
+            disabled={!canSend}
           >
-            <ArrowUp size={18} strokeWidth={2.4} />
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
           </button>
         </div>
-      </div>
 
-      <p
-        className={`chat-input-hint ${
-          micSupported && micState !== "idle"
-            ? `chat-input-hint-${micState}`
-            : ""
-        }`}
-        role="status"
-        aria-live="polite"
-      >
-        {micSupported && micState !== "idle"
-          ? micLabel
-          : micSupported
-          ? "Press Enter to send · Shift + Enter for a new line"
-          : micUnavailableLabel}
-      </p>
+        {showActions && (
+          <div className="sagar-actions-menu">
+            <button
+              type="button"
+              onClick={() => {
+                onUseMyLocation();
+                setShowActions(false);
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z" />
+                <circle cx="12" cy="9" r="2.5" />
+              </svg>
+              <span>Use my location</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChooseArea();
+                setShowActions(false);
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6ZM9 3v15M15 6v15" />
+              </svg>
+              <span>Choose area</span>
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

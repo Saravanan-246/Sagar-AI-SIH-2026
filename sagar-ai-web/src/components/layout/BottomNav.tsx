@@ -5,6 +5,7 @@ import {
   Compass,
   Database,
   FlaskConical,
+  GitBranch,
   Home,
   MapPin,
   Route,
@@ -66,6 +67,13 @@ const drawerTools = [
     icon: ShieldAlert,
     badge: "Alerts",
     desc: "Active severe weather & hazard bulletins",
+  },
+  {
+    label: "Marine Decision Watch",
+    path: "/decisions",
+    icon: GitBranch,
+    badge: "V1→V2",
+    desc: "Saved routes re-checked when marine conditions change",
   },
   {
     label: "Research",

@@ -5,6 +5,7 @@ export const ROUTES = {
   ROUTE: "/route",
   SCENARIO: "/scenario",
   ALERTS: "/alerts",
+  DECISIONS: "/decisions",
   ACTIVITY: "/activity",
   SOURCES: "/sources",
   PROFILE: "/profile",
@@ -42,6 +43,10 @@ export const OPERATION_ROUTES = [
   {
     path: ROUTES.ALERTS,
     label: "Marine Alerts",
+  },
+  {
+    path: ROUTES.DECISIONS,
+    label: "Marine Decision Watch",
   },
 ] as const;
 
