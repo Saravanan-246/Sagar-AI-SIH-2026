@@ -586,3 +586,7 @@ export function detectQueryIntent(
 ): SagarIntent {
   return detectIntent(message).intent;
 }
+export {
+  detectLanguageWithMetadata,
+  type LanguageDetectionResult,
+} from "./languageDetector";
