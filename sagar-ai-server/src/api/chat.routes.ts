@@ -153,11 +153,21 @@ function resolveExplicitRoute(message: string): ExplicitRouteResult {
 }
 
 const ROUTE_DECISION_PHRASE: Record<RoutePlan["routeDecision"], string> = {
-  preferred: "This route is recommended",
-  caution: "This route requires caution",
+  preferred: "It's the recommended option",
+  caution: "Take it with caution",
   avoid: "This route should be avoided",
   blocked: "This route is currently blocked",
 };
+
+/** "Clear passage south." -> "clear passage south." so a reason reads
+ * as the second half of a sentence, not a pasted label. */
+function asClause(text: string): string {
+  const trimmed = text.trim();
+  const clause = /^[A-Z][a-z]/.test(trimmed)
+    ? trimmed.charAt(0).toLowerCase() + trimmed.slice(1)
+    : trimmed;
+  return /[.!?]$/.test(clause) ? clause : `${clause}.`;
+}
 
 /*
  * The reporting agent's situation/recommendation text is built from the
@@ -188,7 +198,9 @@ function applyRouteAnswer(shaped: StructuredSagarResponse): boolean {
 
   shaped.situation = `${route.name} covers ${route.distanceKm.toFixed(1)} km with an estimated risk of ${route.risk.score}/100 (${route.risk.level}).`;
 
-  shaped.recommendation = `${ROUTE_DECISION_PHRASE[route.routeDecision]} - ${route.reason}`;
+  shaped.recommendation = route.reason?.trim()
+    ? `${ROUTE_DECISION_PHRASE[route.routeDecision]}: ${asClause(route.reason)}`
+    : `${ROUTE_DECISION_PHRASE[route.routeDecision]}.`;
 
   shaped.answer = `${shaped.situation} ${shaped.recommendation}`;
 
@@ -251,8 +263,13 @@ function applyZoneAnswer(shaped: StructuredSagarResponse): boolean {
   // static configured PFZ dataset (suitability/chlorophyll/SST are
   // configured values, not a live reading - see zoneRanking.ts), so the
   // wording must say that plainly instead.
-  shaped.situation = `${best.name} is the highest-ranked zone in Sagar's configured PFZ dataset${area ? ` near ${area}` : ""}.`;
-  shaped.recommendation = reason ?? `This zone is currently rated "${best.recommendation}".`;
+  shaped.situation = `${best.name} ranks highest among Sagar's configured fishing zones${area ? ` near ${area}` : ""}.`;
+  const suitability = reason?.match(/^Configured suitability:\s*(\w+)/i)?.[1];
+  shaped.recommendation = suitability
+    ? `Its configured suitability is ${suitability.toLowerCase()}.`
+    : reason
+      ? asClause(reason).replace(/^\w/, (c) => c.toUpperCase())
+      : `This zone is currently rated "${best.recommendation}".`;
   shaped.answer = `${shaped.situation} ${shaped.recommendation}`.trim();
 
   /*
@@ -1346,6 +1363,8 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
         whatIfSummary,
         recentContext,
         dataSources: shaped.dataSources,
+        freshness: `${shaped.dataStatus.confidence.level.toLowerCase()} confidence - ${shaped.dataStatus.confidence.explanation}`,
+        freshnessIsWarning: shaped.dataStatus.confidence.level === "LOW",
         language: resolvedLanguage,
       }, remainingLlmBudget(requestStart)).catch(() => null)
     );

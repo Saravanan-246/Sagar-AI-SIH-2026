@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { splitSentences, toSpokenSummary } from "../utils/speechText";
+
 export type VoiceOutputStatus = "idle" | "speaking" | "paused" | "error" | "unavailable";
 
 export type VoiceMatch =
@@ -39,7 +41,12 @@ export function selectVoice(
   const wanted = normLang(locale);
   const primary = wanted.split("-")[0];
   const byPreference = (list: SpeechSynthesisVoice[]) =>
-    [...list].sort((a, b) => Number(b.localService) - Number(a.localService))[0];
+    [...list].sort(
+      (a, b) =>
+        Number(b.localService) - Number(a.localService) ||
+        Number(b.default) - Number(a.default) ||
+        a.name.localeCompare(b.name),
+    )[0];
 
   const exact = voices.filter((voice) => normLang(voice.lang) === wanted);
   if (exact.length) return { kind: "native", voice: byPreference(exact), lang: locale };
@@ -53,31 +60,16 @@ export function selectVoice(
   const isLatinText = !/[ऀ-෿]/.test(text);
   if (isLatinText) {
     const english =
-      voices.filter((voice) => normLang(voice.lang) === "en-in").concat(
-        voices.filter((voice) => normLang(voice.lang).startsWith("en")),
-      );
-    if (english.length) return { kind: "fallback", voice: english[0], lang: english[0].lang };
+      voices.filter((voice) => normLang(voice.lang) === "en-in").length > 0
+        ? voices.filter((voice) => normLang(voice.lang) === "en-in")
+        : voices.filter((voice) => normLang(voice.lang).startsWith("en"));
+    if (english.length) {
+      const voice = byPreference(english);
+      return { kind: "fallback", voice, lang: voice.lang };
+    }
   }
 
   return { kind: "none" };
-}
-
-/** Markdown and screen-only content would otherwise be read out
- * literally ("asterisk asterisk", full URLs, table pipes, "Sources:"
- * dumps). Only strips presentation - never the answer's words. */
-export function toSpeakableText(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/https?:\/\/\S+/g, " ")
-    .replace(/^\s*\|.*\|\s*$/gm, " ")
-    .replace(/^\s*(sources?|evidence|data sources?)\s*:.*$/gim, " ")
-    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
-    .replace(/^\s*[-*•]\s+/gm, "")
-    .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 /** Chromium silently stops synthesis partway through long utterances
@@ -87,32 +79,63 @@ export function toSpeakableText(text: string): string {
 const MAX_CHUNK_CHARS = 220;
 
 function splitIntoChunks(text: string): string[] {
-  const sentences = text.match(/[^.!?।]+[.!?।]*\s*/g) ?? [text];
   const chunks: string[] = [];
   let current = "";
 
-  for (const sentence of sentences) {
-    if ((current + sentence).length > MAX_CHUNK_CHARS && current) {
-      chunks.push(current.trim());
+  for (const sentence of splitSentences(text)) {
+    if (current && (current + " " + sentence).length > MAX_CHUNK_CHARS) {
+      chunks.push(current);
       current = "";
     }
 
     if (sentence.length > MAX_CHUNK_CHARS) {
-      for (let i = 0; i < sentence.length; i += MAX_CHUNK_CHARS) {
-        chunks.push(sentence.slice(i, i + MAX_CHUNK_CHARS).trim());
+      // Break an over-long sentence at word boundaries, never mid-word
+      // or mid-number.
+      let piece = "";
+      for (const word of sentence.split(" ")) {
+        if (piece && (piece + " " + word).length > MAX_CHUNK_CHARS) {
+          chunks.push(piece);
+          piece = "";
+        }
+        piece = piece ? `${piece} ${word}` : word;
       }
+      if (piece) chunks.push(piece);
       continue;
     }
 
-    current += sentence;
+    current = current ? `${current} ${sentence}` : sentence;
   }
 
-  if (current.trim()) {
-    chunks.push(current.trim());
-  }
-
-  return chunks.filter(Boolean);
+  if (current) chunks.push(current);
+  return chunks;
 }
+
+/*
+ * One consistent Sagar voice: the first voice chosen for a locale is
+ * pinned for the rest of the session (while the device still offers
+ * it), so replies never hop between voices as the browser's voice list
+ * loads or reorders.
+ */
+const pinnedVoices = new Map<string, string>();
+
+function pinVoice(locale: string, match: VoiceMatch, voices: SpeechSynthesisVoice[]): VoiceMatch {
+  if (match.kind === "none" || !match.voice) return match;
+
+  const key = `${locale}:${match.kind}`;
+  const pinned = voices.find((voice) => voice.voiceURI === pinnedVoices.get(key));
+
+  if (pinned) {
+    return match.kind === "native"
+      ? { kind: "native", voice: pinned, lang: pinned.lang }
+      : { kind: "fallback", voice: pinned, lang: pinned.lang };
+  }
+
+  pinnedVoices.set(key, match.voice.voiceURI);
+  return match;
+}
+
+/** A second speak() of the same reply this soon is a double-trigger. */
+const DUPLICATE_SPEECH_MS = 1500;
 
 export function useVoiceOutput() {
   const [status, setStatus] = useState<VoiceOutputStatus>("idle");
@@ -125,30 +148,45 @@ export function useVoiceOutput() {
   // Holds the live utterances - Chromium can garbage-collect an
   // unreferenced utterance mid-speech and drop its onend.
   const utterancesRef = useRef<SpeechSynthesisUtterance[]>([]);
+  const lastSpokenRef = useRef<{ key: string; at: number } | null>(null);
 
   const isSupported =
     typeof window !== "undefined" && "speechSynthesis" in window;
 
   const speak = useCallback(
     (text: string, options: { id?: string; language?: string } = {}) => {
-      const speakable = toSpeakableText(text);
-
       if (!isSupported) {
         setStatus("unavailable");
         return;
       }
 
+      const language = options.language ?? "en-IN";
+      const voices = window.speechSynthesis.getVoices();
+      const match = pinVoice(language, selectVoice(language, text, voices), voices);
+      // Units are spelled out for the voice that will actually read it
+      // (an English fallback voice reading Tanglish gets "metres").
+      const speakable = toSpokenSummary(text, match.kind === "none" ? language : match.lang);
+
       if (!speakable) {
         return;
       }
+
+      const now = Date.now();
+      const last = lastSpokenRef.current;
+      if (
+        last &&
+        last.key === `${options.id ?? ""}|${speakable}` &&
+        now - last.at < DUPLICATE_SPEECH_MS &&
+        window.speechSynthesis.speaking
+      ) {
+        return;
+      }
+      lastSpokenRef.current = { key: `${options.id ?? ""}|${speakable}`, at: now };
 
       // A new reply always replaces the one being spoken - never two
       // answers overlapping or an old one finishing after a new ask.
       const session = ++sessionRef.current;
       window.speechSynthesis.cancel();
-
-      const language = options.language ?? "en-IN";
-      const match = selectVoice(language, speakable);
 
       // Honest: no voice on this device can read this script, so the
       // text stays on screen and the caller shows a notice.
@@ -216,16 +254,18 @@ export function useVoiceOutput() {
     [isSupported]
   );
 
+  // Only move between speaking and paused - never report "speaking"
+  // when nothing is queued (e.g. resume after speech already ended).
   const pause = useCallback(() => {
-    if (!isSupported) return;
+    if (!isSupported || !window.speechSynthesis.speaking) return;
     window.speechSynthesis.pause();
-    setStatus("paused");
+    setStatus((current) => (current === "speaking" ? "paused" : current));
   }, [isSupported]);
 
   const resume = useCallback(() => {
     if (!isSupported) return;
     window.speechSynthesis.resume();
-    setStatus("speaking");
+    setStatus((current) => (current === "paused" ? "speaking" : current));
   }, [isSupported]);
 
   const stop = useCallback(() => {

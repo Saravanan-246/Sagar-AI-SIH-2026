@@ -2,7 +2,8 @@
 // Usage (from sagar-ai-web): ../sagar-ai-server/node_modules/.bin/tsx scripts/voice-test.ts
 
 import { isUsableTranscript, shouldDeliverTranscript } from "../src/hooks/useVoiceInput";
-import { selectVoice, toSpeakableText } from "../src/hooks/useVoiceOutput";
+import { selectVoice } from "../src/hooks/useVoiceOutput";
+import { numbersIn, splitSentences, toSpeakableText, toSpokenSummary } from "../src/utils/speechText";
 
 let passCount = 0;
 let failCount = 0;
@@ -61,6 +62,45 @@ console.log("\n[speakable text]");
   );
   ok("strips headings, markdown, tables, sources and URLs",
     spoken === "Conditions Moderate seas near Thoothukudi. See", spoken);
+
+  const route = "Thoothukudi Deep Sea Corridor covers 48.5 km with an estimated risk of 18/100 (low). It's the recommended option: clear passage south.";
+  const routeSpoken = toSpeakableText(route);
+  ok("units and scores are spelled, values unchanged",
+    routeSpoken.includes("48.5 kilometres") && routeSpoken.includes("18 out of 100, low."), routeSpoken);
+
+  const waves = toSpeakableText("Wave height is 2.4 m and wind is 28 km/h. SST 28.1 °C.");
+  ok("metres, km/h and Celsius spelled for English voice",
+    waves === "Wave height is 2.4 metres and wind is 28 kilometres per hour. SST 28.1 degrees Celsius.", waves);
+
+  const tamil = toSpeakableText("அலை உயரம் 2.4 m.", "ta-IN");
+  ok("non-English voice keeps units as written", tamil === "அலை உயரம் 2.4 m.", tamil);
+
+  const labels = toSpeakableText("This assessment is for Thoothukudi Coast. Data sources: INCOIS, Open-Meteo. Confidence: medium - Recent data.");
+  ok("inline UI labels and source lists are not read aloud",
+    !/data sources|confidence:/i.test(labels) && !/INCOIS/.test(labels), labels);
+
+  ok("decimals never split sentences",
+    splitSentences("Waves are 2.4 m. Wind is 12.5 km/h.").length === 2);
+}
+
+console.log("\n[voice/text consistency]");
+{
+  const answers = [
+    "Thoothukudi Deep Sea Corridor covers 48.5 km with an estimated risk of 18/100 (low). It's the recommended option: clear passage south through deep water.",
+    "Wave height is 2.4 m in the selected area. Wind is 28 km/h from the south-west. SST is 28.1 °C. Chlorophyll is 1.48 mg/m³. Conditions are moderate, so keep an eye on the wind before leaving.",
+    "3 active alerts near Thoothukudi Coast, the most severe being \"Cyclone watch\" (critical). Do not go to sea until the alert is lifted.",
+  ];
+  for (const answer of answers) {
+    const spoken = toSpokenSummary(answer);
+    const textNumbers = new Set(numbersIn(answer));
+    ok(`spoken numbers all appear in text: ${answer.slice(0, 40)}...`,
+      numbersIn(spoken).every((n) => textNumbers.has(n)), spoken);
+  }
+  const long = "Conditions look calm right now. ".repeat(12) + "Avoid the northern shoals - a warning is active there.";
+  const summary = toSpokenSummary(long);
+  ok("long answers are shortened for speech", summary.length < toSpeakableText(long).length);
+  ok("safety-critical sentence always kept", /Avoid the northern shoals/.test(summary), summary);
+  ok("spoken summary keeps the answer first", summary.startsWith("Conditions look calm right now."));
 }
 
 console.log(`\n${passCount} passed, ${failCount} failed`);

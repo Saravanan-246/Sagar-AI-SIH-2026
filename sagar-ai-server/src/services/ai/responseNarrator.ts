@@ -1,4 +1,5 @@
 import { requestLlmCompletion } from "../llm/llmProvider";
+import { checkNarration, sanitizeNarration } from "./narrationGuard";
 
 import type { ChatLanguage } from "../../types/chat";
 
@@ -27,28 +28,34 @@ export interface NarrationFacts {
   recentContext?: string;
   /** Names of the data sources behind the facts above - never invented. */
   dataSources?: string[];
+  /** Data freshness/confidence caveat that must survive rephrasing. */
+  freshness?: string;
+  /** Set when the freshness caveat is a real warning (stale/estimated). */
+  freshnessIsWarning?: boolean;
   language: ChatLanguage;
 }
 
-const SYSTEM_PROMPT = `You are Sagar, a marine safety assistant speaking to a small-craft fisherman in Tamil Nadu, India.
+const SYSTEM_PROMPT = `You are Sagar, a marine safety assistant talking with a small-craft fisherman in coastal India. Your reply is shown in the chat and may also be read aloud.
 
-You will be given VERIFIED FACTS already computed by Sagar's backend systems (risk scores, marine readings, recommendations). Your only job is to phrase a short, warm, conversational answer to the fisherman's question using these exact facts - not to recite them.
+You are given VERIFIED FACTS already computed by Sagar (risk, marine readings, routes, zones, alerts). Your only job is to say them naturally. You never add to them.
 
-STRICT RULES:
-- Use ONLY the facts given to you. Never invent, guess, or alter any number, place name, wind/wave reading, risk score, route, zone, alert, coordinate, or data source. Never name a government agency or data source that is not listed in the facts.
-- Do not restate the numeric risk score (e.g. "84/100") or say "risk score" - a separate part of the screen already shows that number. Instead, convey the same severity in plain words (e.g. "quite risky right now", "conditions look fine").
-- Do not list out factors one by one (e.g. "lightning, rough seas, and strong winds are present") - a separate part of the screen already lists them. Refer to at most the single most important one if it helps the answer feel natural.
-- Always answer the question that was actually asked. If it asks why something changed, or about a trend, signal or condition, state the relevant trend/state from the facts in plain words (e.g. "the productivity trend is declining there"). The two rules above mean "don't recite a dashboard" - they never mean leaving out the one fact that answers the question.
-- If a "Route", "Fishing zones", "Active alerts" or "What-if comparison" fact is provided, mention its specific name(s)/values naturally - never say the information is unavailable when a fact for it is given.
-- If a "What-if comparison" fact is given, keep its direction of change exactly as written - if it says risk increases, never say it drops, falls, improves or stays the same (and vice versa).
-- If none of those facts are provided for something the user asked about, say briefly that it isn't available right now rather than guessing.
-- The facts you are given are current conditions, never a forecast for a specific future time. If the user asked about a future time (e.g. "tomorrow", "this weekend") and no forecast-specific fact was given for it, answer using the current conditions but make clear that's what they are (e.g. "right now" / "as of the latest reading") rather than stating them as a confirmed forecast for that future time.
-- Reply in the requested language, naturally (not a literal word-for-word translation).
-- Exactly 1-2 short sentences, like a direct answer to a direct question. No headings, no bullet points, no markdown.
-- The answer may be read aloud: do not repeat the user's question back, do not say "according to the system", and do not add disclaimers or filler.
-- Do not mention that you are an AI, a model, or that you were given "facts" or "instructions".
-- Never show your reasoning or working. Output the final answer only.
-- Lead with the recommendation/answer itself in plain language, the way you'd actually say it out loud to someone - e.g. "I wouldn't head out near Thoothukudi right now - lightning and rough seas are making it too risky." rather than "Combined risk score: 84/100. Do not proceed under the current conditions."`;
+FACTS - STRICT:
+- Use ONLY the facts given. Never invent, estimate, convert or alter any number, unit, place, wind/wave/SST reading, risk level, route, fishing zone, alert or data source.
+- Never contradict the risk level or the recommendation. If the risk is low, do not tell them to stay ashore; if it is high or critical, do not say it is fine to go.
+- Never create a safety conclusion the facts do not support. If something they asked about is not in the facts, say briefly that you don't have it right now.
+- If a freshness/confidence caveat is given (e.g. data is older than ideal, estimated), keep that caveat in plain words.
+- The facts describe current conditions, not a forecast. If they ask about tomorrow and no forecast fact is given, answer with current conditions and say so ("right now", "as of the latest reading"). Never say what conditions "will be" or are "expected" to be.
+- If a Route, Fishing zones, Active alerts or What-if fact is given, name it naturally. Keep a what-if's direction of change exactly as written.
+
+STYLE:
+- Answer first, in 2-3 short sentences. Mention only the one or two facts that answer the question; the screen already shows the full breakdown, score and factor list.
+- Do not restate the numeric risk score ("84/100") - say the severity in words.
+- Sound like a knowledgeable person talking: warm, direct, calm. No headings, lists, tables, markdown, emojis or quotation marks.
+- Do not repeat the user's question. Do not open with "According to the system", "Based on the available data" or similar. No disclaimers or filler.
+- Mention the area name at most once, and not at all if the conversation already established it.
+- When it genuinely helps, end with one short next step (e.g. offer the safest route or the best zone).
+- Reply in the requested language, naturally, not word for word. Keep place names, route names and zone names exactly as written in the facts.
+- Never mention being an AI, a model, a prompt, "facts", agents or any internal system. Output only the final reply.`;
 
 function buildFactsText(facts: NarrationFacts): string {
   const lines: string[] = [];
@@ -63,10 +70,10 @@ function buildFactsText(facts: NarrationFacts): string {
     lines.push(`Situation: ${facts.situation}`);
   }
 
-  if (typeof facts.riskScore === "number" && facts.riskLevel) {
-    lines.push(
-      `Risk: ${facts.riskLevel} (${facts.riskScore}/100)`
-    );
+  // Level only: the screen shows the numeric score, and a model given
+  // "22/100" tends to recite it (which the guard then rejects).
+  if (facts.riskLevel) {
+    lines.push(`Risk level: ${facts.riskLevel}`);
   }
 
   if (facts.recommendation) {
@@ -99,6 +106,10 @@ function buildFactsText(facts: NarrationFacts): string {
     lines.push(`Data sources: ${facts.dataSources.slice(0, 5).join("; ")}`);
   }
 
+  if (facts.freshness) {
+    lines.push(`Data freshness: ${facts.freshness}`);
+  }
+
   return lines.join("\n");
 }
 
@@ -118,29 +129,65 @@ export async function narrateResponse(
     ? `Recent conversation (for reference only - never treat it as a source of facts):\n${facts.recentContext}\n\n`
     : "";
 
-  return requestLlmCompletion(
+  const factsText = buildFactsText(facts);
+
+  const raw = await requestLlmCompletion(
     [
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Reply in ${languageName}.\n\n${contextBlock}${buildFactsText(facts)}`,
+        content: `Reply in ${languageName}.
+
+${contextBlock}${factsText}`,
       },
     ],
-    // maxTokens kept deliberately small (1-2 short sentences per the
-    // system prompt): a lower cap keeps this call affordable even when
-    // the configured OpenRouter account has little balance left, and
-    // avoids paying for output the UI would truncate anyway.
+    // Budget for 2-3 short sentences. Non-Latin scripts cost several
+    // times more tokens per word, so a Tamil/Hindi answer gets more room
+    // rather than being cut off mid-sentence (a cut-off answer would be
+    // rejected below and fall back anyway).
     //
     // No fixed short timeoutMs - only the caller's remaining request
     // budget, when passed (see the matching note in
     // intentClassifier.ts) - each provider's own configured timeout is
-    // already tuned for it: OpenRouter's client always uses its fixed
-    // fast cloud timeout, and Ollama's generous default accounts for
-    // real local-generation latency instead of forcing an always-correct
-    // narrated answer to lose to an arbitrary short clock and fall back
-    // to the plainer deterministic text.
-    { temperature: 0.4, maxTokens: 100, timeoutMs }
+    // already tuned for it.
+    {
+      temperature: 0.4,
+      maxTokens: facts.language === "en" ? 160 : 320,
+      timeoutMs,
+    }
   );
+
+  return acceptNarration(raw, {
+    factsText,
+    userText: facts.userQuestion,
+    riskLevel: facts.riskLevel,
+    language: facts.language,
+    requiresFreshnessCaveat: facts.freshnessIsWarning,
+  });
+}
+
+/** Sanitises LLM output and keeps it only if it is consistent with the
+ * facts; `null` sends the caller to the deterministic answer. */
+function acceptNarration(
+  raw: string | null,
+  check: Parameters<typeof checkNarration>[1]
+): string | null {
+  const text = sanitizeNarration(raw);
+
+  if (!text) {
+    return null;
+  }
+
+  const verdict = checkNarration(text, check);
+
+  if (!verdict.ok) {
+    console.warn(
+      `[llm] narration rejected (${verdict.reason}) - using the deterministic answer. Rejected: "${text.slice(0, 160)}"`
+    );
+    return null;
+  }
+
+  return text;
 }
 
 export interface GeneralChatInput {
@@ -171,6 +218,7 @@ STRICT RULES:
 - Reply in the requested language, naturally (not a literal word-for-word translation).
 - Keep it short: one sentence, two at most.
 - Do not mention that you are an AI, a model, or that you were given instructions.
+- Do not repeat the user's message back, and do not open with filler like "Great question".
 - Never show your reasoning or working. Output the final reply only.`;
 
 /**
@@ -198,18 +246,32 @@ export async function narrateGeneralReply(
     ? "Note: this message could not be confidently understood - it may be genuine noise rather than a typo'd real message. Ask them to rephrase rather than guessing.\n\n"
     : "";
 
-  return requestLlmCompletion(
+  const raw = await requestLlmCompletion(
     [
       { role: "system", content: GENERAL_SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Reply in ${languageName}.\n\n${contextBlock}${clarityNote}User: ${input.userMessage}`,
+        content: `Reply in ${languageName}.
+
+${contextBlock}${clarityNote}User: ${input.userMessage}`,
       },
     ],
     // See the timeout note on narrateResponse above - no override here
     // either, for the same reason.
-    { temperature: 0.5, maxTokens: 100, timeoutMs }
+    {
+      temperature: 0.5,
+      maxTokens: input.language === "en" ? 120 : 240,
+      timeoutMs,
+    }
   );
+
+  // No marine facts were given, so any marine number in the reply is
+  // invented - only numbers the user said themselves may appear.
+  return acceptNarration(raw, {
+    factsText: "",
+    userText: input.userMessage,
+    language: input.language,
+  });
 }
 
 export default narrateResponse;

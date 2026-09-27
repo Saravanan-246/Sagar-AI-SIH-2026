@@ -472,7 +472,7 @@ function assessHazards(
       "Strong wind hazard",
       18,
       "negative",
-      "A strong-wind hazard is identified for the operating area."
+      "A strong-wind hazard has been flagged."
     );
   }
 }
@@ -748,7 +748,7 @@ function buildRecommendation(
     return "Operations may be possible with caution. Monitor marine conditions and reassess before departure.";
   }
 
-  return "Current assessed conditions appear generally favourable, subject to normal operational checks.";
+  return "Overall, conditions look favourable - just run your usual checks before heading out.";
 }
 
 function buildFinding(
