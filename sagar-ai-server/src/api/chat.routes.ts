@@ -15,7 +15,7 @@ import {
   classifyWithAi,
   type ConversationTurn,
 } from "../services/ai/intentClassifier";
-import { analyzeIntent, detectQueryLanguage } from "../services/ai/intent";
+import { analyzeIntent, detectQueryLanguage, detectLanguageWithMetadata } from "../services/ai/intent";
 import { narrateResponse, narrateGeneralReply } from "../services/ai/responseNarrator";
 import { buildDeterministicAnswer } from "../services/ai/fallbackNarrator";
 import { isLlmEnabled } from "../services/llm/llmProvider";
@@ -408,16 +408,19 @@ function applyEvidenceAnswer(shaped: StructuredSagarResponse): boolean {
   shaped.recommendation = confidence.explanation;
   shaped.answer = parts.join(" ");
 
+
   return true;
 }
 
-const UNSUPPORTED_LOCATION_MESSAGE: Record<"en" | "ta" | "hi", (from: string, to: string) => string> = {
+const UNSUPPORTED_LOCATION_MESSAGE: Record<"en" | "ta" | "hi" | "te", (from: string, to: string) => string> = {
   en: (from, to) =>
     `${from} and ${to} are not currently available as configured route points in Sagar. Please select one of the available marine areas or route endpoints.`,
   ta: (from, to) =>
     `${from} மற்றும் ${to} தற்போது Sagar-இல் கட்டமைக்கப்பட்ட பாதை புள்ளிகளாக இல்லை. கிடைக்கும் கடல் பகுதிகளில் ஒன்றை தேர்ந்தெடுக்கவும்.`,
   hi: (from, to) =>
     `${from} और ${to} अभी Sagar में कॉन्फ़िगर किए गए रूट पॉइंट के रूप में उपलब्ध नहीं हैं। कृपया उपलब्ध समुद्री क्षेत्रों में से किसी एक को चुनें।`,
+  te: (from, to) =>
+    `${from} మరియు ${to} ప్రస్తుతం సాగర్‌లో కాన్ఫిగర్ చేసిన రూట్ పాయింట్లుగా అందుబాటులో లేవు. దయచేసి అందుబాటులో ఉన్న ప్రాంతాలలో ఒకదాన్ని ఎంచుకోండి.`,
 };
 
 /*
@@ -635,7 +638,7 @@ const CASUAL_REPLY: Record<ChatLanguage, string> = {
   en: "Hi - I'm Sagar. Ask me about marine safety, weather, ocean conditions, alerts, fishing zones or routes.",
   ta: "வணக்கம் - நான் சாகர். கடல் பாதுகாப்பு, வானிலை, கடல் நிலைகள், எச்சரிக்கைகள், மீன்பிடி பகுதிகள் அல்லது பாதைகள் பற்றி என்னிடம் கேளுங்கள்.",
   hi: "नमस्ते - मैं Sagar हूं। समुद्री सुरक्षा, मौसम, समुद्री स्थिति, चेतावनी, मछली पकड़ने के क्षेत्र या मार्गों के बारे में मुझसे पूछें।",
-  te: "Hi - I'm Sagar. Ask me about marine safety, weather, ocean conditions, alerts, fishing zones or routes.",
+  te: "నమస్కారం - నేను సాగర్. సముద్ర భద్రత, వాతావరణం, అలలు, హెచ్చరికలు, ఫిషింగ్ జోన్లు లేదా మార్గాల గురించి నన్ను అడగండి.",
   ml: "Hi - I'm Sagar. Ask me about marine safety, weather, ocean conditions, alerts, fishing zones or routes.",
   kn: "Hi - I'm Sagar. Ask me about marine safety, weather, ocean conditions, alerts, fishing zones or routes.",
 };
@@ -644,7 +647,7 @@ const UNSUPPORTED_REPLY: Record<ChatLanguage, string> = {
   en: "That's outside Sagar's marine decision-support scope. I can help with marine safety, weather, ocean conditions, alerts, fishing zones, routes or what-if analysis.",
   ta: "இது சாகரின் கடல் முடிவு-துணை வரம்புக்கு வெளியே உள்ளது. கடல் பாதுகாப்பு, வானிலை, கடல் நிலைகள், எச்சரிக்கைகள், மீன்பிடி பகுதிகள், பாதைகள் அல்லது இதுவானால்-என்ன பகுப்பாய்வு குறித்து நான் உதவ முடியும்.",
   hi: "यह Sagar के समुद्री निर्णय-सहायता दायरे से बाहर है। मैं समुद्री सुरक्षा, मौसम, समुद्री स्थिति, चेतावनी, मछली पकड़ने के क्षेत्र, मार्ग या व्हाट-इफ विश्लेषण में मदद कर सकता हूं।",
-  te: "That's outside Sagar's marine decision-support scope. I can help with marine safety, weather, ocean conditions, alerts, fishing zones, routes or what-if analysis.",
+  te: "ఇది సాగర్ సముద్ర నిర్ణయ మద్దతు పరిధికి వెలుపల ఉంది. సముద్ర భద్రత, వాతావరణం, హెచ్చరికలు, ఫిషింగ్ జోన్లు లేదా మార్గాల గురించి నేను సహాయం చేయగలను.",
   ml: "That's outside Sagar's marine decision-support scope. I can help with marine safety, weather, ocean conditions, alerts, fishing zones, routes or what-if analysis.",
   kn: "That's outside Sagar's marine decision-support scope. I can help with marine safety, weather, ocean conditions, alerts, fishing zones, routes or what-if analysis.",
 };
@@ -663,7 +666,7 @@ const UNCLEAR_REPLY: Record<ChatLanguage, string> = {
   en: "Sorry, I didn't catch that - could you say it a different way?",
   ta: "மன்னிக்கவும், அது எனக்குப் புரியவில்லை - வேறு விதமாகச் சொல்ல முடியுமா?",
   hi: "माफ़ कीजिए, मुझे यह समझ नहीं आया - क्या आप इसे दूसरे तरीके से कह सकते हैं?",
-  te: "Sorry, I didn't catch that - could you say it a different way?",
+  te: "క్షమించండి, నాకు అర్థం కాలేదు - దయచేసి మరొక విధంగా చెప్పగలరా?",
   ml: "Sorry, I didn't catch that - could you say it a different way?",
   kn: "Sorry, I didn't catch that - could you say it a different way?",
 };
@@ -680,7 +683,7 @@ const LOCATION_CLARIFICATION: Record<ChatLanguage, string> = {
   en: "Sure - I can check that. Would you like me to use your current location, or pick an area?",
   ta: "கண்டிப்பாக - நான் பார்க்கிறேன். உங்கள் தற்போதைய இருப்பிடத்தைப் பயன்படுத்தவா, அல்லது ஒரு பகுதியைத் தேர்ந்தெடுக்கிறீர்களா?",
   hi: "ज़रूर - मैं देख सकता हूं। क्या मैं आपकी वर्तमान लोकेशन का उपयोग करूं, या आप कोई क्षेत्र चुनना चाहेंगे?",
-  te: "Sure - I can check that. Would you like me to use your current location, or pick an area?",
+  te: "ఖచ్చితంగా - నేను చూస్తాను. మీ ప్రస్తుత లొకేషన్‌ను ఉపయోగించాలా, లేదా ఒక ప్రాంతాన్ని ఎంచుకుంటారా?",
   ml: "Sure - I can check that. Would you like me to use your current location, or pick an area?",
   kn: "Sure - I can check that. Would you like me to use your current location, or pick an area?",
 };
@@ -689,7 +692,7 @@ const OUT_OF_COVERAGE_CLARIFICATION: Record<ChatLanguage, string> = {
   en: "Your current location is outside the sea areas Sagar covers right now, so I don't have marine data for it. You can pick one of the available areas instead.",
   ta: "உங்கள் தற்போதைய இருப்பிடம் சாகர் தற்போது உள்ளடக்கிய கடல் பகுதிகளுக்கு வெளியே உள்ளது, அதற்கான கடல் தரவு என்னிடம் இல்லை. கிடைக்கும் பகுதிகளில் ஒன்றைத் தேர்ந்தெடுக்கலாம்.",
   hi: "आपकी वर्तमान लोकेशन उन समुद्री क्षेत्रों से बाहर है जिन्हें Sagar अभी कवर करता है, इसलिए मेरे पास उसका समुद्री डेटा नहीं है। आप उपलब्ध क्षेत्रों में से कोई एक चुन सकते हैं।",
-  te: "Your current location is outside the sea areas Sagar covers right now. You can pick one of the available areas instead.",
+  te: "మీ ప్రస్తుత లొకేషన్ సాగర్ కవర్ చేసే సముద్ర ప్రాంతాలకు వెలుపల ఉంది. మీరు అందుబాటులో ఉన్న ప్రాంతాలలో ఒకదాన్ని ఎంచుకోవచ్చు.",
   ml: "Your current location is outside the sea areas Sagar covers right now. You can pick one of the available areas instead.",
   kn: "Your current location is outside the sea areas Sagar covers right now. You can pick one of the available areas instead.",
 };
@@ -706,7 +709,7 @@ const ROUTE_CLARIFICATION: Record<
     en: "Sure. Where are you starting from, and where are you going?",
     ta: "கண்டிப்பாக. நீங்கள் எங்கிருந்து புறப்படுகிறீர்கள், எங்கே செல்கிறீர்கள்?",
     hi: "ज़रूर। आप कहां से शुरू कर रहे हैं, और कहां जाना है?",
-    te: "Sure. Where are you starting from, and where are you going?",
+    te: "ఖచ్చితంగా. మీరు ఎక్కడి నుండి బయలుదేరుతున్నారు, ఎక్కడికి వెళ్లాలి?",
     ml: "Sure. Where are you starting from, and where are you going?",
     kn: "Sure. Where are you starting from, and where are you going?",
   },
@@ -714,7 +717,7 @@ const ROUTE_CLARIFICATION: Record<
     en: "Sure - where are you starting from?",
     ta: "கண்டிப்பாக - நீங்கள் எங்கிருந்து புறப்படுகிறீர்கள்?",
     hi: "ज़रूर - आप कहां से शुरू कर रहे हैं?",
-    te: "Sure - where are you starting from?",
+    te: "ఖచ్చితంగా - మీరు ఎక్కడి నుండి బయలుదేరుతున్నారు?",
     ml: "Sure - where are you starting from?",
     kn: "Sure - where are you starting from?",
   },
@@ -722,7 +725,7 @@ const ROUTE_CLARIFICATION: Record<
     en: "Got it. Where would you like to go?",
     ta: "சரி. நீங்கள் எங்கே செல்ல விரும்புகிறீர்கள்?",
     hi: "समझ गया। आप कहां जाना चाहेंगे?",
-    te: "Got it. Where would you like to go?",
+    te: "సరే. మీరు ఎక్కడికి వెళ్లాలనుకుంటున్నారు?",
     ml: "Got it. Where would you like to go?",
     kn: "Got it. Where would you like to go?",
   },
@@ -838,21 +841,44 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
       )
     : null;
 
-  const gateLanguage: ChatLanguage = (input.language ??
-    classification?.language ??
-    detectQueryLanguage(input.message)) as ChatLanguage;
+  /*
+   * CURRENT TURN LANGUAGE DETERMINATION:
+   * 1. Clearly detected current turn language (including Tanglish/Hinglish/Telugu/etc.)
+   * 2. Current turn mixed language / transliterated language
+   * 3. Recent conversation language (fallback if current turn is ambiguous / low confidence)
+   * 4. Default fallback language
+   * Never let turn 1 lock the language permanently.
+   */
+  const turnLangMeta = detectLanguageWithMetadata(input.message);
+
+  const recentHistoryLanguage = [...history]
+    .reverse()
+    .map((turn) => detectLanguageWithMetadata(turn.text).language)
+    .find((lang) => lang !== "en");
+
+  let turnLanguage: ChatLanguage = "en";
+  if (turnLangMeta.confidence >= 0.6) {
+    turnLanguage = turnLangMeta.language as ChatLanguage;
+  } else if (classification?.language) {
+    turnLanguage = classification.language as ChatLanguage;
+  } else if (recentHistoryLanguage) {
+    turnLanguage = recentHistoryLanguage as ChatLanguage;
+  } else if (input.language) {
+    turnLanguage = input.language as ChatLanguage;
+  } else {
+    turnLanguage = "en";
+  }
+
+  const gateLanguage: ChatLanguage = turnLanguage;
 
   // A configured area named in this message, or (failing that) in the
-  // most recent user message from history - lets a genuine follow-up
-  // ("what about tomorrow?" after "is it safe near Thoothukudi?")
-  // still resolve correctly without an AI call, while a message that
-  // never names anywhere stays ungrounded rather than silently
-  // defaulting.
+  // conversation history (including previous assistant replies) -
+  // preserves multi-turn context ("Anga weather epdi?", "is it safe there tomorrow?")
   const mentionedArea =
     findMentionedArea(input.message) ??
     [...history]
       .reverse()
-      .map((turn) => (turn.role === "user" ? findMentionedArea(turn.text) : undefined))
+      .map((turn) => findMentionedArea(turn.text))
       .find(Boolean);
 
   /*
@@ -1054,13 +1080,9 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     );
   }
 
-  const areaId = input.areaId;
+  const areaId = input.areaId ?? mentionedArea?.id;
   const areaName = input.areaName ?? classification?.areaHint ?? mentionedArea?.name;
-  // The client rarely sends an explicit language; fall back to what the
-  // AI classifier detected from the message itself so the response's
-  // `language` field (driving TTS locale on the client) reflects the
-  // language actually used, not just a hardcoded default.
-  const language = input.language ?? classification?.language;
+  const language = turnLanguage;
 
   const baseRequest = buildAgentRequest({
     message: input.message,
@@ -1165,9 +1187,8 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     extras
   );
 
-  const resolvedLanguage = (classification?.language ??
-    (shaped.language as ChatLanguage) ??
-    "en") as ChatLanguage;
+  const resolvedLanguage = turnLanguage;
+  shaped.language = turnLanguage;
 
   if (explicitRoute.kind === "unsupported") {
     // An explicit "from X to Y" request where X/Y aren't configured
@@ -1177,7 +1198,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     // "this isn't available".
     const messageBuilder =
       UNSUPPORTED_LOCATION_MESSAGE[
-        resolvedLanguage === "ta" || resolvedLanguage === "hi"
+        resolvedLanguage === "ta" || resolvedLanguage === "hi" || resolvedLanguage === "te"
           ? resolvedLanguage
           : "en"
       ];

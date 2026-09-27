@@ -643,10 +643,25 @@
      is visible without scrolling. */
   .map-canvas {
     flex: 0 0 auto;
-    height: clamp(300px, calc(100vh - 290px), 640px);
-    height: clamp(300px, calc(100dvh - 290px - env(safe-area-inset-bottom)), 640px);
+    /* Fills the visible phone viewport (dvh excludes the Android
+       browser toolbar) minus the app header, the compact header /
+       search / chip rows above it and the bottom dock below it. The
+       360px floor keeps MarineMap's bottom-right control stack (~215px:
+       zoom pair, locate, layers, fullscreen) clear of its top strip
+       (status pill and Layers button, ~54px) on short screens, where
+       the map previously shrank to 300px and the stack reached it. */
+    height: clamp(360px, calc(100vh - 290px), 640px);
+    height: clamp(360px, calc(100dvh - 290px - env(safe-area-inset-bottom)), 640px);
     min-height: 0;
     border-radius: 12px;
+  }
+
+  /* Controls stay inside the map and below its top strip, with the
+     same inset on every side. */
+  .map-canvas .map-controls {
+    right: 12px;
+    bottom: 12px;
+    max-height: calc(100% - 76px);
   }
 
   /* MarineMap's own 420px floor would otherwise overflow the shorter

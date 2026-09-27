@@ -1,3 +1,4 @@
+import { detectLanguageWithMetadata } from "../ai/languageDetector";
 import type {
   ChatContext,
   ChatMessage,
@@ -426,28 +427,26 @@ export function buildFollowUpContext(
   state: ConversationState,
   message: string
 ): ChatContext {
+  const currentTurnLang = detectLanguageWithMetadata(message);
+  const resolvedLang = currentTurnLang.confidence >= 0.6 ? currentTurnLang.language : state.language;
+
   return {
     ...state.context,
 
-    lastUserMessage:
-      message,
+    lastUserMessage: message,
 
     /*
-     * Preserve the previous area and language
-     * unless the next interaction explicitly
-     * changes them.
+     * Priority: Current turn language if detected with confidence,
+     * otherwise fallback to previous state language.
+     * Always preserve previous area, intent and entities.
      */
-    language:
-      state.language,
+    language: resolvedLang,
 
-    intent:
-      state.intent,
+    intent: state.intent,
 
-    areaId:
-      state.areaId,
+    areaId: state.areaId,
 
-    areaName:
-      state.areaName,
+    areaName: state.areaName,
   };
 }
 
@@ -476,10 +475,43 @@ export function isFollowUpQuestion(
     "can i go",
     "should i go",
     "is it safe",
+    "is it safe to go there",
+    "safe to go there",
     "what if",
     "then",
     "also",
     "and",
+    // Tanglish / Tamil deictic and follow-up words
+    "anga",
+    "angae",
+    "ange",
+    "inga",
+    "ingae",
+    "inge",
+    "andha area",
+    "indha area",
+    "naalaiku",
+    "nalaiki",
+    "pogalama",
+    "polama",
+    "weather epdi",
+    "sea epdi",
+    "kadal epdi",
+    "iruka",
+    "irukku",
+    // Telugu deictic and follow-up words
+    "akkada",
+    "ikkada",
+    "repu",
+    "vellavacha",
+    "ela undi",
+    // Hindi deictic and follow-up words
+    "wahan",
+    "yahan",
+    "udhar",
+    "idhar",
+    "kal",
+    "ja sakte",
   ];
 
   return followUpPatterns.some(

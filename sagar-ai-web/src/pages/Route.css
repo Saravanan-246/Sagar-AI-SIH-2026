@@ -700,31 +700,68 @@
     overflow-y: auto;
   }
 
+  /* minmax(0, 1fr), not 1fr: a bare 1fr track can't shrink below its
+     content's min width, which pushed the whole column past a phone's
+     right edge. */
   .route-layout {
     height: auto;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Map sized to the phone's viewport: tall enough to read the route,
+     short enough that the planner and passages stay one scroll away. */
   .route-map-card {
-    min-height: 480px;
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .route-map {
+    flex: 0 0 auto;
+    height: clamp(300px, 52vh, 480px);
+    height: clamp(300px, 52dvh, 480px);
   }
 
   .route-sidebar {
+    min-width: 0;
     overflow: visible;
   }
 
   .route-options {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 600px) {
   .route-page {
-    padding: 12px;
+    padding: 12px 16px 16px;
+    overflow-x: hidden;
   }
 
+  .route-layout,
+  .route-main,
+  .route-sidebar {
+    gap: 12px;
+  }
+
+  /* Header */
   .route-header {
     flex-direction: column;
+    gap: 10px;
+  }
+
+  .route-eyebrow {
+    margin-bottom: 2px;
+    font-size: 10.5px;
+  }
+
+  .route-header-title h1 {
+    font-size: 22px;
+    line-height: 28px;
+  }
+
+  .route-header-title p {
+    max-width: 34ch;
+    font-size: 12.5px;
   }
 
   .route-header-actions {
@@ -732,19 +769,160 @@
   }
 
   .route-header-actions > * {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 40px;
+    white-space: nowrap;
   }
 
+  /* Planner: one stacked section */
   .route-planner-bar {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+    padding: 12px;
   }
 
   .route-planner-arrow {
     display: none;
   }
 
+  .route-planner-field select {
+    height: 44px;
+    font-size: 16px; /* also stops iOS zooming on focus */
+  }
+
+  .route-calc-btn {
+    width: 100%;
+    height: 44px;
+  }
+
+  /* Recommended passage */
+  .route-safest-banner {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .route-safest-body {
+    min-width: 0;
+  }
+
+  .route-safest-body strong {
+    overflow-wrap: anywhere;
+  }
+
+  .route-safest-body p {
+    line-height: 17px;
+    overflow-wrap: anywhere;
+  }
+
+  /* Map */
+  .route-map-card {
+    border-radius: 12px;
+  }
+
+  .route-map-footer {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .route-endpoint {
+    flex: 1 1 0;
+    gap: 8px;
+  }
+
+  .route-endpoint > div {
+    min-width: 0;
+  }
+
+  .route-endpoint strong {
+    max-width: 100%;
+    font-size: 12.5px;
+  }
+
+  /* Available passages: single column, comfortable to tap */
   .route-options {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .route-option {
+    min-height: 56px;
+    padding: 12px;
+  }
+
+  /* Full route names on phones instead of an ellipsis. */
+  .route-option-top {
+    align-items: flex-start;
+  }
+
+  .route-option-name strong {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 18px;
+  }
+
+  .route-radio {
+    margin-top: 3px;
+  }
+
+  .route-option-stats {
+    flex-wrap: wrap;
+    row-gap: 2px;
+    font-size: 12px;
+  }
+
+  /* Sidebar panels, now below the main content */
+  .route-panel {
+    padding: 12px 14px;
+  }
+
+  .route-panel-heading {
+    margin-bottom: 10px;
+  }
+
+  .route-stat-box {
+    min-width: 0;
+  }
+
+  .route-stat-box span {
+    font-size: 10.5px;
+  }
+
+  .route-stat-box strong {
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+
+  .route-why-list {
+    font-size: 12.5px;
+    line-height: 18px;
+  }
+
+  .route-ask-sagar-btn {
+    min-height: 44px;
+  }
+
+  .route-journey-panel .sagar-button,
+  .route-journey-controls > * {
+    min-height: 40px;
+  }
+
+  .route-journey-meta {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .route-journey-meta span {
+    overflow-wrap: anywhere;
+  }
+
+  .route-condition strong {
+    font-size: 13px;
+  }
+
+  .route-hazard,
+  .route-no-hazards {
+    font-size: 12.5px;
   }
 }
