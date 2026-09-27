@@ -281,8 +281,15 @@ export default function Chat() {
   const voiceOutput = useVoiceOutput();
   const [voiceToastVisible, setVoiceToastVisible] = useState(false);
 
+  const showFallbackVoiceNotice =
+    voiceOutput.status === "speaking" && voiceOutput.usingFallbackVoice;
+
   useEffect(() => {
-    if (voiceOutput.status !== "error" && voiceOutput.status !== "unavailable") {
+    if (
+      voiceOutput.status !== "error" &&
+      voiceOutput.status !== "unavailable" &&
+      !showFallbackVoiceNotice
+    ) {
       return;
     }
 
@@ -293,12 +300,14 @@ export default function Chat() {
     }, 5000);
 
     return () => window.clearTimeout(timer);
-  }, [voiceOutput.status]);
+  }, [voiceOutput.status, showFallbackVoiceNotice]);
 
   const voiceToastMessage =
     voiceOutput.status === "unavailable"
       ? "No voice available for this language on this device — showing text only."
-      : "Voice playback unavailable on this device.";
+      : showFallbackVoiceNotice
+        ? "No native voice for this language on this device — reading with an English voice."
+        : "Voice playback unavailable on this device.";
 
   // The conversation's own rolling language, not the static app-wide
   // preference above - updated after every assistant reply from the
@@ -324,6 +333,8 @@ export default function Chat() {
       }),
     [selectedAreaId, currentLocation, conversationLanguage],
   );
+
+  const requestSeqRef = useRef(0);
 
   const handleVoiceTranscript = (transcript: string) => {
     setInput(transcript);
@@ -504,7 +515,16 @@ export default function Chat() {
 
     setInput("");
 
+    // A new question supersedes whatever Sagar was saying, and only the
+    // reply to the latest request may be spoken.
+    voiceOutput.stop();
+    const requestId = ++requestSeqRef.current;
+
     const reply = await sendMessage(text);
+
+    if (requestId !== requestSeqRef.current) {
+      return;
+    }
 
     // Chat language lock: the backend independently detects language
     // fresh from each message's own text (never a client-supplied
@@ -608,6 +628,7 @@ export default function Chat() {
     clearConversation();
     setInput("");
     setCurrentChatId(null);
+    requestSeqRef.current += 1;
     voiceOutput.stop();
     voiceInput.cancel();
     setAutoDetectedLanguage(language);
@@ -646,6 +667,7 @@ export default function Chat() {
 
     setCurrentChatId(saved.id);
     setInput("");
+    requestSeqRef.current += 1;
     voiceOutput.stop();
     setMobileSidebarOpen(false);
   };

@@ -2,35 +2,77 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type VoiceOutputStatus = "idle" | "speaking" | "paused" | "error" | "unavailable";
 
-/** Whether the browser has registered ANY voice whose lang matches the
- * requested one, by primary subtag (e.g. "ta" matches "ta-IN"). Voices
- * load asynchronously in some browsers, so an empty list here can mean
- * "not loaded yet" as well as "genuinely none" - callers treat this as
- * a best-effort check, not a hard guarantee, and still let speak()
- * attempt synthesis regardless (onerror is the authoritative signal). */
-function hasVoiceFor(language: string): boolean {
+export type VoiceMatch =
+  | { kind: "native"; voice: SpeechSynthesisVoice | null; lang: string }
+  | { kind: "fallback"; voice: SpeechSynthesisVoice; lang: string }
+  | { kind: "none" };
+
+function getVoices(): SpeechSynthesisVoice[] {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-    return false;
+    return [];
   }
-
-  const voices = window.speechSynthesis.getVoices();
-  if (voices.length === 0) {
-    // Voice list not loaded yet on this browser - don't claim
-    // "unavailable" from an empty list that's simply not ready.
-    return true;
-  }
-
-  const primary = language.split("-")[0]?.toLowerCase();
-  return voices.some((voice) => voice.lang.toLowerCase().startsWith(primary ?? ""));
+  return window.speechSynthesis.getVoices();
 }
 
-/** Markdown markers would otherwise be read out literally
- * ("asterisk asterisk…"). Only strips syntax - never words. */
-function toSpeakableText(text: string): string {
+const normLang = (lang: string) => lang.replace("_", "-").toLowerCase();
+
+/**
+ * Picks the best real voice the device has for `locale`:
+ *   1. exact locale (ta-IN), preferring a local voice
+ *   2. same language, any region (ta-LK)
+ *   3. for Latin-script text only (English, Tanglish, Hinglish) - an
+ *      Indian-English then any English voice, which reads romanised
+ *      words sensibly. Native-script text is never handed to an
+ *      English voice: it would be skipped or spelled out.
+ * An empty voice list means "not loaded yet", so synthesis is still
+ * attempted with just `lang` set and onerror stays authoritative.
+ */
+export function selectVoice(
+  locale: string,
+  text: string,
+  voices: SpeechSynthesisVoice[] = getVoices(),
+): VoiceMatch {
+  if (voices.length === 0) {
+    return { kind: "native", voice: null, lang: locale };
+  }
+
+  const wanted = normLang(locale);
+  const primary = wanted.split("-")[0];
+  const byPreference = (list: SpeechSynthesisVoice[]) =>
+    [...list].sort((a, b) => Number(b.localService) - Number(a.localService))[0];
+
+  const exact = voices.filter((voice) => normLang(voice.lang) === wanted);
+  if (exact.length) return { kind: "native", voice: byPreference(exact), lang: locale };
+
+  const sameLanguage = voices.filter((voice) => normLang(voice.lang).startsWith(`${primary}-`) || normLang(voice.lang) === primary);
+  if (sameLanguage.length) {
+    const voice = byPreference(sameLanguage);
+    return { kind: "native", voice, lang: voice.lang };
+  }
+
+  const isLatinText = !/[ऀ-෿]/.test(text);
+  if (isLatinText) {
+    const english =
+      voices.filter((voice) => normLang(voice.lang) === "en-in").concat(
+        voices.filter((voice) => normLang(voice.lang).startsWith("en")),
+      );
+    if (english.length) return { kind: "fallback", voice: english[0], lang: english[0].lang };
+  }
+
+  return { kind: "none" };
+}
+
+/** Markdown and screen-only content would otherwise be read out
+ * literally ("asterisk asterisk", full URLs, table pipes, "Sources:"
+ * dumps). Only strips presentation - never the answer's words. */
+export function toSpeakableText(text: string): string {
   return text
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/^\s*\|.*\|\s*$/gm, " ")
+    .replace(/^\s*(sources?|evidence|data sources?)\s*:.*$/gim, " ")
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s*[-*•]\s+/gm, "")
     .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, "$1")
@@ -75,6 +117,7 @@ function splitIntoChunks(text: string): string[] {
 export function useVoiceOutput() {
   const [status, setStatus] = useState<VoiceOutputStatus>("idle");
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [usingFallbackVoice, setUsingFallbackVoice] = useState(false);
 
   // Identifies the active speak() call; events from a cancelled call
   // (which fire asynchronously after cancel()) are ignored.
@@ -99,27 +142,32 @@ export function useVoiceOutput() {
         return;
       }
 
+      // A new reply always replaces the one being spoken - never two
+      // answers overlapping or an old one finishing after a new ask.
       const session = ++sessionRef.current;
       window.speechSynthesis.cancel();
 
       const language = options.language ?? "en-IN";
+      const match = selectVoice(language, speakable);
 
-      // A real, honest check - never silently attempts to speak Tamil
-      // with the browser's only (English) voice and pretend it worked.
-      // Text stays available regardless; this only governs whether we
-      // attempt audio.
-      if (!hasVoiceFor(language)) {
+      // Honest: no voice on this device can read this script, so the
+      // text stays on screen and the caller shows a notice.
+      if (match.kind === "none") {
+        utterancesRef.current = [];
         setStatus("unavailable");
         setSpeakingId(null);
         return;
       }
+
+      setUsingFallbackVoice(match.kind === "fallback");
 
       const chunks = splitIntoChunks(speakable);
       const isCurrent = () => sessionRef.current === session;
 
       utterancesRef.current = chunks.map((chunk, index) => {
         const utterance = new SpeechSynthesisUtterance(chunk);
-        utterance.lang = language;
+        utterance.lang = match.lang;
+        if (match.voice) utterance.voice = match.voice;
         utterance.rate = 1;
 
         if (index === 0) {
@@ -189,6 +237,18 @@ export function useVoiceOutput() {
     setSpeakingId(null);
   }, [isSupported]);
 
+  // Voices load asynchronously (Chrome fills the list after first
+  // paint); listening keeps getVoices() warm so the next speak() sees
+  // the real list instead of an empty one.
+  useEffect(() => {
+    if (!isSupported) return;
+    const synth = window.speechSynthesis;
+    const warm = () => synth.getVoices();
+    warm();
+    synth.addEventListener?.("voiceschanged", warm);
+    return () => synth.removeEventListener?.("voiceschanged", warm);
+  }, [isSupported]);
+
   useEffect(() => {
     return () => {
       if (isSupported) {
@@ -201,6 +261,7 @@ export function useVoiceOutput() {
   return {
     status,
     speakingId,
+    usingFallbackVoice,
     isSupported,
     speak,
     pause,

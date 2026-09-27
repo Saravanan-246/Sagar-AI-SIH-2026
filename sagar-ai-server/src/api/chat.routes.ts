@@ -15,7 +15,7 @@ import {
   classifyWithAi,
   type ConversationTurn,
 } from "../services/ai/intentClassifier";
-import { analyzeIntent, detectQueryLanguage, detectLanguageWithMetadata } from "../services/ai/intent";
+import { analyzeIntent, detectQueryLanguage, resolveTurnLanguage } from "../services/ai/intent";
 import { narrateResponse, narrateGeneralReply } from "../services/ai/responseNarrator";
 import { buildDeterministicAnswer } from "../services/ai/fallbackNarrator";
 import { isLlmEnabled } from "../services/llm/llmProvider";
@@ -849,25 +849,12 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
    * 4. Default fallback language
    * Never let turn 1 lock the language permanently.
    */
-  const turnLangMeta = detectLanguageWithMetadata(input.message);
-
-  const recentHistoryLanguage = [...history]
-    .reverse()
-    .map((turn) => detectLanguageWithMetadata(turn.text).language)
-    .find((lang) => lang !== "en");
-
-  let turnLanguage: ChatLanguage = "en";
-  if (turnLangMeta.confidence >= 0.6) {
-    turnLanguage = turnLangMeta.language as ChatLanguage;
-  } else if (classification?.language) {
-    turnLanguage = classification.language as ChatLanguage;
-  } else if (recentHistoryLanguage) {
-    turnLanguage = recentHistoryLanguage as ChatLanguage;
-  } else if (input.language) {
-    turnLanguage = input.language as ChatLanguage;
-  } else {
-    turnLanguage = "en";
-  }
+  const turnLanguage = resolveTurnLanguage(
+    input.message,
+    history.map((turn) => turn.text),
+    (input.language as ChatLanguage | undefined) ?? "en",
+    classification?.language as ChatLanguage | undefined,
+  ) as ChatLanguage;
 
   const gateLanguage: ChatLanguage = turnLanguage;
 

@@ -59,6 +59,35 @@ interface UseVoiceInputOptions {
   onResult: (transcript: string) => void;
 }
 
+/** A transcript worth sending: has at least one letter in any script
+ * and is not just recognizer noise ("uh", "hmm", punctuation). */
+export function isUsableTranscript(transcript: string): boolean {
+  const text = transcript.trim();
+  if (!/\p{L}/u.test(text)) return false;
+  return !/^(u+h+|u+m+|h+m+|a+h+|e+r+)[.!?]*$/i.test(text);
+}
+
+/** Some engines (notably Chrome on Android) report the same final
+ * phrase more than once; a repeat inside this window is dropped. */
+const DUPLICATE_WINDOW_MS = 2500;
+
+export type DeliveredTranscript = { text: string; at: number };
+
+/** Whether a final transcript should be sent to Sagar, given the last
+ * one that was. */
+export function shouldDeliverTranscript(
+  text: string,
+  last: DeliveredTranscript | null,
+  now: number,
+): boolean {
+  if (!isUsableTranscript(text)) return false;
+  return !(
+    last !== null &&
+    last.text.toLowerCase() === text.toLowerCase() &&
+    now - last.at < DUPLICATE_WINDOW_MS
+  );
+}
+
 function getSpeechRecognitionCtor(): (new () => any) | null {
   if (typeof window === "undefined") {
     return null;
@@ -118,7 +147,11 @@ export function useVoiceInput({
 
   const recognitionRef = useRef<any>(null);
   const onResultRef = useRef(onResult);
-  onResultRef.current = onResult;
+  const lastDeliveredRef = useRef<DeliveredTranscript | null>(null);
+
+  useEffect(() => {
+    onResultRef.current = onResult;
+  }, [onResult]);
 
   const blockedReason = unavailableReason();
   const isSupported = blockedReason === null;
@@ -159,6 +192,8 @@ export function useVoiceInput({
 
     // Every handler checks it still belongs to the active session.
     const isCurrent = () => recognitionRef.current === recognition;
+    // One recognition session hands over at most one final transcript.
+    let delivered = false;
 
     recognition.onstart = () => {
       if (!isCurrent()) return;
@@ -184,13 +219,27 @@ export function useVoiceInput({
         }
       }
 
-      if (finalTranscript.trim()) {
-        setInterimTranscript("");
-        setStatus("ready");
-        onResultRef.current(finalTranscript.trim());
-      } else {
-        setInterimTranscript(interim);
+      if (!finalTranscript.trim()) {
+        if (!delivered) setInterimTranscript(interim);
+        return;
       }
+
+      if (delivered) return;
+      delivered = true;
+      setInterimTranscript("");
+
+      const text = finalTranscript.trim().replace(/\s+/g, " ");
+      const now = Date.now();
+
+      if (!shouldDeliverTranscript(text, lastDeliveredRef.current, now)) {
+        // Nothing worth sending - end quietly, as if nothing was heard.
+        setStatus("idle");
+        return;
+      }
+
+      lastDeliveredRef.current = { text, at: now };
+      setStatus("ready");
+      onResultRef.current(text);
     };
 
     // Fires once the API detects the user has stopped talking, before

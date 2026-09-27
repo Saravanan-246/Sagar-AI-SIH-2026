@@ -1,3 +1,5 @@
+import { withSemanticHints } from "./semanticNormalizer";
+
 export type SupportedLanguage =
   | "en"
   | "ta"
@@ -138,6 +140,9 @@ const rules: IntentRule[] = [
       "navigation",
       "navigate",
       "safest route",
+      "which route",
+      "route is safer",
+      "safer route",
       "safe route",
       "shortest route",
       "alternative route",
@@ -533,7 +538,9 @@ function detectIntent(
   const scores = rules
     .map((rule) => ({
       intent: rule.intent,
-      score: scoreIntent(message, rule),
+      // Raw wording plus canonical English hints, so code-switched
+      // phrasing ("Naalaiku pogalama?") scores like its meaning.
+      score: scoreIntent(withSemanticHints(message), rule),
     }))
     .sort((a, b) => b.score - a.score);
 
@@ -588,5 +595,6 @@ export function detectQueryIntent(
 }
 export {
   detectLanguageWithMetadata,
+  resolveTurnLanguage,
   type LanguageDetectionResult,
 } from "./languageDetector";
