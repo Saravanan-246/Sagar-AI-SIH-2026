@@ -8,6 +8,45 @@ export type ChatLanguage =
   | "kn"
   | "hi";
 
+/**
+ * How the user mixed languages in a turn - never shown to the user,
+ * only used to shape the reply and pick a voice.
+ *   native ..... one language in its own script (or plain English)
+ *   mixed ...... native script with English technical words
+ *                ("இந்த route safe ah? weather எப்படி?")
+ *   tanglish ... Tamil written in Latin script ("weather epdi iruku?")
+ *   hinglish ... Hindi written in Latin script ("weather kaisa hai?")
+ *   romanized .. another Indian language in Latin script
+ */
+export type ChatLanguageStyle =
+  | "native"
+  | "mixed"
+  | "tanglish"
+  | "hinglish"
+  | "romanized";
+
+/**
+ * The single language decision for one request. Built once, before
+ * intent detection, and carried unchanged through the agents, the
+ * narrator and back to the client, so the text reply and the spoken
+ * reply can never drift into different languages.
+ */
+export interface LanguageContext {
+  /** Dominant conversational language - the reply is written in this. */
+  language: ChatLanguage;
+  style: ChatLanguageStyle;
+  /** Script the user wrote in. */
+  script: "latin" | "native" | "mixed";
+  confidence: number;
+  /** Where the decision came from: the message itself, the AI
+   * classifier, earlier turns, the caller's fallback, or the client
+   * pinning it for a follow-up it sent on the user's behalf. */
+  source: "message" | "classifier" | "history" | "fallback" | "client";
+  /** BCP-47 regional locale for speech (e.g. "ta-IN"); the client
+   * still checks which voices the device actually has. */
+  locale: string;
+}
+
 export type ChatIntent =
   | "marine_conditions"
   | "safety"

@@ -84,6 +84,24 @@ export function isLlmEnabled(): boolean {
   return getLlmProvider().isEnabled();
 }
 
+// Models trained mainly on code. Their Tamil/Hindi output reads as
+// fluent script but often means something else entirely.
+const CODE_SPECIALISED_MODEL = /coder|codellama|starcoder|codegemma|codestral|deepseek-code/i;
+
+/**
+ * True when the configured LLM may write non-English replies (see
+ * config.llm.multilingualNarration). English narration is unaffected.
+ */
+export function supportsMultilingualNarration(): boolean {
+  if (!isLlmEnabled()) return false;
+
+  const mode = config.llm.multilingualNarration;
+  if (mode !== "auto") return mode === "on";
+
+  const provider = getLlmProvider();
+  return provider.name === "openrouter" || !CODE_SPECIALISED_MODEL.test(provider.model);
+}
+
 export async function requestLlmCompletion(
   messages: ChatCompletionMessage[],
   options: LlmCompletionOptions = {}

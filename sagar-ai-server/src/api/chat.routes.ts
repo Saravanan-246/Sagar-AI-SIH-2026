@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 
 import { runAgentOrchestrator } from "../services/agents/agentOrchestrator";
@@ -15,10 +15,26 @@ import {
   classifyWithAi,
   type ConversationTurn,
 } from "../services/ai/intentClassifier";
-import { analyzeIntent, detectQueryLanguage, resolveTurnLanguage } from "../services/ai/intent";
+import {
+  analyzeIntent,
+  pinnedLanguageContext,
+  resolveLanguageContext,
+} from "../services/ai/intent";
 import { narrateResponse, narrateGeneralReply } from "../services/ai/responseNarrator";
-import { buildDeterministicAnswer } from "../services/ai/fallbackNarrator";
-import { isLlmEnabled } from "../services/llm/llmProvider";
+import {
+  buildDeterministicAnswer,
+  extractMarineReadings,
+} from "../services/ai/fallbackNarrator";
+import { getRouteById } from "../services/routes/routeService";
+import { config } from "../config";
+import { describeDecisionChanges } from "../services/ai/decisionNarrator";
+import {
+  buildConversationalReply,
+  detectConversationalIntent,
+  isDecisionChangeQuestion,
+  requestedReplyLanguage,
+} from "../services/ai/conversationalIntent";
+import { isLlmEnabled, supportsMultilingualNarration } from "../services/llm/llmProvider";
 import { asyncHandler } from "../middleware/validate";
 import {
   buildAgentRequest,
@@ -33,7 +49,7 @@ import {
   type StructuredSagarResponse,
 } from "./responseShaper";
 
-import type { ChatIntent, ChatLanguage } from "../types/chat";
+import type { ChatIntent, ChatLanguage, LanguageContext } from "../types/chat";
 import type { RoutePlan } from "../types/route";
 
 const languageEnum = z.enum(["en", "ta", "te", "ml", "kn", "hi"]);
@@ -51,6 +67,14 @@ const chatInputSchema = z.object({
   latitude: z.coerce.number().optional(),
   longitude: z.coerce.number().optional(),
   history: z.array(historyTurnSchema).max(8).optional(),
+  /** A configured route the user is looking at (e.g. from Home or the
+   * Route page), so "is my route safe?" answers about that route. */
+  routeId: z.string().trim().max(120).optional(),
+  /** Pins the reply language for a request the client sends on the
+   * user's behalf (a follow-up chip), instead of detecting it from
+   * that request's own (English) text. */
+  replyLanguage: languageEnum.optional(),
+  replyStyle: z.enum(["native", "mixed", "tanglish", "hinglish", "romanized"]).optional(),
 });
 
 type ChatInput = z.infer<typeof chatInputSchema>;
@@ -99,6 +123,9 @@ async function timed<T>(
   sink.marks.push({ label, ms: Math.round((performance.now() - start) * 10) / 10 });
   return result;
 }
+
+// "route" in the languages Sagar answers in (romanised and native).
+const ROUTE_MENTION_PATTERN = /\b(?:route|routes|raasta|rasta|vazhi|paadhai)\b|வழி|பாதை|रास्ता|रूट|मार्ग/i;
 
 // Deterministic "safest route from A to B" parsing - cheap, no AI call needed.
 const FROM_TO_PATTERN = /\bfrom\s+(.+?)\s+to\s+(.+?)(?:[.?!]|$)/i;
@@ -318,20 +345,38 @@ function applySafetyAnswer(shaped: StructuredSagarResponse): boolean {
   return typeof shaped.riskScore === "number" && Boolean(shaped.riskLevel);
 }
 
-function applyAlertsAnswer(shaped: StructuredSagarResponse): boolean {
+const ALERT_SEVERITY_ORDER: Record<string, number> = { critical: 4, high: 3, moderate: 2, low: 1 };
+
+function mostSevereAlert<T extends { severity: string }>(alerts: T[]): T {
+  return [...alerts].sort(
+    (a, b) => (ALERT_SEVERITY_ORDER[b.severity] ?? 0) - (ALERT_SEVERITY_ORDER[a.severity] ?? 0)
+  )[0];
+}
+
+/** One sentence naming the active alerts and the most severe one. */
+function describeActiveAlerts(shaped: StructuredSagarResponse): string | null {
   const alerts = shaped.alerts;
 
   if (!alerts || alerts.length === 0) {
+    return null;
+  }
+
+  const top = mostSevereAlert(alerts);
+  const area = shaped.affectedArea?.name;
+
+  return `${alerts.length} active alert${alerts.length === 1 ? "" : "s"}${area ? ` near ${area}` : ""}, the most severe being "${top.title}" (${top.severity}).`;
+}
+
+function applyAlertsAnswer(shaped: StructuredSagarResponse): boolean {
+  const situation = describeActiveAlerts(shaped);
+
+  if (!situation || !shaped.alerts) {
     return false;
   }
 
-  const severityOrder: Record<string, number> = { critical: 4, high: 3, moderate: 2, low: 1 };
-  const top = [...alerts].sort(
-    (a, b) => (severityOrder[b.severity] ?? 0) - (severityOrder[a.severity] ?? 0)
-  )[0];
-  const area = shaped.affectedArea?.name;
+  const top = mostSevereAlert(shaped.alerts);
 
-  shaped.situation = `${alerts.length} active alert${alerts.length === 1 ? "" : "s"}${area ? ` near ${area}` : ""}, the most severe being "${top.title}" (${top.severity}).`;
+  shaped.situation = situation;
   shaped.recommendation = top.recommendation;
   shaped.answer = `${shaped.situation} ${shaped.recommendation}`.trim();
 
@@ -768,7 +813,7 @@ function detectMissingRouteEndpoints(
 function buildGateResponse(
   status: "unsupported" | "clarification_needed",
   intent: string,
-  language: ChatLanguage,
+  languageContext: LanguageContext,
   answer: string,
   needs?: ChatClarificationNeed
 ): StructuredSagarResponse {
@@ -776,7 +821,8 @@ function buildGateResponse(
     requestId: randomUUID(),
     status,
     intent,
-    language,
+    language: languageContext.language,
+    languageContext,
     answer,
     timestamp: new Date().toISOString(),
     dataStatus: buildDataStatus(),
@@ -784,9 +830,79 @@ function buildGateResponse(
   };
 }
 
-async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
+/** Which path a request took - development logging and tests only. */
+export interface ChatTrace {
+  path: "conversational" | "decision" | "gate" | "pipeline";
+}
+
+async function handleChat(
+  input: ChatInput,
+  debugTiming?: DebugTimingSink,
+  trace: ChatTrace = { path: "gate" }
+) {
   const requestStart = performance.now();
   const history: ConversationTurn[] = input.history ?? [];
+  const userTurns = history.filter((turn) => turn.role === "user").map((turn) => turn.text);
+
+  /*
+   * Deterministic language decision - script and word markers only, no
+   * LLM. Every path below starts from it; the AI classifier can refine
+   * it later only when this detection was not confident.
+   */
+  const baseLanguageContext: LanguageContext = input.replyLanguage
+    ? pinnedLanguageContext(input.replyLanguage, input.replyStyle)
+    : resolveLanguageContext(input.message, userTurns, input.language ?? "en");
+
+  /*
+   * FAST PATH: greetings, thanks, "what can you do?" and language
+   * capability questions ("Can you speak Tamil?") need no marine data.
+   * They are answered here, before any LLM call, area resolution or
+   * agent run - milliseconds instead of the full pipeline. Anything
+   * naming a marine topic never matches (see conversationalIntent.ts).
+   */
+  const conversational = detectConversationalIntent(input.message);
+
+  if (conversational) {
+    trace.path = "conversational";
+    const reply = buildConversationalReply(conversational, baseLanguageContext, userTurns.length);
+    // "Say something in Tamil" is answered in Tamil - the reply carries
+    // that language so it is spoken with a Tamil voice.
+    const replyContext = reply.replyLanguage
+      ? pinnedLanguageContext(reply.replyLanguage.language, reply.replyLanguage.style)
+      : baseLanguageContext;
+
+    return {
+      requestId: randomUUID(),
+      status: "success",
+      intent: conversational.intent,
+      language: replyContext.language,
+      languageContext: replyContext,
+      answer: reply.answer,
+      ...(reply.requestedLanguage ? { requestedLanguage: reply.requestedLanguage } : {}),
+      timestamp: new Date().toISOString(),
+      dataStatus: buildDataStatus(),
+    } satisfies StructuredSagarResponse;
+  }
+
+  // "What changed since my last decision?" - answered from the decision
+  // store's own audit trail. Deterministic, so it also runs before any
+  // LLM call or area gating (a committed decision carries its own route).
+  if (isDecisionChangeQuestion(input.message) && !detectWhatIf(input.message)) {
+    trace.path = "decision";
+    const decisionAnswer = describeDecisionChanges(baseLanguageContext);
+
+    return {
+      requestId: randomUUID(),
+      status: "success",
+      intent: "decision",
+      language: baseLanguageContext.language,
+      languageContext: baseLanguageContext,
+      answer: decisionAnswer.answer,
+      keyFactors: decisionAnswer.keyFactors,
+      timestamp: new Date().toISOString(),
+      dataStatus: buildDataStatus(),
+    } satisfies StructuredSagarResponse;
+  }
 
   const deterministicAnalysis = analyzeIntent(input.message);
   const deterministicIntent = deterministicAnalysis.intent;
@@ -865,15 +981,30 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
    * 3. Recent conversation language (fallback if current turn is ambiguous / low confidence)
    * 4. Default fallback language
    * Never let turn 1 lock the language permanently.
+   *
+   * The result is the single language decision for this request: it
+   * travels with the reply (languageContext) so the narrator, the
+   * fallback templates and the client's voice all use the same one.
+   * Only the user's own turns count as history - a reply Sagar had to
+   * give in English must not pull the next ambiguous turn to English.
    */
-  const turnLanguage = resolveTurnLanguage(
-    input.message,
-    history.map((turn) => turn.text),
-    (input.language as ChatLanguage | undefined) ?? "en",
-    classification?.language as ChatLanguage | undefined,
-  ) as ChatLanguage;
+  // "Tell me the sea condition in Tamil" - an explicit reply language
+  // in the question itself wins over detection.
+  const askedReplyLanguage = input.replyLanguage ? null : requestedReplyLanguage(input.message);
+
+  const languageContext: LanguageContext = askedReplyLanguage
+    ? pinnedLanguageContext(askedReplyLanguage.language, askedReplyLanguage.style)
+    : classification?.language && baseLanguageContext.source !== "message" && !input.replyLanguage
+      ? resolveLanguageContext(input.message, userTurns, input.language ?? "en", classification.language)
+      : baseLanguageContext;
+  const turnLanguage: ChatLanguage = languageContext.language;
 
   const gateLanguage: ChatLanguage = turnLanguage;
+
+  // English narration works on any configured model; other languages
+  // only on a model trusted to write them (see config.llm).
+  const canNarrateInUserLanguage =
+    languageContext.language === "en" || supportsMultilingualNarration();
 
   // A configured area named in this message, or (failing that) in the
   // conversation history (including previous assistant replies) -
@@ -906,7 +1037,20 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
         : deterministicIntent
   ) as ChatIntent;
 
+  /*
+   * The configured route the user was looking at when they asked (Home
+   * or the Route page). Only used when this message is actually about a
+   * route - "is my route safe?", "indha route safe ah?" - never to turn
+   * an unrelated question into a route answer.
+   */
+  const contextRoute =
+    input.routeId &&
+    (effectiveIntent === "route" || ROUTE_MENTION_PATTERN.test(input.message))
+      ? (getRouteById(input.routeId) ?? null)
+      : null;
+
   const hasExplicitLocation = Boolean(
+    contextRoute ||
     input.areaId ||
       input.areaName ||
       classification?.areaHint ||
@@ -952,7 +1096,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     return buildGateResponse(
       "clarification_needed",
       effectiveIntent,
-      gateLanguage,
+      languageContext,
       OUT_OF_COVERAGE_CLARIFICATION[gateLanguage] ??
         OUT_OF_COVERAGE_CLARIFICATION.en,
       { kind: "location_out_of_coverage", missing: ["location"] }
@@ -1009,12 +1153,12 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     }
 
     const conversational =
-      isLlmEnabled() && !isCasualOrFiller
+      isLlmEnabled() && !isCasualOrFiller && canNarrateInUserLanguage
         ? await timed(debugTiming, "narrateGeneralReply", () =>
             narrateGeneralReply({
               userMessage: input.message,
               recentContext,
-              language: gateLanguage,
+              languageContext,
               isUnclear,
             }, remainingLlmBudget(requestStart)).catch(() => null)
           )
@@ -1028,7 +1172,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
           ? (UNCLEAR_REPLY[gateLanguage] ?? UNCLEAR_REPLY.en)
           : (UNSUPPORTED_REPLY[gateLanguage] ?? UNSUPPORTED_REPLY.en));
 
-    const gateResponse = buildGateResponse("unsupported", "general", gateLanguage, reply);
+    const gateResponse = buildGateResponse("unsupported", "general", languageContext, reply);
 
     if (debugTiming) {
       (gateResponse as StructuredSagarResponse & { _timing?: unknown })._timing = {
@@ -1045,6 +1189,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
   // top-ranked route in the whole dataset happens to be.
   if (
     effectiveIntent === "route" &&
+    !contextRoute &&
     !parseFromToRoute(input.message) &&
     !mentionedArea
   ) {
@@ -1060,7 +1205,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     return buildGateResponse(
       "clarification_needed",
       "route",
-      gateLanguage,
+      languageContext,
       ROUTE_CLARIFICATION[which][gateLanguage] ??
         ROUTE_CLARIFICATION[which].en,
       { kind: "route_endpoints", missing }
@@ -1078,7 +1223,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     return buildGateResponse(
       "clarification_needed",
       effectiveIntent,
-      gateLanguage,
+      languageContext,
       LOCATION_CLARIFICATION[gateLanguage] ?? LOCATION_CLARIFICATION.en,
       { kind: "location", missing: ["location"] }
     );
@@ -1106,6 +1251,8 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     };
   }
 
+  trace.path = "pipeline";
+
   const pipeline = await timed(debugTiming, "runAgentOrchestrator", () =>
     runAgentOrchestrator(baseRequest)
   );
@@ -1117,6 +1264,8 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     resolvedRoute:
       explicitRoute.kind === "resolved"
         ? explicitRoute.route
+        : explicitRoute.kind === "none" && contextRoute
+          ? contextRoute
         : explicitRoute.kind === "unsupported"
           ? null
           : undefined,
@@ -1193,6 +1342,7 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
 
   const resolvedLanguage = turnLanguage;
   shaped.language = turnLanguage;
+  shaped.languageContext = languageContext;
 
   if (explicitRoute.kind === "unsupported") {
     // An explicit "from X to Y" request where X/Y aren't configured
@@ -1229,6 +1379,12 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
 
   if (shaped.route) {
     answerFinalizedDeterministically = applyRouteAnswer(shaped);
+
+    // "Any alerts on my route?" - the route verdict plus the alerts.
+    if (shaped.intent === "alerts") {
+      const alertsSentence = describeActiveAlerts(shaped);
+      if (alertsSentence) shaped.answer = `${shaped.answer} ${alertsSentence}`;
+    }
   }
 
   /*
@@ -1304,12 +1460,30 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
    * agent text without a dedicated apply*Answer above, where the LLM's
    * plain-language phrasing (vs. "Combined risk score: 84/100...") is
    * the whole point.
+   *
+   * LANGUAGE: every deterministic answer above is composed in English,
+   * so the skip only applies to English turns. For any other language
+   * the same verified answer is handed to the narrator to be re-voiced
+   * in the user's language and style (Tamil, Tanglish, Hindi...) - the
+   * LLM only changes the words, the guard rejects any change to the
+   * facts or the language, and the fact-built templates below cover an
+   * unavailable or rejected LLM.
    */
-  if (answerFinalizedDeterministically && isLlmEnabled()) {
+  const needsLanguageNarration = languageContext.language !== "en";
+
+  if (needsLanguageNarration && isLlmEnabled() && !canNarrateInUserLanguage) {
+    console.info("[llm] narrateResponse skipped (configured model is not enabled for multilingual narration - fact templates used)");
+  }
+
+  if (answerFinalizedDeterministically && isLlmEnabled() && !needsLanguageNarration) {
     console.info("[llm] narrateResponse skipped (answer already finalized deterministically)");
   }
 
-  if (isLlmEnabled() && !answerFinalizedDeterministically) {
+  if (
+    isLlmEnabled() &&
+    canNarrateInUserLanguage &&
+    (!answerFinalizedDeterministically || needsLanguageNarration)
+  ) {
     const routeSummary = shaped.route
       ? `${shaped.route.name}, ${shaped.route.distanceKm.toFixed(1)} km, risk ${shaped.route.risk.score}/100 (${shaped.route.risk.level}), ${shaped.route.routeDecision} - ${shaped.route.reason}`
       : undefined;
@@ -1365,7 +1539,8 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
         dataSources: shaped.dataSources,
         freshness: `${shaped.dataStatus.confidence.level.toLowerCase()} confidence - ${shaped.dataStatus.confidence.explanation}`,
         freshnessIsWarning: shaped.dataStatus.confidence.level === "LOW",
-        language: resolvedLanguage,
+        verifiedAnswer: answerFinalizedDeterministically ? shaped.answer : undefined,
+        languageContext,
       }, remainingLlmBudget(requestStart)).catch(() => null)
     );
   }
@@ -1376,11 +1551,12 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
     // The configured LLM was unavailable (disabled, unreachable,
     // timed out, out of credits, or it returned nothing usable) - the
     // existing deterministic answer is already correct and grounded,
-    // but it's only ever composed in English. For Tamil/Hindi, swap
-    // in a short template-based answer built from these same facts
-    // (no AI call, no new values) so the visible reply actually
-    // matches the language the user asked in.
-    const localized = buildDeterministicAnswer(resolvedLanguage, {
+    // but it's only ever composed in English. For Tamil/Hindi (native
+    // script or Tanglish/Hinglish), swap in a template-based answer
+    // built from these same facts - readings, hazards, route decision,
+    // freshness caveat (no AI call, no new values) - so the visible
+    // reply matches the language the user asked in.
+    const localized = buildDeterministicAnswer(languageContext, {
       intent: shaped.intent,
       areaName: shaped.affectedArea?.name,
       riskLevel: shaped.riskLevel,
@@ -1389,6 +1565,11 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
       zones: shaped.zones,
       alerts: shaped.alerts,
       whatIf: shaped.whatIf,
+      readings: extractMarineReadings(shaped.evidence),
+      keyFactors: shaped.keyFactors,
+      freshnessWarning: shaped.dataStatus.confidence.level === "LOW",
+      dataSources: shaped.dataSources,
+      confidenceLevel: shaped.dataStatus.confidence.level,
     });
 
     if (localized) {
@@ -1410,13 +1591,40 @@ async function handleChat(input: ChatInput, debugTiming?: DebugTimingSink) {
   return shaped;
 }
 
+const IS_PRODUCTION = config.nodeEnv === "production";
+
+/**
+ * Runs one chat request. In development it also logs which path the
+ * request took and how long it took, and exposes both as response
+ * headers for the automated tests - never in production.
+ */
+async function respondToChat(
+  input: ChatInput,
+  req: Request,
+  res: Response
+): Promise<void> {
+  const started = performance.now();
+  const debugTiming = req.header("x-debug-timing") === "1" ? { marks: [] } : undefined;
+  const trace: ChatTrace = { path: "gate" };
+
+  const result = await handleChat(input, debugTiming, trace);
+
+  if (!IS_PRODUCTION) {
+    const durationMs = Math.round(performance.now() - started);
+    console.info(
+      `[CHAT] intent=${result.intent} path=${trace.path} fast-path=${trace.path === "conversational" || trace.path === "decision"} duration=${durationMs}ms`
+    );
+    res.setHeader("x-sagar-path", trace.path);
+    res.setHeader("x-sagar-duration-ms", String(durationMs));
+  }
+
+  res.json(result);
+}
+
 router.post(
   "/",
   asyncHandler(async (req, res) => {
-    const input = chatInputSchema.parse(req.body);
-    const debugTiming = req.header("x-debug-timing") === "1" ? { marks: [] } : undefined;
-    const result = await handleChat(input, debugTiming);
-    res.json(result);
+    await respondToChat(chatInputSchema.parse(req.body), req, res);
   })
 );
 
@@ -1430,10 +1638,9 @@ router.get(
       areaName: req.query.areaName,
       latitude: req.query.latitude,
       longitude: req.query.longitude,
+      routeId: req.query.routeId,
     });
-    const debugTiming = req.header("x-debug-timing") === "1" ? { marks: [] } : undefined;
-    const result = await handleChat(input, debugTiming);
-    res.json(result);
+    await respondToChat(input, req, res);
   })
 );
 

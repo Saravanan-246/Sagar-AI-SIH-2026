@@ -354,6 +354,18 @@ const rules: IntentRule[] = [
       "क्या डेटा",
       "सबूत दिखाओ",
       "यह कहाँ है",
+      // Everyday "why is it risky?" phrasings (Tamil, Hindi, romanised).
+      "ஏன் ஆபத்",
+      "ஆபத்தானது ஏன்",
+      "என்ன காரணம்",
+      "जोखिम भरा क्यों",
+      "खतरनाक क्यों",
+      "क्यों खतरनाक",
+      "क्यों जोखिम",
+      "yen risk",
+      "yen aabathu",
+      "kyun risky",
+      "risky kyun",
     ],
   },
 ];
@@ -596,5 +608,7 @@ export function detectQueryIntent(
 export {
   detectLanguageWithMetadata,
   resolveTurnLanguage,
+  resolveLanguageContext,
+  pinnedLanguageContext,
   type LanguageDetectionResult,
 } from "./languageDetector";

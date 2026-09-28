@@ -1,21 +1,26 @@
 import {
   AlertTriangle,
   ArrowRight,
+  ArrowUp,
   Bot,
   Cloud,
   Compass,
   Fish,
   FlaskConical,
+  History,
+  LocateFixed,
   Map as MapIcon,
+  Mic,
   Navigation,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Square,
   Thermometer,
   Waves,
   Wind,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AppShell from "../components/layout/AppShell";
@@ -23,6 +28,7 @@ import PageContainer from "../components/layout/PageContainer";
 import Card from "../components/ui/Card";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
+import ChatMapPanel from "../components/chat/ChatMapPanel";
 import MarineConditionsPanel from "../components/marine/MarineConditionsPanel";
 import FreshnessBadge from "../components/marine/FreshnessBadge";
 import { ROUTES } from "../constants/routes";
@@ -31,24 +37,101 @@ import { useMarineConditions } from "../hooks/useMarineConditions";
 import { useMarineData } from "../hooks/useMarineData";
 import { useAlerts } from "../hooks/useAlerts";
 import { useAreaRisk } from "../hooks/useAreaRisk";
+import { useUserLocation } from "../hooks/useUserLocation";
+import { useVoiceInput } from "../hooks/useVoiceInput";
 import { describeRiskBasis } from "../utils/riskBasis";
 import { useAppStore } from "../store/appStore";
 import { alertTypeIcon, formatAlertType } from "../utils/alertPresentation";
 import { haversineDistanceKm } from "../utils/geo";
+import { micLabelsFor } from "../utils/voiceLabels";
+import { recognitionLocaleFor } from "../utils/voiceLocale";
 import { getRoutes } from "../services/routes/routeService";
+import type { ChatMapFocus } from "../utils/chatMapFocus";
 import type { MarineArea } from "../types/marine";
 
 import "./Home.css";
 
 type Severity = "low" | "moderate" | "high" | "critical";
 
-const ASK_SAGAR_PROMPTS: Array<{ icon: typeof ShieldAlert; label: string }> = [
-  { icon: ShieldAlert, label: "Is it safe to fish right now?" },
-  { icon: Waves, label: "What is changing in the sea?" },
-  { icon: Fish, label: "Which fishing zone should I inspect?" },
-  { icon: Navigation, label: "Find a safer route" },
-  { icon: AlertTriangle, label: "Why is the risk high?" },
-];
+type PromptKey = "sea" | "route" | "zones" | "routeAlerts" | "why" | "decision";
+
+const PROMPT_ICONS: Record<PromptKey, typeof ShieldAlert> = {
+  sea: Waves,
+  route: Navigation,
+  zones: Fish,
+  routeAlerts: AlertTriangle,
+  why: ShieldAlert,
+  decision: History,
+};
+
+/*
+ * Starter questions in the user's app language. Each is sent through
+ * Chat's normal pipeline exactly as if typed - the backend detects the
+ * language from the text and answers from real data, so a Tamil chip
+ * gets a Tamil answer. Wording is chosen to match the backend's intent
+ * rules in each language (see sagar-ai-server intent.ts).
+ */
+const ASK_SAGAR_PROMPTS: Record<"en" | "ta" | "hi", Record<PromptKey, string>> = {
+  en: {
+    sea: "How is the sea today?",
+    route: "Is my route safe?",
+    zones: "Show fishing zones nearby",
+    routeAlerts: "Any alerts on my route?",
+    why: "Why is this area risky?",
+    decision: "What changed since my last decision?",
+  },
+  ta: {
+    sea: "இன்று கடல் நிலைமை எப்படி இருக்கு?",
+    route: "என் route பாதுகாப்பானதா?",
+    zones: "அருகில் உள்ள மீன்பிடி பகுதிகளைக் காட்டு",
+    routeAlerts: "என் route-ல் எச்சரிக்கை ஏதாவது உள்ளதா?",
+    why: "இந்தப் பகுதி ஏன் ஆபத்தானது?",
+    decision: "என் கடைசி முடிவுக்குப் பிறகு என்ன மாறியது?",
+  },
+  hi: {
+    sea: "आज समुद्र की स्थिति कैसी है?",
+    route: "क्या मेरा रूट सुरक्षित है?",
+    zones: "पास के मछली पकड़ने के क्षेत्र दिखाओ",
+    routeAlerts: "क्या मेरे रूट पर कोई चेतावनी है?",
+    why: "यह क्षेत्र खतरनाक क्यों है?",
+    decision: "मेरे पिछले निर्णय के बाद क्या बदला?",
+  },
+};
+
+/** Beyond this, device coordinates are outside every configured area
+ * (matches the backend's COVERAGE_RADIUS_KM). */
+const COVERAGE_RADIUS_KM = 250;
+
+type AreaBasis = "selected" | "device" | "outside" | "default";
+
+/**
+ * Which configured area Home describes: the area the user picked, else
+ * the one nearest their device location (when inside coverage), else
+ * the default. Never snaps an out-of-coverage position to an area.
+ */
+function pickHomeArea(
+  areas: MarineArea[],
+  fallback: MarineArea | null,
+  selectedAreaId: string | null,
+  location: { latitude: number; longitude: number } | null
+): { area: MarineArea | null; basis: AreaBasis } {
+  const selected = selectedAreaId ? areas.find((item) => item.id === selectedAreaId) : undefined;
+  if (selected) return { area: selected, basis: "selected" };
+
+  if (location) {
+    const nearest = areas
+      .filter((item) => item.coordinates)
+      .map((item) => ({ item, km: haversineDistanceKm(location, item.coordinates) }))
+      .sort((a, b) => a.km - b.km)[0];
+
+    if (nearest && nearest.km <= COVERAGE_RADIUS_KM) {
+      return { area: nearest.item, basis: "device" };
+    }
+    return { area: fallback, basis: "outside" };
+  }
+
+  return { area: fallback, basis: "default" };
+}
 
 const COMPASS_ABBREVIATIONS: Record<string, string> = {
   north: "N",
@@ -98,8 +181,25 @@ function nearestRoute(area: MarineArea | null) {
 export default function Home() {
   const navigate = useNavigate();
   const setPendingChatPrompt = useAppStore((state) => state.setPendingChatPrompt);
+  const appLanguage = useAppStore((state) => state.language);
+  const voiceLanguageOverride = useAppStore((state) => state.voiceLanguageOverride);
+  const selectedAreaId = useAppStore((state) => state.selectedAreaId);
+  const currentLocation = useAppStore((state) => state.currentLocation);
+  const locationPermission = useAppStore((state) => state.locationPermission);
+  const { requestLocation, status: locationStatus } = useUserLocation();
 
-  const { area, loading, origin, error: marineError } = useMarineData();
+  const {
+    areas,
+    area: defaultArea,
+    loading,
+    origin,
+    error: marineError,
+  } = useMarineData();
+
+  const { area, basis: areaBasis } = useMemo(
+    () => pickHomeArea(areas, defaultArea, selectedAreaId, currentLocation),
+    [areas, defaultArea, selectedAreaId, currentLocation]
+  );
   const connectivity = useConnectivity();
   const offline = connectivity.status === "offline";
   const conditions = useMarineConditions(area, { offline });
@@ -167,15 +267,120 @@ export default function Home() {
       .slice(0, 3);
   }, [alerts]);
 
-  const handleAskSagar = (prompt: string) => {
-    setPendingChatPrompt(prompt);
+  /*
+   * Hands the question to Chat with the context Home is showing - the
+   * area and nearby route - so Chat answers about what the user is
+   * looking at. Chat sends it through its normal pipeline; the backend
+   * uses the route only when the question is about a route.
+   */
+  const handleAskSagar = (question: string, options: { spoken?: boolean } = {}) => {
+    const text = question.trim();
+    if (!text) return;
+
+    setPendingChatPrompt({
+      text,
+      areaId: area?.id,
+      routeId: route?.id,
+      spoken: options.spoken,
+    });
     navigate(ROUTES.CHAT);
   };
+
+  const [draft, setDraft] = useState("");
+
+  // The mic listens in the chosen voice language, else the app language.
+  const voiceLanguage = voiceLanguageOverride !== "auto" ? voiceLanguageOverride : appLanguage;
+  const micLabels = micLabelsFor(voiceLanguage);
+
+  const voiceInput = useVoiceInput({
+    language: recognitionLocaleFor(voiceLanguage),
+    onResult: (transcript) => handleAskSagar(transcript, { spoken: true }),
+  });
+
+  // Live interim words in the box while the user is speaking.
+  useEffect(() => {
+    if (voiceInput.status === "listening" && voiceInput.interimTranscript) {
+      setDraft(voiceInput.interimTranscript);
+    }
+  }, [voiceInput.status, voiceInput.interimTranscript]);
+
+  const isListening = voiceInput.status === "listening";
+
+  const handleMicPress = () => {
+    if (isListening) {
+      voiceInput.stop();
+      return;
+    }
+    voiceInput.retry();
+  };
+
+  const voiceStatusText =
+    voiceInput.status === "error"
+      ? micLabels.errors[voiceInput.errorReason ?? "unknown"]
+      : voiceInput.status === "listening" ||
+          voiceInput.status === "processing" ||
+          voiceInput.status === "ready"
+        ? micLabels[voiceInput.status]
+        : null;
+
+  const prompts = ASK_SAGAR_PROMPTS[appLanguage === "ta" || appLanguage === "hi" ? appLanguage : "en"];
+
+  // Map-first: the area Home describes, its nearby route and its alerts.
+  const mapFocus = useMemo<ChatMapFocus | null>(() => {
+    if (!area?.coordinates) return null;
+    return {
+      kind: "area",
+      center: area.coordinates,
+      zoom: 9,
+      highlight: { ...area.coordinates, label: area.name },
+      areaName: area.name,
+      route,
+      alerts,
+    };
+  }, [area, route, alerts]);
+
+  const sagarStatus =
+    connectivity.status === "offline"
+      ? { label: "Offline", tone: "offline" }
+      : connectivity.status === "degraded"
+        ? { label: "Limited", tone: "degraded" }
+        : { label: "Ready", tone: "ready" };
+
+  const locationNote =
+    areaBasis === "device"
+      ? "Nearest area to your location"
+      : areaBasis === "selected"
+        ? "Selected area"
+        : areaBasis === "outside"
+          ? "Your location is outside Sagar's coverage - showing the default area"
+          : null;
 
   return (
     <AppShell>
       <PageContainer className="home-page">
         <div className="home-layout">
+          {/* MARINE MAP - the area, its nearby route and active alerts */}
+          <section className="home-map-card" aria-label="Marine map">
+            <div className="home-map-canvas">
+              {mapFocus ? (
+                <ChatMapPanel variant="inline" focus={mapFocus} areas={areas} />
+              ) : (
+                <div className="home-map-placeholder">
+                  {loading ? "Loading map…" : "Map unavailable - no marine area loaded."}
+                </div>
+              )}
+            </div>
+            <div className="home-map-footer">
+              <span className="home-map-caption">
+                {route ? `Route in view: ${route.name}` : "Tap Open Marine Map for layers, zones and routes"}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.MAP)}>
+                <MapIcon size={14} />
+                Open Marine Map
+              </Button>
+            </div>
+          </section>
+
           {/* CURRENT MARINE SITUATION */}
           <Card className="home-situation-card" padding="lg">
             <div className="home-situation-top">
@@ -204,6 +409,27 @@ export default function Home() {
               <p className="home-situation-region">
                 {marineError ?? "No configured marine area could be loaded."}
               </p>
+            )}
+            {area && (
+              <div className="home-location-row">
+                {locationNote && (
+                  <span className="home-location-note">
+                    <LocateFixed size={12} />
+                    {locationNote}
+                  </span>
+                )}
+                {!currentLocation && locationPermission !== "denied" && locationPermission !== "unavailable" && (
+                  <button
+                    type="button"
+                    className="home-location-button"
+                    onClick={() => void requestLocation()}
+                    disabled={locationStatus === "requesting"}
+                  >
+                    <LocateFixed size={12} />
+                    {locationStatus === "requesting" ? "Locating…" : "Use my location"}
+                  </button>
+                )}
+              </div>
             )}
 
             <div className="home-situation-risk">
@@ -287,10 +513,6 @@ export default function Home() {
               </div>
             </div>
 
-            <Button variant="secondary" fullWidth onClick={() => navigate(ROUTES.MAP)}>
-              <MapIcon size={15} />
-              Open Marine Map
-            </Button>
           </Card>
 
           {/* ASK SAGAR */}
@@ -303,12 +525,15 @@ export default function Home() {
                 <div>
                   <div className="home-sagar-title-row">
                     <h2>Ask Sagar</h2>
-                    <span className="home-sagar-status">
+                    <span className={`home-sagar-status is-${sagarStatus.tone}`}>
                       <i />
-                      Ready
+                      {sagarStatus.label}
                     </span>
                   </div>
-                  <p>Sagar's marine reasoning assistant - routes, zones, risk, alerts.</p>
+                  <p>
+                    Type or speak in English, தமிழ், हिन्दी, Tanglish or Hinglish
+                    {area ? ` - answers use ${area.name}` : ""}.
+                  </p>
                 </div>
               </div>
 
@@ -318,18 +543,66 @@ export default function Home() {
               </Button>
             </header>
 
-            <button type="button" className="home-sagar-composer" onClick={() => navigate(ROUTES.CHAT)}>
+            <form
+              className="home-sagar-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleAskSagar(draft);
+              }}
+            >
               <Sparkles size={16} />
-              <span>Ask Sagar about sea conditions, alerts, fishing zones or routes…</span>
-            </button>
+              <input
+                type="text"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Ask about the sea, your route, alerts or fishing zones…"
+                aria-label="Ask Sagar"
+                enterKeyHint="send"
+                autoComplete="off"
+              />
+              {voiceInput.isSupported && (
+                <button
+                  type="button"
+                  className={`home-sagar-icon-button ${isListening ? "is-listening" : ""}`}
+                  onClick={handleMicPress}
+                  aria-label={isListening ? micLabels.stop : micLabels.idle}
+                  aria-pressed={isListening}
+                  title={`${isListening ? micLabels.stop : micLabels.idle} (${voiceLanguage.toUpperCase()})`}
+                >
+                  {isListening ? <Square size={14} /> : <Mic size={16} />}
+                </button>
+              )}
+              <button
+                type="submit"
+                className="home-sagar-icon-button home-sagar-send"
+                disabled={!draft.trim()}
+                aria-label="Ask Sagar"
+              >
+                <ArrowUp size={16} />
+              </button>
+            </form>
+
+            {voiceStatusText && (
+              <div
+                className={`home-voice-status ${voiceInput.status === "error" ? "is-error" : ""}`}
+                role="status"
+                aria-live="polite"
+              >
+                <i aria-hidden="true" />
+                <span>{voiceStatusText}</span>
+              </div>
+            )}
 
             <div className="home-sagar-suggestions">
-              {ASK_SAGAR_PROMPTS.map(({ icon: Icon, label }) => (
-                <button key={label} type="button" onClick={() => handleAskSagar(label)}>
-                  <Icon size={14} />
-                  <span>{label}</span>
-                </button>
-              ))}
+              {(Object.keys(prompts) as PromptKey[]).map((key) => {
+                const Icon = PROMPT_ICONS[key];
+                return (
+                  <button key={key} type="button" onClick={() => handleAskSagar(prompts[key])}>
+                    <Icon size={14} />
+                    <span>{prompts[key]}</span>
+                  </button>
+                );
+              })}
             </div>
           </Card>
 

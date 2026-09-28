@@ -536,6 +536,24 @@ export async function getDecisionState() {
   };
 }
 
+/**
+ * The decision with the most recent audit event, and that event - a
+ * read-only view for chat ("what changed since my last decision?").
+ * Never triggers a data cycle.
+ */
+export function getLatestDecisionActivity(): { decision: Decision; event: AuditEvent } | null {
+  let latest: { decision: Decision; event: AuditEvent } | null = null;
+
+  for (const decision of state.decisions) {
+    const event = decision.history[decision.history.length - 1];
+    if (event && (!latest || Date.parse(event.at) > Date.parse(latest.event.at))) {
+      latest = { decision, event };
+    }
+  }
+
+  return latest;
+}
+
 export function resetDecisions(): void {
   state = { decisions: [], snapshot: null, previousSnapshot: null, lastReport: null, sequence: 0 };
   save();

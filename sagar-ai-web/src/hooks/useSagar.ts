@@ -12,6 +12,17 @@ import { getOfflineSnapshot } from "../services/offline/offlineSnapshot";
 import { describeSnapshotAge } from "./useOfflineSync";
 import { useAppStore } from "../store/appStore";
 import { ROUTES } from "../constants/routes";
+import {
+  detectLanguageWithMetadata,
+  pinnedLanguageContext,
+  resolveLanguageContext,
+} from "../services/ai/languageDetector";
+import { isChatLanguage } from "../utils/voiceLocale";
+import {
+  buildConversationalReply,
+  detectConversationalIntent,
+} from "../services/ai/conversationalIntent";
+import type { ChatLanguageStyle, LanguageContext } from "../types/chat";
 
 import type {
   ChatMapAction,
@@ -30,6 +41,11 @@ type SagarChatMessage = {
    * language), so voice playback can match the reply instead of a static
    * app-wide setting. */
   language?: string;
+  /** Full language decision (language + style + locale) the reply was
+   * written in - voice output speaks with it. */
+  languageContext?: LanguageContext;
+  /** "Can you speak Tamil?" -> "ta", so voice input can listen for it. */
+  requestedLanguage?: string;
   /** Raw backend fields kept (beyond the trimmed ChatStructuredData) so
    * the contextual map panel can resolve real coordinates - zone/alert
    * locations and the resolved area id - without re-parsing chat text. */
@@ -42,6 +58,73 @@ type SagarChatMessage = {
 type SagarOptions = {
   language?: string;
   areaId?: string;
+  /** Configured route in view (Home / Route page) - the backend uses it
+   * only when the question is about a route. */
+  routeId?: string;
+  /** Pins the reply language for a follow-up sent on the user's behalf. */
+  replyLanguage?: string;
+  replyStyle?: ChatLanguageStyle;
+};
+
+type UiLanguage = "en" | "ta" | "hi";
+
+/** Chrome text (chips, errors) follows the reply: Tamil/Hindi script
+ * replies get Tamil/Hindi labels; English and romanised
+ * (Tanglish/Hinglish) conversations keep English labels. */
+function uiLanguageFor(
+  language?: string,
+  style?: ChatLanguageStyle
+): UiLanguage {
+  const romanised = style === "tanglish" || style === "hinglish" || style === "romanized";
+  if (!romanised && (language === "ta" || language === "hi")) return language;
+  return "en";
+}
+
+const ACTION_LABELS: Record<
+  UiLanguage,
+  {
+    viewRoute: string;
+    viewZone: string;
+    viewMap: string;
+    simulate: string;
+    why: string;
+    whatData: string;
+    openDecisions: string;
+  }
+> = {
+  en: {
+    viewRoute: "View route",
+    viewZone: "View zone",
+    viewMap: "View on map",
+    simulate: "Simulate (what if?)",
+    why: "Why this?",
+    whatData: "What data?",
+    openDecisions: "Open decisions",
+  },
+  ta: {
+    viewRoute: "பாதையைக் காண்",
+    viewZone: "மண்டலத்தைக் காண்",
+    viewMap: "வரைபடத்தில் காண்",
+    simulate: "What-if பார்",
+    why: "ஏன்?",
+    whatData: "என்ன தரவு?",
+    openDecisions: "Decisions திற",
+  },
+  hi: {
+    viewRoute: "मार्ग देखें",
+    viewZone: "क्षेत्र देखें",
+    viewMap: "नक्शे पर देखें",
+    simulate: "What-if देखें",
+    why: "क्यों?",
+    whatData: "कौन सा डेटा?",
+    openDecisions: "Decisions खोलें",
+  },
+};
+
+const CHAT_ERROR: Record<UiLanguage, string> = {
+  en: "Connection to Sagar is unavailable. Please try again.",
+  ta: "Sagar-உடன் இணைப்பு கிடைக்கவில்லை. மீண்டும் முயற்சிக்கவும்.",
+  hi: "Sagar से कनेक्शन उपलब्ध नहीं है। कृपया फिर से कोशिश करें।",
 };
 
 /**
@@ -99,6 +182,8 @@ interface AssistantReply {
   route: RoutePlan | null;
   structured?: ChatStructuredData;
   language?: string;
+  languageContext?: LanguageContext;
+  requestedLanguage?: string;
   zones?: RankedFishingZone[];
   alerts?: Alert[];
   affectedAreaId?: string;
@@ -118,6 +203,7 @@ function buildStructuredActions(
     onSimulate: () => void;
     onWhy: () => void;
     onWhatData: () => void;
+    onOpenDecisions: () => void;
     onUseMyLocation?: () => void;
     onChooseArea?: () => void;
   }
@@ -129,7 +215,9 @@ function buildStructuredActions(
    * location": retrying the same coordinates would fail the same way.
    */
   if (result.needs) {
-    const labels = CLARIFY_LABELS[result.language] ?? CLARIFY_LABELS.en;
+    const labels =
+      CLARIFY_LABELS[uiLanguageFor(result.language, result.languageContext?.style)] ??
+      CLARIFY_LABELS.en;
     const clarifyActions: ChatMapAction[] = [];
 
     if (result.needs.kind !== "location_out_of_coverage" && handlers.onUseMyLocation) {
@@ -149,6 +237,14 @@ function buildStructuredActions(
     return clarifyActions;
   }
 
+  const actionLabels =
+    ACTION_LABELS[uiLanguageFor(result.language, result.languageContext?.style)];
+
+  // A decision-status answer points to where the decision lives.
+  if (result.intent === "decision") {
+    return [{ label: actionLabels.openDecisions, onClick: handlers.onOpenDecisions }];
+  }
+
   const actions: ChatMapAction[] = [];
 
   const hasMapTarget = Boolean(
@@ -160,10 +256,10 @@ function buildStructuredActions(
 
   if (hasMapTarget) {
     const label = result.route
-      ? "View route"
+      ? actionLabels.viewRoute
       : result.zones && result.zones.length > 0
-        ? "View zone"
-        : "View on map";
+        ? actionLabels.viewZone
+        : actionLabels.viewMap;
 
     actions.push({ label, onClick: handlers.onView });
   }
@@ -176,7 +272,7 @@ function buildStructuredActions(
     (result.intent === "safety" || result.intent === "route");
 
   if (canSimulate) {
-    actions.push({ label: "Simulate (what if?)", onClick: handlers.onSimulate });
+    actions.push({ label: actionLabels.simulate, onClick: handlers.onSimulate });
   }
 
   // "Why this?" / "What data?" only make sense when there's a real
@@ -190,8 +286,8 @@ function buildStructuredActions(
       (result.alerts && result.alerts.length > 0));
 
   if (hasExplainableBasis) {
-    actions.push({ label: "Why this?", onClick: handlers.onWhy });
-    actions.push({ label: "What data?", onClick: handlers.onWhatData });
+    actions.push({ label: actionLabels.why, onClick: handlers.onWhy });
+    actions.push({ label: actionLabels.whatData, onClick: handlers.onWhatData });
   }
 
   return actions.slice(0, 4);
@@ -204,6 +300,7 @@ function buildStructuredData(
     onSimulate: () => void;
     onWhy: () => void;
     onWhatData: () => void;
+    onOpenDecisions: () => void;
     onUseMyLocation?: () => void;
     onChooseArea?: () => void;
   }
@@ -331,27 +428,23 @@ export default function useSagar(
         navigate(ROUTES.MAP);
       };
 
-      const handleSimulate = () => {
-        void sendMessageRef.current?.(
-          "What if wind speed increases by 20%?",
-          options
-        );
+      /*
+       * Follow-up chips ask a real question through this same pipeline -
+       * the backend's deterministic what-if/evidence intents answer each
+       * from data already computed for this area, no new engine. The
+       * question text is English (what those intents recognise), so the
+       * reply language is pinned to the conversation's, keeping a Tamil
+       * conversation in Tamil.
+       */
+      const followUp = (result: SagarChatResponse, question: string) => () => {
+        void sendMessageRef.current?.(question, {
+          ...options,
+          replyLanguage: result.languageContext?.language ?? result.language,
+          replyStyle: result.languageContext?.style,
+        });
       };
 
-      // Both ask a real follow-up question through this same pipeline
-      // (like "Simulate" above) - the backend's deterministic evidence
-      // intent answers each from data already computed for this area,
-      // no new engine and no LLM call.
-      const handleWhy = () => {
-        void sendMessageRef.current?.("Why is this area risky?", options);
-      };
-
-      const handleWhatData = () => {
-        void sendMessageRef.current?.(
-          "What data are you using for this decision?",
-          options
-        );
-      };
+      const handleOpenDecisions = () => navigate(ROUTES.DECISIONS);
 
       try {
         const result = await askSagarBackend(text, {
@@ -367,6 +460,9 @@ export default function useSagar(
             role: message.role,
             text: message.text,
           })),
+          routeId: options.routeId,
+          replyLanguage: options.replyLanguage,
+          replyStyle: options.replyStyle,
         });
 
         handlersRef.current.onConnectivityChange?.(true);
@@ -387,13 +483,16 @@ export default function useSagar(
           route: result.route ?? null,
           structured: buildStructuredData(result, {
             onView: handleViewOnMap(result),
-            onSimulate: handleSimulate,
-            onWhy: handleWhy,
-            onWhatData: handleWhatData,
+            onSimulate: followUp(result, "What if wind speed increases by 20%?"),
+            onWhy: followUp(result, "Why is this area risky?"),
+            onWhatData: followUp(result, "What data are you using for this decision?"),
+            onOpenDecisions: handleOpenDecisions,
             onUseMyLocation: handlersRef.current.onUseMyLocation,
             onChooseArea: handlersRef.current.onChooseArea,
           }),
           language: result.language,
+          languageContext: result.languageContext,
+          requestedLanguage: result.requestedLanguage,
           zones: result.zones,
           alerts: result.alerts,
           affectedAreaId: result.affectedArea?.id,
@@ -406,6 +505,30 @@ export default function useSagar(
           "Sagar backend is unavailable, using the offline responder:",
           backendError
         );
+
+        const userTurns = history
+          .filter((message) => message.role === "user")
+          .map((message) => message.text);
+
+        // Greetings, thanks and "Can you speak Tamil?" need no marine
+        // data, so they are answered the same way offline.
+        const conversational = detectConversationalIntent(text);
+        if (conversational) {
+          const userContext = resolveLanguageContext(text, userTurns);
+          const reply = buildConversationalReply(conversational, userContext, userTurns.length);
+          // "Say something in Tamil" is answered (and spoken) in Tamil.
+          const languageContext = reply.replyLanguage
+            ? pinnedLanguageContext(reply.replyLanguage.language, reply.replyLanguage.style)
+            : userContext;
+          return {
+            text: reply.answer,
+            route: null,
+            language: languageContext.language,
+            languageContext,
+            requestedLanguage: reply.requestedLanguage,
+            intent: conversational.intent,
+          };
+        }
 
         const local = await askSagarLocal(text, {
           language: options.language,
@@ -478,6 +601,13 @@ export default function useSagar(
           route: local.route ?? null,
           structured,
           language: local.language,
+          // Same detector the backend uses, so the offline reply is
+          // spoken with the same language/style rules.
+          languageContext: resolveLanguageContext(
+            text,
+            userTurns,
+            isChatLanguage(local.language) ? local.language : "en",
+          ),
           zones: local.zones as unknown as RankedFishingZone[] | undefined,
           alerts: undefined,
           affectedAreaId: local.areaId,
@@ -541,6 +671,8 @@ export default function useSagar(
           route: reply.route,
           structured: reply.structured,
           language: reply.language,
+          languageContext: reply.languageContext,
+          requestedLanguage: reply.requestedLanguage,
           zones: reply.zones,
           alerts: reply.alerts,
           affectedAreaId: reply.affectedAreaId,
@@ -559,9 +691,10 @@ export default function useSagar(
           err
         );
 
-        setError(
-          "Sagar could not process the request."
-        );
+        // Plain, localised wording - never the raw error, a stack trace
+        // or provider details.
+        const detected = detectLanguageWithMetadata(text);
+        setError(CHAT_ERROR[uiLanguageFor(detected.language, detected.style)]);
 
         return null;
       } finally {

@@ -185,6 +185,145 @@
   stroke-linejoin: round;
 }
 
+/* ---- Voice state line (listening / processing / speaking / error) ---- */
+
+.sagar-voice-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 820px);
+  margin: 0 auto 8px;
+  padding: 6px 10px;
+  border: 1px solid #dfe6ed;
+  border-radius: 10px;
+  background: #f6f9fb;
+  color: #263746;
+  font-size: 13px;
+  line-height: 18px;
+  box-sizing: border-box;
+}
+
+.sagar-voice-status-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8a96a3;
+}
+
+.sagar-voice-status.is-listening .sagar-voice-status-dot {
+  background: #0f766e;
+  animation: sagar-voice-pulse 1.4s ease-in-out infinite;
+}
+
+.sagar-voice-status.is-processing .sagar-voice-status-dot,
+.sagar-voice-status.is-ready .sagar-voice-status-dot {
+  background: #123b5d;
+}
+
+.sagar-voice-status.is-speaking .sagar-voice-status-dot {
+  background: #0f766e;
+}
+
+.sagar-voice-status.is-error {
+  border-color: #f3d2d2;
+  background: #fdf5f5;
+  color: #8f2626;
+}
+
+.sagar-voice-status.is-error .sagar-voice-status-dot {
+  background: #dc2626;
+}
+
+.sagar-voice-status-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.sagar-voice-status button {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid #cfd8e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #123b5d;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sagar-voice-status button:hover {
+  background: #eef3f7;
+}
+
+@keyframes sagar-voice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sagar-voice-status.is-listening .sagar-voice-status-dot {
+    animation: none;
+  }
+}
+
+/* ---- Mic listening-language badge ---- */
+
+.sagar-composer-right .sagar-composer-action {
+  position: relative;
+}
+
+.sagar-mic-language {
+  position: absolute;
+  right: 1px;
+  bottom: 2px;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 6px;
+  background: #123b5d;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 13px;
+  letter-spacing: 0.02em;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ---- Voice language picker (inside the + menu) ---- */
+
+.sagar-actions-group {
+  margin-top: 4px;
+  padding: 8px 6px 4px;
+  border-top: 1px solid #edf0f3;
+}
+
+.sagar-actions-group-title {
+  padding: 0 6px 6px;
+  color: #6b7a89;
+  font-size: 12px;
+}
+
+.sagar-voice-language-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sagar-actions-menu .sagar-voice-language-options button {
+  width: auto;
+  padding: 5px 10px;
+  border: 1px solid #d8dee6;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.sagar-actions-menu .sagar-voice-language-options button.is-selected {
+  border-color: #123b5d;
+  background: #123b5d;
+  color: #ffffff;
+}
+
 @media (max-width: 640px) {
   .sagar-input-area {
     padding: 8px 10px;

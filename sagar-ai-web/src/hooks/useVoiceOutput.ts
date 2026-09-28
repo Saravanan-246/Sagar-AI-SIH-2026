@@ -9,11 +9,27 @@ export type VoiceMatch =
   | { kind: "fallback"; voice: SpeechSynthesisVoice; lang: string }
   | { kind: "none" };
 
+/**
+ * The device's speech synthesizer, or null. Some embedded browsers
+ * expose the property without a working object, so presence of the
+ * key alone is not support - voice being unavailable must never break
+ * the text chat.
+ */
+function getSynth(): SpeechSynthesis | null {
+  if (typeof window === "undefined") return null;
+  const synth = (window as { speechSynthesis?: SpeechSynthesis | null }).speechSynthesis;
+  if (!synth || typeof synth.speak !== "function" || typeof SpeechSynthesisUtterance === "undefined") {
+    return null;
+  }
+  return synth;
+}
+
 function getVoices(): SpeechSynthesisVoice[] {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+  try {
+    return getSynth()?.getVoices() ?? [];
+  } catch {
     return [];
   }
-  return window.speechSynthesis.getVoices();
 }
 
 const normLang = (lang: string) => lang.replace("_", "-").toLowerCase();
@@ -150,8 +166,7 @@ export function useVoiceOutput() {
   const utterancesRef = useRef<SpeechSynthesisUtterance[]>([]);
   const lastSpokenRef = useRef<{ key: string; at: number } | null>(null);
 
-  const isSupported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
+  const isSupported = getSynth() !== null;
 
   const speak = useCallback(
     (text: string, options: { id?: string; language?: string } = {}) => {
@@ -161,7 +176,7 @@ export function useVoiceOutput() {
       }
 
       const language = options.language ?? "en-IN";
-      const voices = window.speechSynthesis.getVoices();
+      const voices = getVoices();
       const match = pinVoice(language, selectVoice(language, text, voices), voices);
       // Units are spelled out for the voice that will actually read it
       // (an English fallback voice reading Tanglish gets "metres").
@@ -247,8 +262,17 @@ export function useVoiceOutput() {
         return utterance;
       });
 
-      for (const utterance of utterancesRef.current) {
-        window.speechSynthesis.speak(utterance);
+      try {
+        for (const utterance of utterancesRef.current) {
+          window.speechSynthesis.speak(utterance);
+        }
+      } catch {
+        // An engine that rejects speak() leaves the text reply as the
+        // answer - reported as unavailable, never thrown into the page.
+        sessionRef.current += 1;
+        utterancesRef.current = [];
+        setStatus("unavailable");
+        setSpeakingId(null);
       }
     },
     [isSupported]
@@ -281,9 +305,9 @@ export function useVoiceOutput() {
   // paint); listening keeps getVoices() warm so the next speak() sees
   // the real list instead of an empty one.
   useEffect(() => {
-    if (!isSupported) return;
-    const synth = window.speechSynthesis;
-    const warm = () => synth.getVoices();
+    const synth = getSynth();
+    if (!synth) return;
+    const warm = () => getVoices();
     warm();
     synth.addEventListener?.("voiceschanged", warm);
     return () => synth.removeEventListener?.("voiceschanged", warm);

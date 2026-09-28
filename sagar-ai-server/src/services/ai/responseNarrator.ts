@@ -1,7 +1,7 @@
 import { requestLlmCompletion } from "../llm/llmProvider";
 import { checkNarration, sanitizeNarration } from "./narrationGuard";
 
-import type { ChatLanguage } from "../../types/chat";
+import type { ChatLanguage, LanguageContext } from "../../types/chat";
 
 const LANGUAGE_NAMES: Record<ChatLanguage, string> = {
   en: "English",
@@ -11,6 +11,53 @@ const LANGUAGE_NAMES: Record<ChatLanguage, string> = {
   kn: "Kannada",
   hi: "Hindi",
 };
+
+/*
+ * Per-style writing guidance handed to the LLM with every reply. It
+ * describes a register, never an answer - all content still comes
+ * from the verified facts.
+ */
+function styleInstruction(context: LanguageContext): string {
+  const name = LANGUAGE_NAMES[context.language] ?? "English";
+
+  switch (context.style) {
+    // Deliberately no example sentences: a model copies them verbatim,
+    // and a copied "waves are a bit high" would be an unsupported claim.
+    case "tanglish":
+      return "Tanglish - casual spoken Tamil written in English (Latin) letters, the way Tamil Nadu fishermen text each other, with English technical words kept as-is. Every sentence must be Tanglish: do not switch to Tamil script and do not write plain English sentences.";
+    case "hinglish":
+      return "Hinglish - casual spoken Hindi written in English (Latin) letters, with English technical words kept as-is. Every sentence must be Hinglish: do not switch to Devanagari and do not write plain English sentences.";
+    case "romanized":
+      return `${name} written in English (Latin) letters, casual and spoken.`;
+    case "mixed":
+      return `${name} in its own script as the base, keeping everyday English technical words (route, fishing zone, alert, risk, weather, wind, GPS, SST) in English exactly where a native speaker mixing languages would.`;
+    default:
+      return context.language === "en"
+        ? "Clean, professional, plain English."
+        : `Natural, conversational ${name} in its own script - how a local person would say it, not a word-for-word translation.`;
+  }
+}
+
+/** The language header every narration request starts with. */
+function languageHeader(context: LanguageContext, userMessage: string): string {
+  const name = LANGUAGE_NAMES[context.language] ?? "English";
+  return [
+    `USER_LANGUAGE: ${name} (${context.language})`,
+    `USER_STYLE: ${styleInstruction(context)}`,
+    `USER_MESSAGE: ${userMessage}`,
+  ].join("\n");
+}
+
+/** Token budget for 2-3 sentences. Non-Latin scripts cost several times
+ * more tokens per word, so a native-script reply gets more room rather
+ * than being cut off mid-sentence (which the guard would reject). */
+function replyTokenBudget(context: LanguageContext, base: number): number {
+  if (context.language === "en") return base;
+  if (context.script === "latin" && context.style !== "native") {
+    return Math.round(base * 1.4);
+  }
+  return base * 2 + 40;
+}
 
 export interface NarrationFacts {
   userQuestion: string;
@@ -32,7 +79,13 @@ export interface NarrationFacts {
   freshness?: string;
   /** Set when the freshness caveat is a real warning (stale/estimated). */
   freshnessIsWarning?: boolean;
-  language: ChatLanguage;
+  /**
+   * Sagar's own complete answer, already composed by the deterministic
+   * pipeline (English). When present the narrator only re-voices it in
+   * the user's language - it stays the authoritative content.
+   */
+  verifiedAnswer?: string;
+  languageContext: LanguageContext;
 }
 
 const SYSTEM_PROMPT = `You are Sagar, a marine safety assistant talking with a small-craft fisherman in coastal India. Your reply is shown in the chat and may also be read aloud.
@@ -47,6 +100,13 @@ FACTS - STRICT:
 - The facts describe current conditions, not a forecast. If they ask about tomorrow and no forecast fact is given, answer with current conditions and say so ("right now", "as of the latest reading"). Never say what conditions "will be" or are "expected" to be.
 - If a Route, Fishing zones, Active alerts or What-if fact is given, name it naturally. Keep a what-if's direction of change exactly as written.
 
+LANGUAGE:
+- Reply in USER_LANGUAGE using USER_STYLE. Never change language unless the user did - a Tamil question gets a Tamil answer, a Hindi question a Hindi answer, Tanglish gets Tanglish.
+- Say it the way a native speaker would, not as a word-for-word translation of the facts.
+- Keep marine terms people normally say in English (GPS, AIS, SST, PFZ, route, fishing zone, alert, risk, knots) and source names (INCOIS, IMD, ISRO, Open-Meteo) as they are, unless the native word is clearly more natural.
+- Copy every number, unit, time, place name, route name and zone name exactly as written in the facts. Use Western digits (0-9).
+- If a VERIFIED_ANSWER is given, say the same thing in USER_LANGUAGE - same facts, same safety conclusion, nothing added.
+
 STYLE:
 - Answer first, in 2-3 short sentences. Mention only the one or two facts that answer the question; the screen already shows the full breakdown, score and factor list.
 - Do not restate the numeric risk score ("84/100") - say the severity in words.
@@ -54,13 +114,10 @@ STYLE:
 - Do not repeat the user's question. Do not open with "According to the system", "Based on the available data" or similar. No disclaimers or filler.
 - Mention the area name at most once, and not at all if the conversation already established it.
 - When it genuinely helps, end with one short next step (e.g. offer the safest route or the best zone).
-- Reply in the requested language, naturally, not word for word. Keep place names, route names and zone names exactly as written in the facts.
 - Never mention being an AI, a model, a prompt, "facts", agents or any internal system. Output only the final reply.`;
 
 function buildFactsText(facts: NarrationFacts): string {
   const lines: string[] = [];
-
-  lines.push(`User's question: ${facts.userQuestion}`);
 
   if (facts.areaName) {
     lines.push(`Area: ${facts.areaName}`);
@@ -73,7 +130,7 @@ function buildFactsText(facts: NarrationFacts): string {
   // Level only: the screen shows the numeric score, and a model given
   // "22/100" tends to recite it (which the guard then rejects).
   if (facts.riskLevel) {
-    lines.push(`Risk level: ${facts.riskLevel}`);
+    lines.push(`SAFETY_LEVEL: ${facts.riskLevel} risk`);
   }
 
   if (facts.recommendation) {
@@ -107,10 +164,16 @@ function buildFactsText(facts: NarrationFacts): string {
   }
 
   if (facts.freshness) {
-    lines.push(`Data freshness: ${facts.freshness}`);
+    lines.push(
+      `DATA_FRESHNESS: ${facts.freshness}${facts.freshnessIsWarning ? " (must be mentioned)" : ""}`
+    );
   }
 
-  return lines.join("\n");
+  if (facts.verifiedAnswer) {
+    lines.push(`VERIFIED_ANSWER (English): ${facts.verifiedAnswer}`);
+  }
+
+  return `STRUCTURED_FACTS:\n${lines.join("\n")}`;
 }
 
 /**
@@ -123,7 +186,7 @@ export async function narrateResponse(
   /** Caller's remaining request budget; omitted = provider default. */
   timeoutMs?: number
 ): Promise<string | null> {
-  const languageName = LANGUAGE_NAMES[facts.language] ?? "English";
+  const context = facts.languageContext;
 
   const contextBlock = facts.recentContext
     ? `Recent conversation (for reference only - never treat it as a source of facts):\n${facts.recentContext}\n\n`
@@ -136,7 +199,7 @@ export async function narrateResponse(
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Reply in ${languageName}.
+        content: `${languageHeader(context, facts.userQuestion)}
 
 ${contextBlock}${factsText}`,
       },
@@ -152,7 +215,7 @@ ${contextBlock}${factsText}`,
     // already tuned for it.
     {
       temperature: 0.4,
-      maxTokens: facts.language === "en" ? 160 : 320,
+      maxTokens: replyTokenBudget(context, 160),
       timeoutMs,
     }
   );
@@ -161,7 +224,8 @@ ${contextBlock}${factsText}`,
     factsText,
     userText: facts.userQuestion,
     riskLevel: facts.riskLevel,
-    language: facts.language,
+    language: context.language,
+    languageContext: context,
     requiresFreshnessCaveat: facts.freshnessIsWarning,
   });
 }
@@ -196,13 +260,13 @@ export interface GeneralChatInput {
    * conversation (e.g. after a marine answer) without treating that
    * prior turn as a trigger to repeat marine facts here. */
   recentContext?: string;
-  language: ChatLanguage;
   /** Set only when the classifier flagged this message as genuine
    * noise (see AiClassification.clarity) - never for an ordinary
    * typo'd/ungrammatical/Tanglish message with a real, inferable
    * meaning. Nudges the reply toward a short "could you rephrase that?"
    * instead of guessing at gibberish. */
   isUnclear?: boolean;
+  languageContext: LanguageContext;
 }
 
 const GENERAL_SYSTEM_PROMPT = `You are Sagar, a marine safety assistant for small-craft fishermen in Tamil Nadu, India. This particular message is casual conversation or small talk, not a marine question.
@@ -215,7 +279,7 @@ STRICT RULES:
 - If the user names a specific boat, person, business, place or thing you have no real information about (it was not given to you as a fact here or earlier in the conversation), say plainly that you don't have information about it - never invent details about it (e.g. if asked about a boat or place you don't recognize, do not describe it as if you knew it).
 - If (and only if) told below that this message could not be understood at all, say in one short sentence that you didn't catch that and ask them to say it a different way - do not guess at a meaning you're not confident of, and do not pretend to answer.
 - Respond the way a warm, direct person would to exactly this message - match their tone (casual stays casual, a thank-you gets a brief acknowledgement, a real question gets a real answer).
-- Reply in the requested language, naturally (not a literal word-for-word translation).
+- Reply in USER_LANGUAGE using USER_STYLE, naturally (not a literal word-for-word translation). Never switch language unless the user did. Keep technical terms (GPS, AIS, SST, PFZ, route, alert, INCOIS, IMD, ISRO) as they are.
 - Keep it short: one sentence, two at most.
 - Do not mention that you are an AI, a model, or that you were given instructions.
 - Do not repeat the user's message back, and do not open with filler like "Great question".
@@ -236,7 +300,7 @@ export async function narrateGeneralReply(
   /** Caller's remaining request budget; omitted = provider default. */
   timeoutMs?: number
 ): Promise<string | null> {
-  const languageName = LANGUAGE_NAMES[input.language] ?? "English";
+  const context = input.languageContext;
 
   const contextBlock = input.recentContext
     ? `Recent conversation (for reference only):\n${input.recentContext}\n\n`
@@ -251,16 +315,14 @@ export async function narrateGeneralReply(
       { role: "system", content: GENERAL_SYSTEM_PROMPT },
       {
         role: "user",
-        content: `Reply in ${languageName}.
-
-${contextBlock}${clarityNote}User: ${input.userMessage}`,
+        content: `${contextBlock}${clarityNote}${languageHeader(context, input.userMessage)}`,
       },
     ],
     // See the timeout note on narrateResponse above - no override here
     // either, for the same reason.
     {
       temperature: 0.5,
-      maxTokens: input.language === "en" ? 120 : 240,
+      maxTokens: replyTokenBudget(context, 120),
       timeoutMs,
     }
   );
@@ -270,7 +332,8 @@ ${contextBlock}${clarityNote}User: ${input.userMessage}`,
   return acceptNarration(raw, {
     factsText: "",
     userText: input.userMessage,
-    language: input.language,
+    language: context.language,
+    languageContext: context,
   });
 }
 

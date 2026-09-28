@@ -3,7 +3,7 @@ import express, { type Express } from "express";
 
 import { config } from "./config";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
-import { getLlmProvider } from "./services/llm/llmProvider";
+import { getLlmProvider, supportsMultilingualNarration } from "./services/llm/llmProvider";
 
 import chatRoutes from "./api/chat.routes";
 import marineRoutes from "./api/marine.routes";
@@ -39,6 +39,7 @@ export function createApp(): Express {
       aiEnabled: llmEnabled,
       aiModel: llmEnabled ? llm.model : null,
       aiProvider: llmEnabled ? llm.name : null,
+      aiMultilingualNarration: supportsMultilingualNarration(),
     });
   });
 

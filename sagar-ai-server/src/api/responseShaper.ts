@@ -17,6 +17,7 @@ import type { ConfidenceAssessment, FreshnessStatus } from "../services/data/dat
 import type { Alert } from "../types/alert";
 import type { MarineArea } from "../types/marine";
 import type { RoutePlan } from "../types/route";
+import type { ChatLanguage, LanguageContext } from "../types/chat";
 import type { RankedFishingZone } from "../services/ocean/zoneRanking";
 
 export interface WhatIfComparison {
@@ -80,6 +81,12 @@ export interface StructuredSagarResponse {
   status: string;
   intent: string;
   language: string;
+  /** The request's single language decision (language + style + speech
+   * locale) - the client speaks the reply with it. */
+  languageContext?: LanguageContext;
+  /** Language capability answers: the single supported language the
+   * user asked about, so the client can listen for it next. */
+  requestedLanguage?: ChatLanguage;
 
   answer: string;
   situation?: string;

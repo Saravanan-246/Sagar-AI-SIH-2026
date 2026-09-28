@@ -10,6 +10,12 @@ export type MicState =
   | "speaking"
   | "error";
 
+export type VoiceLanguageOption = {
+  value: string;
+  /** Shown in the menu, in its own language ("தமிழ்", "हिन्दी"). */
+  label: string;
+};
+
 type ChatInputProps = {
   value: string;
   onChange: (value: string) => void;
@@ -25,7 +31,31 @@ type ChatInputProps = {
 
   onUseMyLocation: () => void;
   onChooseArea: () => void;
+
+  /** Language the mic listens in - the browser recognizer must be told
+   * before it starts. Optional so other composers need not offer it. */
+  voiceLanguageOptions?: VoiceLanguageOption[];
+  voiceLanguageValue?: string;
+  /** Short code shown on the mic (e.g. "TA") so the user knows which
+   * language it will listen for. */
+  voiceLanguageBadge?: string;
+  voiceLanguageMenuTitle?: string;
+  onVoiceLanguageChange?: (value: string) => void;
+  /** Stops Sagar reading a reply aloud. */
+  onStopSpeaking?: () => void;
+  stopSpeakingLabel?: string;
+  retryLabel?: string;
 };
+
+// Voice states worth a visible line above the composer. "thinking" is
+// already shown by the chat's own thinking bubble, "idle" needs nothing.
+const VISIBLE_VOICE_STATES = new Set<MicState>([
+  "listening",
+  "processing",
+  "ready",
+  "speaking",
+  "error",
+]);
 
 export default function ChatInput({
   value,
@@ -40,6 +70,14 @@ export default function ChatInput({
   onMicPress,
   onUseMyLocation,
   onChooseArea,
+  voiceLanguageOptions,
+  voiceLanguageValue,
+  voiceLanguageBadge,
+  voiceLanguageMenuTitle = "Voice language",
+  onVoiceLanguageChange,
+  onStopSpeaking,
+  stopSpeakingLabel = "Stop",
+  retryLabel = "Retry",
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -95,8 +133,31 @@ export default function ChatInput({
     }
   };
 
+  const showVoiceStatus = micSupported && VISIBLE_VOICE_STATES.has(micState);
+
   return (
     <div className="sagar-input-area" ref={containerRef}>
+      {showVoiceStatus && (
+        <div
+          className={`sagar-voice-status is-${micState}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="sagar-voice-status-dot" aria-hidden="true" />
+          <span className="sagar-voice-status-text">{micLabel}</span>
+          {micState === "speaking" && onStopSpeaking && (
+            <button type="button" onClick={onStopSpeaking}>
+              {stopSpeakingLabel}
+            </button>
+          )}
+          {micState === "error" && (
+            <button type="button" onClick={onMicPress}>
+              {retryLabel}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="sagar-composer">
         <button
           type="button"
@@ -145,6 +206,11 @@ export default function ChatInput({
                 <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
               </svg>
             )}
+            {micSupported && voiceLanguageBadge && !isRecording && (
+              <span className="sagar-mic-language" aria-hidden="true">
+                {voiceLanguageBadge}
+              </span>
+            )}
           </button>
 
           <button
@@ -187,6 +253,28 @@ export default function ChatInput({
               </svg>
               <span>Choose area</span>
             </button>
+
+            {micSupported && voiceLanguageOptions && onVoiceLanguageChange && (
+              <div className="sagar-actions-group" role="group" aria-label={voiceLanguageMenuTitle}>
+                <div className="sagar-actions-group-title">{voiceLanguageMenuTitle}</div>
+                <div className="sagar-voice-language-options">
+                  {voiceLanguageOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={option.value === voiceLanguageValue ? "is-selected" : ""}
+                      aria-pressed={option.value === voiceLanguageValue}
+                      onClick={() => {
+                        onVoiceLanguageChange(option.value);
+                        setShowActions(false);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

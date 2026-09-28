@@ -10,6 +10,21 @@ export type AppLanguage =
   | "kn"
   | "hi";
 
+/**
+ * A question handed to Chat from another page, with the context it was
+ * asked in - so "is my route safe?" from Home is answered about the
+ * area and route Home was showing, not a default.
+ */
+export interface ChatPromptRequest {
+  text: string;
+  /** Marine area the question is about. */
+  areaId?: string;
+  /** Configured route in view when the question was asked. */
+  routeId?: string;
+  /** The question was spoken - Sagar speaks the reply too. */
+  spoken?: boolean;
+}
+
 export interface AppPreferences {
   language: AppLanguage;
   defaultArea: string;
@@ -55,8 +70,8 @@ interface AppState {
   /** A question built from real page context (e.g. the Route page's
    * selected route), pending pickup by Chat - asked through Chat's own
    * existing send pipeline, never a second chat mechanism. */
-  pendingChatPrompt: string | null;
-  setPendingChatPrompt: (prompt: string) => void;
+  pendingChatPrompt: ChatPromptRequest | null;
+  setPendingChatPrompt: (prompt: string | ChatPromptRequest) => void;
   clearPendingChatPrompt: () => void;
 
   /**
@@ -277,7 +292,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   pendingChatPrompt: null,
 
   setPendingChatPrompt: (prompt) => {
-    set({ pendingChatPrompt: prompt });
+    set({
+      pendingChatPrompt: typeof prompt === "string" ? { text: prompt } : prompt,
+    });
   },
 
   clearPendingChatPrompt: () => {

@@ -44,13 +44,13 @@ export function errorHandler(
     return;
   }
 
-  const message =
-    err instanceof Error ? err.message : "An unexpected error occurred.";
-
+  // Logged in full server-side; the client only ever gets a generic
+  // message - internal error text can carry paths, provider details or
+  // upstream responses that must not leave the server.
   console.error("[sagar-ai-server] Unhandled error:", err);
 
   res.status(500).json({
     error: "internal_error",
-    message,
+    message: "Sagar could not process this request. Please try again.",
   });
 }

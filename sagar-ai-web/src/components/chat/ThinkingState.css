@@ -12,6 +12,14 @@
   align-items: center;
   gap: 12px;
   margin: 12px 0 20px;
+  /* Held back briefly so instant replies (greetings, "Can you speak
+     Tamil?") never flash an indicator before the answer. */
+  animation: thinking-appear 160ms ease-out 250ms both;
+}
+
+@keyframes thinking-appear {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .thinking-avatar {
@@ -125,6 +133,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .thinking-state {
+    animation: none;
+  }
+
   .thinking-dot {
     animation: none;
     opacity: 0.7;

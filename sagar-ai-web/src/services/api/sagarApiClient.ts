@@ -11,6 +11,7 @@ import type {
 } from "../agents/agentTypes";
 
 import type { Alert } from "../../types/alert";
+import type { ChatLanguageStyle, LanguageContext } from "../../types/chat";
 import type { MarineArea } from "../../types/marine";
 import type { RoutePlan } from "../../types/route";
 import type { Scenario, ScenarioResult } from "../../types/scenario";
@@ -66,6 +67,12 @@ export interface ChatRequestOptions {
   latitude?: number;
   longitude?: number;
   history?: ChatHistoryTurn[];
+  /** A configured route the user was looking at (Home / Route page). */
+  routeId?: string;
+  /** Pins the reply language for a request sent on the user's behalf
+   * (a follow-up chip) instead of detecting it from that text. */
+  replyLanguage?: string;
+  replyStyle?: ChatLanguageStyle;
 }
 
 export interface RankedFishingZone {
@@ -154,6 +161,12 @@ export interface SagarChatResponse {
   status: string;
   intent: string;
   language: string;
+  /** The backend's single language decision for this request - the
+   * reply is written in it and should be spoken with it. */
+  languageContext?: LanguageContext;
+  /** Language capability answers: the supported language the user
+   * asked about ("Can you speak Tamil?"). */
+  requestedLanguage?: string;
 
   answer: string;
   situation?: string;
@@ -214,9 +227,18 @@ export async function askSagarBackend(
       latitude: options.latitude,
       longitude: options.longitude,
       history: options.history,
+      routeId: options.routeId,
+      replyLanguage: options.replyLanguage,
+      replyStyle: options.replyStyle,
     },
     { timeout: CHAT_TIMEOUT_MS }
   );
+
+  // A proxy error page or a truncated body must never be rendered as
+  // Sagar's answer - treat it like an unreachable backend.
+  if (!data || typeof data !== "object" || typeof data.answer !== "string" || !data.answer.trim()) {
+    throw new Error("Malformed chat response");
+  }
 
   return data;
 }

@@ -3,6 +3,9 @@ import fishingZonesData from "../../data/fishingZones.json";
 import alertsData from "../../data/alerts.json";
 import { getMarineAreas } from "../marine/marineData";
 import { stripReasoning } from "../llm/ollamaProvider";
+import { detectLanguageWithMetadata } from "./languageDetector";
+
+import type { LanguageContext } from "../../types/chat";
 
 /*
  * The only gate between an LLM's wording and the user. An LLM may
@@ -21,6 +24,8 @@ export interface NarrationCheckInput {
   language: string;
   /** True when facts carried an explicit staleness/estimate caveat. */
   requiresFreshnessCaveat?: boolean;
+  /** The request's language decision - the reply must honour it. */
+  languageContext?: LanguageContext;
 }
 
 export type NarrationCheck = { ok: true } | { ok: false; reason: string };
@@ -121,6 +126,89 @@ const DISCOURAGE =
 const ENCOURAGE =
   /\b(safe to (?:go|head|fish|sail)|good to go|fine to (?:go|head)|go ahead|conditions (?:look|are) (?:good|fine|calm|safe))\b/i;
 
+const SCRIPT_PATTERNS = {
+  latin: /[A-Za-z]/g,
+  ta: /[஀-௿]/g,
+  hi: /[ऀ-ॿ]/g,
+  te: /[ఀ-౿]/g,
+  ml: /[ഀ-ൿ]/g,
+  kn: /[ಀ-೿]/g,
+} as const;
+
+/** Letters from scripts Sagar never answers in (CJK, Cyrillic, Arabic,
+ * Thai...) - a local model occasionally drifts into these. */
+const FOREIGN_SCRIPT = /[Ѐ-ӿ؀-ۿ฀-๿぀-ヿ㐀-鿿가-힯]/;
+
+function countScript(text: string, pattern: RegExp): number {
+  return text.match(pattern)?.length ?? 0;
+}
+
+/**
+ * The reply must stay in the language (and script) the user used. A
+ * reply that drifts to English for a Tamil question, or to Tamil
+ * script for a Tanglish one, is rejected - the deterministic answer in
+ * the right language is used instead.
+ */
+export function checkReplyLanguage(text: string, context: LanguageContext): NarrationCheck {
+  if (FOREIGN_SCRIPT.test(text)) {
+    return { ok: false, reason: "unexpected script" };
+  }
+
+  const counts = Object.fromEntries(
+    Object.entries(SCRIPT_PATTERNS).map(([key, pattern]) => [key, countScript(text, pattern)])
+  ) as Record<keyof typeof SCRIPT_PATTERNS, number>;
+
+  const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  if (total === 0) return { ok: true };
+
+  const { language, style } = context;
+  const nativeCount = language === "en" ? 0 : counts[language];
+  const otherIndic = total - counts.latin - nativeCount;
+
+  if (otherIndic > 0) {
+    return { ok: false, reason: "reply uses another Indian script" };
+  }
+
+  if (language === "en") {
+    return counts.latin / total >= 0.85
+      ? { ok: true }
+      : { ok: false, reason: "English question answered in another language" };
+  }
+
+  if (style === "native" || style === "mixed") {
+    // Technical terms, names and units stay in Latin, so a native-script
+    // reply is still mostly - not entirely - in its own script.
+    return nativeCount / total >= 0.4
+      ? { ok: true }
+      : { ok: false, reason: `reply is not in ${language} script` };
+  }
+
+  // Romanised styles (Tanglish/Hinglish): Latin letters, but it must
+  // still read as that language rather than plain English.
+  if (nativeCount / total > 0.2) {
+    return { ok: false, reason: "romanised question answered in native script" };
+  }
+
+  const detected = detectLanguageWithMetadata(text);
+  if (detected.language !== language || !detected.isTransliterated) {
+    return { ok: false, reason: `reply does not read as ${style}` };
+  }
+
+  // A few Tanglish words up front followed by plain English sentences
+  // is still an English answer.
+  const englishSentence = text
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => sentence.split(/\s+/).length >= 5)
+    .find((sentence) => {
+      const meta = detectLanguageWithMetadata(sentence);
+      return meta.language === "en" && meta.confidence >= 0.6;
+    });
+
+  return englishSentence
+    ? { ok: false, reason: `plain English sentence in a ${style} reply` }
+    : { ok: true };
+}
+
 /**
  * Lightweight consistency check of LLM wording against the facts.
  * Rejects rather than repairs: the deterministic answer is the repair.
@@ -131,6 +219,11 @@ export function checkNarration(text: string, input: NarrationCheckInput): Narrat
   if (/^[[{]/.test(text.trim())) return { ok: false, reason: "structured output" };
   if (/\b(llm|language model|as an ai|prompt|the facts (?:given|provided))\b/i.test(text)) {
     return { ok: false, reason: "mentions internals" };
+  }
+
+  if (input.languageContext) {
+    const languageCheck = checkReplyLanguage(text, input.languageContext);
+    if (!languageCheck.ok) return languageCheck;
   }
 
   // A reply cut off by the token limit ends mid-word - in any script.

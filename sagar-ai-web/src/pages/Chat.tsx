@@ -14,7 +14,7 @@ import { useConnectivity } from "../hooks/useConnectivity";
 import { useOfflineSync, describeSnapshotAge } from "../hooks/useOfflineSync";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useUserLocation } from "../hooks/useUserLocation";
-import { useVoiceInput, type VoiceInputErrorReason } from "../hooks/useVoiceInput";
+import { useVoiceInput } from "../hooks/useVoiceInput";
 import { useKeyboardViewport } from "../hooks/useKeyboardViewport";
 import { useVoiceOutput } from "../hooks/useVoiceOutput";
 import { getMarineAreas } from "../services/marine/marineData";
@@ -28,88 +28,19 @@ import {
 } from "../utils/savedChats";
 import { useAppStore, type AppLanguage } from "../store/appStore";
 import { ROUTES } from "../constants/routes";
+import { micLabelsFor, type MicState } from "../utils/voiceLabels";
+import {
+  detectConversationalIntent,
+  isDecisionChangeQuestion,
+} from "../services/ai/conversationalIntent";
+import { analyzeIntent } from "../services/ai/intent";
+import {
+  isChatLanguage,
+  recognitionLocaleFor,
+  speechLocaleFor,
+} from "../utils/voiceLocale";
 
 import "./Chat.css";
-
-const LOCALE_BY_LANGUAGE: Record<AppLanguage, string> = {
-  en: "en-IN",
-  ta: "ta-IN",
-  te: "te-IN",
-  ml: "ml-IN",
-  kn: "kn-IN",
-  hi: "hi-IN",
-};
-
-type MicState = "idle" | "listening" | "processing" | "ready" | "thinking" | "speaking" | "error";
-
-/*
- * A small, per-string translation table for the mic's own chrome text
- * (state labels + error copy) - the same lightweight pattern already
- * used elsewhere in this codebase (e.g. useSagar.ts's CLARIFY_LABELS),
- * not a second localization system. Scoped to English/Tamil/Hindi,
- * matching the three languages voice conversation actually targets;
- * Telugu/Malayalam/Kannada conversations fall back to the English
- * labels here (chrome text only - the conversation itself still
- * answers in whatever language the backend detected).
- */
-const MIC_LABELS: Record<
-  "en" | "ta" | "hi",
-  Record<Exclude<MicState, "error">, string> & {
-    errors: Record<VoiceInputErrorReason, string>;
-  }
-> = {
-  en: {
-    idle: "Tap to speak",
-    listening: "Listening…",
-    processing: "Processing speech…",
-    ready: "Got it — sending to Sagar…",
-    thinking: "Sagar is analyzing…",
-    speaking: "Sagar is responding…",
-    errors: {
-      denied: "Microphone permission required — allow it in your browser, then tap to retry",
-      "no-speech": "Didn't catch that — tap to try again",
-      unsupported: "Voice input unavailable in this browser — use text input",
-      insecure: "Voice input needs a secure (https) connection — use text input",
-      "audio-capture": "No microphone found — check your device, then tap to retry",
-      network: "Voice recognition needs an internet connection — tap to retry",
-      unknown: "Voice input failed — tap to retry, or type instead",
-    },
-  },
-  ta: {
-    idle: "பேச தட்டவும்",
-    listening: "கேட்கிறேன்…",
-    processing: "செயலாக்குகிறேன்…",
-    ready: "புரிந்தது — சாகருக்கு அனுப்புகிறேன்…",
-    thinking: "சாகர் பகுப்பாய்வு செய்கிறார்…",
-    speaking: "சாகர் பதிலளிக்கிறார்…",
-    errors: {
-      denied: "மைக் அனுமதி தேவை — உலாவியில் அனுமதி அளித்து மீண்டும் தட்டவும்",
-      "no-speech": "கேட்கவில்லை — மீண்டும் தட்டவும்",
-      unsupported: "இந்த உலாவியில் குரல் உள்ளீடு இல்லை — தட்டச்சு செய்யவும்",
-      insecure: "குரல் உள்ளீட்டுக்கு பாதுகாப்பான (https) இணைப்பு தேவை — தட்டச்சு செய்யவும்",
-      "audio-capture": "மைக்ரோஃபோன் கிடைக்கவில்லை — சாதனத்தைச் சரிபார்த்து மீண்டும் தட்டவும்",
-      network: "குரல் அறிதலுக்கு இணைய இணைப்பு தேவை — மீண்டும் தட்டவும்",
-      unknown: "கேட்க முடியவில்லை — மீண்டும் தட்டவும்",
-    },
-  },
-  hi: {
-    idle: "बोलने के लिए टैप करें",
-    listening: "सुन रहा हूँ…",
-    processing: "प्रोसेस कर रहा हूँ…",
-    ready: "समझ गया — सागर को भेज रहा हूँ…",
-    thinking: "सागर विश्लेषण कर रहा है…",
-    speaking: "सागर जवाब दे रहा है…",
-    errors: {
-      denied: "माइक अनुमति आवश्यक — ब्राउज़र में अनुमति दें, फिर टैप करें",
-      "no-speech": "कुछ सुनाई नहीं दिया — फिर से टैप करें",
-      unsupported: "इस ब्राउज़र में वॉइस इनपुट उपलब्ध नहीं — टाइप करें",
-      insecure: "वॉइस इनपुट के लिए सुरक्षित (https) कनेक्शन चाहिए — टाइप करें",
-      "audio-capture": "माइक्रोफ़ोन नहीं मिला — डिवाइस जाँचें, फिर टैप करें",
-      network: "वॉइस पहचान के लिए इंटरनेट कनेक्शन चाहिए — फिर से टैप करें",
-      unknown: "सुनाई नहीं दिया — फिर से टैप करें",
-    },
-  },
-};
 
 type ThinkingInfo = {
   label: string;
@@ -121,70 +52,91 @@ type ThinkingInfo = {
   stages?: string[];
 };
 
-// Mirrors (loosely - a false miss here only costs a slightly-generic
-// loading line, never a wrong claim) the backend's own casual-message
-// gate in chat.routes.ts, so a greeting/thanks never shows "Marine data
-// checked" for a message that will never touch marine data.
+// Mirrors the backend's casual-message gate in chat.routes.ts for the
+// short acknowledgements ("ok", "bro") that are not in the
+// conversational router.
 const CASUAL_THINKING_PATTERN =
   /^(hi|hello|hey|yo|sup|bro|ok|okay|k|thanks|thank you|thx|good morning|good afternoon|good evening|bye|goodbye)[.!? ]*$/i;
 
+const EVIDENCE_THINKING_PATTERN =
+  /why|what data|which data|what sources|evidence|ஏன்|क्यों/i;
+
+const WHAT_IF_THINKING_PATTERN = /what if|what happens if|simulate/i;
+
+/*
+ * The pending-reply indicator shows only the work the backend will
+ * really do for this message. It uses the same deterministic routing
+ * the backend uses (conversationalIntent + the keyword intent rules),
+ * so a greeting, "thanks" or "Can you speak Tamil?" - answered without
+ * any marine data - never shows "Fetching marine conditions…".
+ */
 function getThinkingInfo(
   lastUserMessage: string | null,
   hasLocation: boolean,
 ): ThinkingInfo {
-  if (!lastUserMessage || CASUAL_THINKING_PATTERN.test(lastUserMessage.trim())) {
+  const text = lastUserMessage?.trim() ?? "";
+
+  if (!text || CASUAL_THINKING_PATTERN.test(text) || detectConversationalIntent(text)) {
     return { label: "Sagar is replying…" };
   }
 
-  const text = lastUserMessage.toLowerCase();
+  if (isDecisionChangeQuestion(text)) {
+    return { label: "Checking your saved decisions…" };
+  }
+
   // Each stage names an operation the backend's chat pipeline really
-  // performs for this kind of question (intent classification, area
-  // resolution, marine data retrieval with freshness classification,
-  // risk/route/zone scoring) - shown as pending, never as completed.
+  // performs for this kind of question - shown as pending, never as
+  // completed.
   const understand = "Understanding request…";
   const locationStage = hasLocation ? ["Resolving your area…"] : [];
   const fetchMarine = "Fetching marine conditions…";
   const freshness = "Checking data freshness…";
+  const assessRisk = "Assessing risk…";
 
-  if (/\broute|path|passage|sail\b/.test(text)) {
-    return {
-      label: "Sagar is plotting the safest route…",
-      stages: [understand, ...locationStage, fetchMarine, "Assessing route impact…"],
-    };
-  }
-
-  if (/\bzone|fishing|pfz\b/.test(text)) {
-    return {
-      label: "Sagar is scanning fishing zones…",
-      stages: [understand, ...locationStage, fetchMarine, "Ranking fishing zones…"],
-    };
-  }
-
-  if (/\bwind|storm|cyclone|weather|what if\b/.test(text)) {
+  if (WHAT_IF_THINKING_PATTERN.test(text)) {
     return {
       label: "Sagar is modelling the scenario…",
-      stages: [understand, ...locationStage, fetchMarine, "Assessing risk…"],
+      stages: [understand, ...locationStage, fetchMarine, "Comparing the what-if scenario…"],
     };
   }
 
-  if (/\balert|warning\b/.test(text)) {
-    return {
-      label: "Sagar is checking active alerts…",
-      stages: [understand, ...locationStage, "Checking active alerts…"],
-    };
-  }
-
-  if (/\bwhy|what data|what sources|what evidence|show me the evidence\b/.test(text)) {
+  if (EVIDENCE_THINKING_PATTERN.test(text)) {
     return {
       label: "Sagar is gathering the evidence…",
       stages: [understand, ...locationStage, fetchMarine, freshness],
     };
   }
 
-  return {
-    label: "Sagar is checking marine conditions…",
-    stages: [understand, ...locationStage, fetchMarine, freshness, "Assessing risk…"],
-  };
+  switch (analyzeIntent(text).intent) {
+    case "route":
+      return {
+        label: "Sagar is plotting the safest route…",
+        stages: [understand, ...locationStage, fetchMarine, "Assessing route impact…"],
+      };
+    case "pfz":
+    case "productivity":
+      return {
+        label: "Sagar is scanning fishing zones…",
+        stages: [understand, ...locationStage, "Ranking fishing zones…"],
+      };
+    case "alerts":
+      return {
+        label: "Sagar is checking active alerts…",
+        stages: [understand, ...locationStage, "Checking active alerts…"],
+      };
+    case "safety":
+    case "marine_conditions":
+    case "tide":
+    case "geofence":
+      return {
+        label: "Sagar is checking marine conditions…",
+        stages: [understand, ...locationStage, fetchMarine, freshness, assessRisk],
+      };
+    default:
+      // Not placed by the keyword rules: the backend first works out
+      // what is being asked, and only runs marine work if it is marine.
+      return { label: "Sagar is understanding your question…" };
+  }
 }
 
 export default function Chat() {
@@ -261,6 +213,7 @@ export default function Chat() {
   const language = useAppStore((state) => state.language);
   const setLanguage = useAppStore((state) => state.setLanguage);
   const voiceLanguageOverride = useAppStore((state) => state.voiceLanguageOverride);
+  const setVoiceLanguageOverride = useAppStore((state) => state.setVoiceLanguageOverride);
   const locationLabel = useAppStore((state) => state.locationLabel);
   const setSelectedArea = useAppStore((state) => state.setSelectedArea);
   const clearLocation = useAppStore((state) => state.clearLocation);
@@ -321,7 +274,12 @@ export default function Chat() {
   const conversationLanguage: AppLanguage =
     voiceLanguageOverride !== "auto" ? voiceLanguageOverride : autoDetectedLanguage;
 
-  const locale = LOCALE_BY_LANGUAGE[conversationLanguage] ?? "en-IN";
+  const locale = recognitionLocaleFor(conversationLanguage);
+
+  // The configured route the conversation started from (Home / Route
+  // page), kept for follow-ups until a new conversation starts - the
+  // backend only uses it when a question is about a route.
+  const [contextRouteId, setContextRouteId] = useState<string | null>(null);
   const marineAreas = useMemo(() => getMarineAreas(), []);
 
   const suggestions = useMemo(
@@ -380,7 +338,7 @@ export default function Chat() {
               ? "speaking"
               : "idle";
 
-  const micLabelSet = MIC_LABELS[conversationLanguage as "en" | "ta" | "hi"] ?? MIC_LABELS.en;
+  const micLabelSet = micLabelsFor(conversationLanguage);
 
   const micLabel: Record<MicState, string> = {
     idle: micLabelSet.idle,
@@ -473,15 +431,11 @@ export default function Chat() {
 
   const headerTitle = activeChat?.title ?? "Sagar AI";
 
-  const localeForMessage = (messageLanguage?: string) =>
-    LOCALE_BY_LANGUAGE[(messageLanguage as AppLanguage) ?? conversationLanguage] ?? locale;
-
-  const isKnownAppLanguage = (value?: string): value is AppLanguage =>
-    Boolean(value && value in LOCALE_BY_LANGUAGE);
+  const isKnownAppLanguage = (value?: string): value is AppLanguage => isChatLanguage(value);
 
   const submitMessage = async (
     value: string,
-    options: { spokenAloud?: boolean } = {},
+    options: { spokenAloud?: boolean; areaId?: string; routeId?: string } = {},
   ) => {
     const text = value.trim();
 
@@ -520,7 +474,10 @@ export default function Chat() {
     voiceOutput.stop();
     const requestId = ++requestSeqRef.current;
 
-    const reply = await sendMessage(text);
+    const reply = await sendMessage(text, {
+      areaId: options.areaId,
+      routeId: options.routeId ?? contextRouteId ?? undefined,
+    });
 
     if (requestId !== requestSeqRef.current) {
       return;
@@ -532,14 +489,21 @@ export default function Chat() {
     // carrying its result forward as the next turn's starting point is
     // enough to keep the conversation in the language it's actually
     // in, without a second detection pass on the frontend.
-    if (isKnownAppLanguage(reply?.language)) {
+    // After "Can you speak Tamil?" the next voice turn listens in Tamil,
+    // even though that question itself was asked in English.
+    if (isKnownAppLanguage(reply?.requestedLanguage)) {
+      setAutoDetectedLanguage(reply.requestedLanguage);
+    } else if (isKnownAppLanguage(reply?.language)) {
       setAutoDetectedLanguage(reply.language);
     }
 
+    // Spoken question -> spoken answer, in the reply's own language.
+    // Voice is optional: without speech synthesis the text reply above
+    // is the whole answer and nothing here throws.
     if (reply && options.spokenAloud && voiceOutput.isSupported) {
       voiceOutput.speak(reply.text, {
         id: reply.id,
-        language: localeForMessage(reply.language),
+        language: speechLocaleFor(reply.text),
       });
     }
   };
@@ -558,8 +522,18 @@ export default function Chat() {
       return;
     }
 
+    const request = pendingChatPrompt;
     clearPendingChatPrompt();
-    void submitMessage(pendingChatPrompt);
+
+    if (request.routeId) {
+      setContextRouteId(request.routeId);
+    }
+
+    void submitMessage(request.text, {
+      spokenAloud: request.spoken,
+      areaId: request.areaId,
+      routeId: request.routeId,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingChatPrompt]);
 
@@ -632,6 +606,7 @@ export default function Chat() {
     voiceOutput.stop();
     voiceInput.cancel();
     setAutoDetectedLanguage(language);
+    setContextRouteId(null);
     setMobileSidebarOpen(false);
   };
 
@@ -860,7 +835,7 @@ export default function Chat() {
                     onClick={() =>
                       voiceOutput.speak(message.text, {
                         id: message.id,
-                        language: localeForMessage(message.language),
+                        language: speechLocaleFor(message.text),
                       })
                     }
                     aria-label="Speak this response"
@@ -919,6 +894,23 @@ export default function Chat() {
               onMicPress={handleMicPress}
               onUseMyLocation={handleUseMyLocation}
               onChooseArea={handleOpenAreaPicker}
+              voiceLanguageOptions={[
+                { value: "auto", label: micLabelSet.auto },
+                { value: "en", label: "English" },
+                { value: "ta", label: "தமிழ்" },
+                { value: "hi", label: "हिन्दी" },
+              ]}
+              voiceLanguageValue={voiceLanguageOverride}
+              voiceLanguageBadge={conversationLanguage.toUpperCase()}
+              voiceLanguageMenuTitle={micLabelSet.voiceLanguage}
+              onVoiceLanguageChange={(value) => {
+                if (value === "auto" || isChatLanguage(value)) {
+                  setVoiceLanguageOverride(value);
+                }
+              }}
+              onStopSpeaking={voiceOutput.stop}
+              stopSpeakingLabel={micLabelSet.stop}
+              retryLabel={micLabelSet.retry}
             />
           </div>
         </div>

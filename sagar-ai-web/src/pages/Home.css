@@ -34,6 +34,88 @@
   text-transform: uppercase;
 }
 
+/* ===== Marine Map (first card - Home is map-first) ===== */
+.home-map-card {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.home-map-canvas {
+  position: relative;
+  display: flex;
+  height: 300px;
+}
+
+.home-map-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef3f7;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.home-map-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border-top: 1px solid #eef2f6;
+}
+
+.home-map-caption {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-location-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.home-location-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.home-location-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid #cfd8e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #123b5d;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.home-location-button:hover:not(:disabled) {
+  background: #eef3f7;
+}
+
+.home-location-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* ===== Current Marine Situation ===== */
 .home-situation-card {
   display: flex;
@@ -163,8 +245,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: #f5f3ff;
-  color: #6d28d9;
+  background: #eef4f8;
+  color: #123b5d;
   flex-shrink: 0;
 }
 
@@ -194,6 +276,21 @@
   font-weight: 700;
 }
 
+.home-sagar-status.is-degraded {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.home-sagar-status.is-offline {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.home-sagar-status.is-degraded i,
+.home-sagar-status.is-offline i {
+  background: currentColor;
+}
+
 .home-sagar-status i {
   width: 5px;
   height: 5px;
@@ -212,15 +309,15 @@
   min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 4px 4px 4px 14px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #f8fafc;
   color: #64748b;
   font-size: 13px;
   font-family: inherit;
-  cursor: pointer;
+  cursor: text;
   transition: all 150ms ease;
   box-sizing: border-box;
 }
@@ -230,15 +327,104 @@
   border-color: #cbd5e1;
 }
 
-.home-sagar-composer svg {
-  color: #8b5cf6;
+.home-sagar-composer > svg {
+  color: #0f766e;
   flex-shrink: 0;
 }
 
-.home-sagar-composer span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.home-sagar-composer input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  font-size: 16px; /* >= 16px so iOS does not zoom on focus */
+}
+
+.home-sagar-composer input::placeholder {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.home-sagar-composer:focus-within {
+  background: #ffffff;
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(18, 59, 93, 0.06);
+}
+
+.home-sagar-icon-button {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.home-sagar-icon-button:hover:not(:disabled) {
+  background: #eef2f6;
+  color: #123b5d;
+}
+
+.home-sagar-icon-button.is-listening {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.home-sagar-send:not(:disabled) {
+  background: #123b5d;
+  color: #ffffff;
+}
+
+.home-sagar-send:not(:disabled):hover {
+  background: #0f2f4b;
+  color: #ffffff;
+}
+
+.home-sagar-send:disabled {
+  background: #e9edf1;
+  color: #94a3b8;
+  cursor: default;
+}
+
+.home-voice-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid #dfe6ed;
+  border-radius: 8px;
+  background: #f6f9fb;
+  color: #263746;
+  font-size: 12.5px;
+}
+
+.home-voice-status i {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #0f766e;
+}
+
+.home-voice-status.is-error {
+  border-color: #f3d2d2;
+  background: #fdf5f5;
+  color: #8f2626;
+}
+
+.home-voice-status.is-error i {
+  background: #dc2626;
 }
 
 .home-sagar-suggestions {
@@ -281,7 +467,7 @@
 }
 
 .home-sagar-suggestions svg {
-  color: #8b5cf6;
+  color: #0f766e;
   flex-shrink: 0;
 }
 
@@ -606,6 +792,10 @@
 @media (max-width: 640px) {
   .home-sagar-suggestions {
     grid-template-columns: 1fr;
+  }
+
+  .home-map-canvas {
+    height: 230px;
   }
 
   .home-situation-title {
