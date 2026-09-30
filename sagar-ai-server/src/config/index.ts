@@ -19,6 +19,27 @@ function parseOrigins(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/*
+ * Development only: also accept the Vite dev server on any port of this
+ * machine (Vite silently moves to 5174, 5175, ... when 5173 is taken) and
+ * on a private-LAN address (testing from a phone). .env is gitignored, so
+ * a fresh clone would otherwise allow exactly :5173 and every request from
+ * any other port is blocked by the browser - which the UI can only report
+ * as "Backend unreachable". Production uses the CORS_ORIGIN list alone.
+ */
+const DEV_ORIGIN_PATTERNS: RegExp[] = [
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/,
+  /^https?:\/\/(10(\.\d{1,3}){3}|192\.168(\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2})(:\d+)?$/,
+];
+
+function resolveCorsOrigins(
+  value: string | undefined,
+  nodeEnv: string
+): Array<string | RegExp> {
+  const explicit = parseOrigins(value);
+  return nodeEnv === "production" ? explicit : [...explicit, ...DEV_ORIGIN_PATTERNS];
+}
+
 function isConfiguredKey(value: string | undefined): value is string {
   if (!value) return false;
   const trimmed = value.trim();
@@ -62,10 +83,12 @@ const openRouterApiKey = process.env.OPENROUTER_API_KEY;
 // back to the deterministic narrator, not a startup gate.
 const llmProvider = parseLlmProvider(process.env.LLM_PROVIDER);
 
+const nodeEnv = process.env.NODE_ENV ?? "development";
+
 export const config = {
   port: parsePort(process.env.PORT),
-  nodeEnv: process.env.NODE_ENV ?? "development",
-  corsOrigins: parseOrigins(process.env.CORS_ORIGIN),
+  nodeEnv,
+  corsOrigins: resolveCorsOrigins(process.env.CORS_ORIGIN, nodeEnv),
 
   ai: {
     provider: "openrouter" as const,

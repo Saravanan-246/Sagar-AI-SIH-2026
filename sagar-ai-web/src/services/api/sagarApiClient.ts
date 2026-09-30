@@ -25,10 +25,9 @@ const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL as
  * that's only ever reachable from the machine that built/served the
  * bundle, never from a real user's browser, so a missing config would
  * otherwise fail in a confusing, hard-to-diagnose way (every request
- * quietly rejected) instead of a clear one. Development keeps the
- * localhost fallback (the committed .env already sets
- * VITE_API_BASE_URL explicitly, so this only matters as a safety net
- * when running outside that setup, e.g. `vite dev` with no .env file).
+ * quietly rejected) instead of a clear one. Development needs no .env
+ * (it is gitignored, so a fresh clone has none): the page-host fallback
+ * below is used.
  */
 if (import.meta.env.PROD && !configuredApiBaseUrl) {
   throw new Error(
