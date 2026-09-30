@@ -382,14 +382,6 @@ export default function useSagar(
     (state) => state.setPendingMapFocus
   );
 
-  const currentLocation = useAppStore(
-    (state) => state.currentLocation
-  );
-
-  const selectedAreaId = useAppStore(
-    (state) => state.selectedAreaId
-  );
-
   // Lets a structured action (e.g. "Simulate") ask a real follow-up
   // question through this same hook's own sendMessage, without a
   // circular dependency between the two useCallbacks below.
@@ -447,6 +439,12 @@ export default function useSagar(
       const handleOpenDecisions = () => navigate(ROUTES.DECISIONS);
 
       try {
+        // Read at request time, not from this render's closure: a
+        // clarification retry is sent right after an area is picked,
+        // before React re-renders, so a captured value would still be
+        // the old empty one and Sagar would ask for the area again.
+        const { selectedAreaId, currentLocation } = useAppStore.getState();
+
         const result = await askSagarBackend(text, {
           language: options.language,
           areaId: options.areaId ?? selectedAreaId ?? undefined,
@@ -616,10 +614,7 @@ export default function useSagar(
       }
     },
     [
-      currentLocation?.latitude,
-      currentLocation?.longitude,
       navigate,
-      selectedAreaId,
       setPendingMapFocus,
       setPendingRoute,
     ]
