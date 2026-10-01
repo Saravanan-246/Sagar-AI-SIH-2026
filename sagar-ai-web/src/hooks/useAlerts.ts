@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { fetchAlerts } from "../services/api/sagarApiClient";
+import { describeApiFailure, setFallback } from "../services/api/apiDiagnostics";
 
 import {
   getAlerts,
@@ -78,11 +79,13 @@ export function useAlerts(options: UseAlertsOptions = {}) {
       });
 
       setAlerts(result);
+      setFallback("alerts", null);
     } catch (err) {
       console.warn(
         "Sagar backend is unavailable, using local alert data:",
         err
       );
+      setFallback("alerts", `GET /api/alerts: ${describeApiFailure(err)}`);
 
       try {
         setAlerts(

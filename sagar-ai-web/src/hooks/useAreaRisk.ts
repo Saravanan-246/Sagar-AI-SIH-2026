@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { fetchRisk } from "../services/api/sagarApiClient";
+import { describeApiFailure, setFallback } from "../services/api/apiDiagnostics";
 import type { RiskBasis } from "../services/agents/agentTypes";
 
 export interface AreaRisk {
@@ -41,10 +42,12 @@ export function useAreaRisk(
       .then((response) => {
         if (cancelled) return;
         if (!response.data) {
+          setFallback("risk", "GET /api/risk returned no risk result");
           setRisk(null);
           setStatus("failed");
           return;
         }
+        setFallback("risk", null);
         setRisk({
           riskScore: response.data.riskScore,
           riskLevel: response.data.riskLevel,
@@ -53,8 +56,9 @@ export function useAreaRisk(
         setRiskAreaId(areaId);
         setStatus("ok");
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
+        setFallback("risk", `GET /api/risk: ${describeApiFailure(err)}`);
         setRisk(null);
         setStatus("failed");
       });

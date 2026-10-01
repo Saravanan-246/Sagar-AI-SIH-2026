@@ -1,7 +1,12 @@
 // Focused checks for the voice pipeline's pure helpers.
 // Usage (from sagar-ai-web): ../sagar-ai-server/node_modules/.bin/tsx scripts/voice-test.ts
 
-import { isUsableTranscript, shouldDeliverTranscript } from "../src/hooks/useVoiceInput";
+import {
+  classifyRecognitionError,
+  isRetryableVoiceError,
+  isUsableTranscript,
+  shouldDeliverTranscript,
+} from "../src/hooks/useVoiceInput";
 import { selectVoice } from "../src/hooks/useVoiceOutput";
 import { numbersIn, splitSentences, toSpeakableText, toSpokenSummary } from "../src/utils/speechText";
 
@@ -101,6 +106,37 @@ console.log("\n[voice/text consistency]");
   ok("long answers are shortened for speech", summary.length < toSpeakableText(long).length);
   ok("safety-critical sentence always kept", /Avoid the northern shoals/.test(summary), summary);
   ok("spoken summary keeps the answer first", summary.startsWith("Conditions look calm right now."));
+}
+
+console.log("\n[voice error classification]");
+{
+  const httpsPage = { secureContext: true, speechRecognition: true, microphoneApi: true };
+  const httpLanPage = { secureContext: false, speechRecognition: true, microphoneApi: false };
+
+  ok("not-allowed on an http LAN page -> insecure, not 'permission'",
+    classifyRecognitionError("not-allowed", httpLanPage, "unknown") === "insecure");
+  ok("not-allowed after a refused/dismissed prompt -> denied",
+    classifyRecognitionError("not-allowed", httpsPage, "prompt") === "denied");
+  ok("not-allowed with mic blocked in site settings -> blocked",
+    classifyRecognitionError("not-allowed", httpsPage, "denied") === "blocked");
+  ok("not-allowed while mic permission is granted -> recognition service",
+    classifyRecognitionError("not-allowed", httpsPage, "granted") === "service");
+  ok("service-not-allowed -> service, not mic permission",
+    classifyRecognitionError("service-not-allowed", httpsPage, "granted") === "service");
+  ok("audio-capture -> microphone unavailable",
+    classifyRecognitionError("audio-capture", httpsPage, "granted") === "audio-capture");
+  ok("audio-capture with no microphone API -> mic-unsupported",
+    classifyRecognitionError("audio-capture", { ...httpsPage, microphoneApi: false }, "unknown") === "mic-unsupported");
+  ok("language-not-supported -> language, not 'browser unsupported'",
+    classifyRecognitionError("language-not-supported", httpsPage, "granted") === "language");
+  ok("network -> network", classifyRecognitionError("network", httpsPage, "granted") === "network");
+  ok("no-speech -> temporary no-speech", classifyRecognitionError("no-speech", httpsPage, "granted") === "no-speech");
+  ok("unrecognised code -> temporary unknown", classifyRecognitionError("bad-grammar", httpsPage, "granted") === "unknown");
+
+  ok("denied is retryable", isRetryableVoiceError("denied"));
+  ok("blocked is retryable (after changing site settings)", isRetryableVoiceError("blocked"));
+  ok("insecure is not retryable", !isRetryableVoiceError("insecure"));
+  ok("unsupported browser is not retryable", !isRetryableVoiceError("unsupported"));
 }
 
 console.log(`\n${passCount} passed, ${failCount} failed`);

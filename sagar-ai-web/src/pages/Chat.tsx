@@ -911,6 +911,9 @@ export default function Chat() {
               onStopSpeaking={voiceOutput.stop}
               stopSpeakingLabel={micLabelSet.stop}
               retryLabel={micLabelSet.retry}
+              micRetryable={voiceInput.retryable}
+              onMicDismiss={voiceInput.cancel}
+              dismissLabel={micLabelSet.dismiss}
             />
           </div>
         </div>

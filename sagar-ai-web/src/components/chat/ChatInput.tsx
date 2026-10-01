@@ -45,6 +45,11 @@ type ChatInputProps = {
   onStopSpeaking?: () => void;
   stopSpeakingLabel?: string;
   retryLabel?: string;
+  /** Whether the current voice error can be fixed by retrying; when
+   * false (wrong browser, http page, …) the error offers Dismiss. */
+  micRetryable?: boolean;
+  onMicDismiss?: () => void;
+  dismissLabel?: string;
 };
 
 // Voice states worth a visible line above the composer. "thinking" is
@@ -78,6 +83,9 @@ export default function ChatInput({
   onStopSpeaking,
   stopSpeakingLabel = "Stop",
   retryLabel = "Retry",
+  micRetryable = true,
+  onMicDismiss,
+  dismissLabel = "Dismiss",
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -90,6 +98,13 @@ export default function ChatInput({
     if (!textarea) return;
 
     textarea.style.height = "auto";
+    // An empty box stays one line tall: Chrome counts a wrapped
+    // placeholder in scrollHeight, which made the empty composer three
+    // lines tall on a phone.
+    if (!value) {
+      textarea.style.overflowY = "hidden";
+      return;
+    }
     textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
     // Scroll only once the cap is reached; otherwise sub-pixel rounding
     // shows an empty scrollbar track (a thin vertical line) on Android.
@@ -133,7 +148,10 @@ export default function ChatInput({
     }
   };
 
-  const showVoiceStatus = micSupported && VISIBLE_VOICE_STATES.has(micState);
+  // An error is always shown - including "voice can't work here", which
+  // a phone could otherwise only learn from a tooltip it never displays.
+  const showVoiceStatus =
+    VISIBLE_VOICE_STATES.has(micState) && (micSupported || micState === "error");
 
   return (
     <div className="sagar-input-area" ref={containerRef}>
@@ -150,11 +168,16 @@ export default function ChatInput({
               {stopSpeakingLabel}
             </button>
           )}
-          {micState === "error" && (
-            <button type="button" onClick={onMicPress}>
-              {retryLabel}
-            </button>
-          )}
+          {micState === "error" &&
+            (micRetryable || !onMicDismiss ? (
+              <button type="button" onClick={onMicPress}>
+                {retryLabel}
+              </button>
+            ) : (
+              <button type="button" onClick={onMicDismiss}>
+                {dismissLabel}
+              </button>
+            ))}
         </div>
       )}
 
@@ -187,14 +210,16 @@ export default function ChatInput({
           {/* Same button and handler in both states: while recording it
               becomes a filled Stop button, and onMicPress stops the
               recognizer (handleMicPress in Chat.tsx). */}
+          {/* Stays tappable when voice can't work here: the tap reports
+              the real reason in the status line above. */}
           <button
             type="button"
-            className={`sagar-composer-action ${isRecording ? "is-recording" : ""}`}
+            className={`sagar-composer-action ${isRecording ? "is-recording" : ""} ${micSupported ? "" : "is-unavailable"}`}
             aria-label={micText}
             aria-pressed={isRecording}
             title={micText}
             onClick={onMicPress}
-            disabled={!micSupported || (disabled && !isRecording)}
+            disabled={disabled && !isRecording}
           >
             {isRecording ? (
               <svg viewBox="0 0 24 24" aria-hidden="true">

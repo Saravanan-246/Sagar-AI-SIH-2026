@@ -98,6 +98,64 @@ export function stripReasoning(raw: string): string | null {
   return text.length > 0 ? text : null;
 }
 
+export interface OllamaProbeResult {
+  reachable: boolean;
+  /** Whether the configured model is installed - null when unknown. */
+  modelAvailable: boolean | null;
+  latencyMs: number;
+  /** Failure class only - never the URL, host or raw error text. */
+  error?: "timeout" | "connection_failed" | "bad_status" | "bad_response";
+  httpStatus?: number;
+}
+
+/**
+ * Cheap reachability check for diagnostics: lists installed models
+ * (Ollama's GET /api/tags) instead of generating anything, so it never
+ * loads the model or competes with a real chat request.
+ */
+export async function probeOllama(timeoutMs = 3000): Promise<OllamaProbeResult> {
+  const { baseUrl, model } = config.llm.ollama;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+
+  try {
+    const response = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+    const latencyMs = Date.now() - startedAt;
+
+    if (!response.ok) {
+      return { reachable: false, modelAvailable: null, latencyMs, error: "bad_status", httpStatus: response.status };
+    }
+
+    const data = (await response.json().catch(() => null)) as {
+      models?: Array<{ name?: string; model?: string }>;
+    } | null;
+
+    if (!data || !Array.isArray(data.models)) {
+      return { reachable: true, modelAvailable: null, latencyMs, error: "bad_response" };
+    }
+
+    // "qwen2.5-coder:7b" is listed as-is; an untagged name means ":latest".
+    const wanted = model.includes(":") ? model : `${model}:latest`;
+    const installed = data.models.flatMap((entry) => [entry.name, entry.model]);
+
+    return { reachable: true, modelAvailable: installed.includes(wanted), latencyMs };
+  } catch (error) {
+    const aborted =
+      error instanceof Error &&
+      (error.name === "AbortError" || error.name === "TimeoutError");
+
+    return {
+      reachable: false,
+      modelAvailable: null,
+      latencyMs: Date.now() - startedAt,
+      error: aborted ? "timeout" : "connection_failed",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function requestOllamaCompletion(
   messages: ChatCompletionMessage[],
   options: LlmCompletionOptions = {}

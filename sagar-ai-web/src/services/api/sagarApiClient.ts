@@ -1,4 +1,11 @@
-import axios from "axios";
+import axios, { type InternalAxiosRequestConfig } from "axios";
+
+import { API_BASE_URL } from "./apiConfig";
+import {
+  ApiResponseParseError,
+  classifyApiError,
+  recordApiOutcome,
+} from "./apiDiagnostics";
 
 import type {
   AgentEvidence,
@@ -16,43 +23,122 @@ import type { MarineArea } from "../../types/marine";
 import type { RoutePlan } from "../../types/route";
 import type { Scenario, ScenarioResult } from "../../types/scenario";
 
-const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL as
-  | string
-  | undefined;
-
-/*
- * A production build must never silently talk to http://localhost:4000 -
- * that's only ever reachable from the machine that built/served the
- * bundle, never from a real user's browser, so a missing config would
- * otherwise fail in a confusing, hard-to-diagnose way (every request
- * quietly rejected) instead of a clear one. Development needs no .env
- * (it is gitignored, so a fresh clone has none): the page-host fallback
- * below is used.
- */
-if (import.meta.env.PROD && !configuredApiBaseUrl) {
-  throw new Error(
-    "Sagar AI configuration error: VITE_API_BASE_URL is not set for this production build. " +
-      "Refusing to fall back to http://localhost:4000, which is not reachable from a deployed app. " +
-      "Set VITE_API_BASE_URL to the deployed backend's URL and rebuild."
-  );
-}
-
-/*
- * Dev fallback follows whatever host served the page, swapping the port
- * to 4000: desktop at localhost:5174 -> localhost:4000, a phone on the
- * LAN at 192.168.1.39:5174 -> 192.168.1.39:4000. A hardcoded localhost
- * would point the phone at itself.
- */
-const API_BASE_URL =
-  configuredApiBaseUrl ??
-  (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:4000`
-    : "http://localhost:4000");
-
+// Base URL rules (dev page-host / https proxy / production env) live in
+// apiConfig.ts - the only place a backend URL is decided.
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
 });
+
+const requestStartedAt = new WeakMap<InternalAxiosRequestConfig, number>();
+
+function describeRequest(config: InternalAxiosRequestConfig | undefined) {
+  return {
+    method: (config?.method ?? "get").toUpperCase(),
+    path: (config?.url ?? "").split("?")[0],
+  };
+}
+
+function elapsedSince(config: InternalAxiosRequestConfig | undefined) {
+  const startedAt = config ? requestStartedAt.get(config) : undefined;
+  return startedAt === undefined ? undefined : Date.now() - startedAt;
+}
+
+apiClient.interceptors.request.use((config) => {
+  requestStartedAt.set(config, Date.now());
+  return config;
+});
+
+/*
+ * Every backend request's real outcome is recorded (apiDiagnostics.ts),
+ * so a caller that falls back to local data never hides why. A 2xx body
+ * that isn't JSON - a proxy error or captive-portal page - is rejected
+ * here rather than handed to a caller as data.
+ */
+apiClient.interceptors.response.use(
+  (response) => {
+    const request = describeRequest(response.config);
+    const hasBody = response.status !== 204 && request.method !== "HEAD";
+
+    if (hasBody && (response.data === null || typeof response.data !== "object")) {
+      const error = new ApiResponseParseError(
+        `expected JSON, got ${response.headers["content-type"] ?? "no content type"}`
+      );
+      recordApiOutcome({
+        ...request,
+        ok: false,
+        status: response.status,
+        failure: "parse",
+        reason: classifyApiError(error)?.reason,
+        durationMs: elapsedSince(response.config),
+        at: Date.now(),
+      });
+      return Promise.reject(error);
+    }
+
+    recordApiOutcome({
+      ...request,
+      ok: true,
+      status: response.status,
+      durationMs: elapsedSince(response.config),
+      at: Date.now(),
+    });
+    return response;
+  },
+  (error) => {
+    const failure = classifyApiError(error);
+
+    if (failure) {
+      const config = axios.isAxiosError(error) ? error.config : undefined;
+      recordApiOutcome({
+        ...describeRequest(config),
+        ok: false,
+        status: failure.status,
+        failure: failure.kind,
+        reason: failure.reason,
+        durationMs: elapsedSince(config),
+        at: Date.now(),
+      });
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+/** GET /api/health - liveness only, answers without touching the LLM. */
+export interface BackendHealth {
+  status: string;
+  service: string;
+  llmProvider?: string;
+  aiEnabled?: boolean;
+  aiModel?: string | null;
+  aiProvider?: string | null;
+}
+
+export async function fetchBackendHealth(): Promise<BackendHealth> {
+  const { data } = await apiClient.get<BackendHealth>("/api/health", {
+    timeout: 5000,
+  });
+  return data;
+}
+
+/** GET /api/health/llm - whether the backend can reach its LLM. */
+export interface LlmHealth {
+  status: "ok" | "unreachable" | "model_missing" | "disabled" | "not_probed";
+  llmProvider: string;
+  model: string | null;
+  reachable: boolean | null;
+  modelAvailable: boolean | null;
+  latencyMs?: number;
+  error?: string;
+}
+
+export async function fetchLlmHealth(): Promise<LlmHealth> {
+  const { data } = await apiClient.get<LlmHealth>("/api/health/llm", {
+    timeout: 8000,
+  });
+  return data;
+}
 
 export interface ChatHistoryTurn {
   role: "user" | "assistant";
@@ -236,7 +322,16 @@ export async function askSagarBackend(
   // A proxy error page or a truncated body must never be rendered as
   // Sagar's answer - treat it like an unreachable backend.
   if (!data || typeof data !== "object" || typeof data.answer !== "string" || !data.answer.trim()) {
-    throw new Error("Malformed chat response");
+    const error = new ApiResponseParseError("chat response had no answer text");
+    recordApiOutcome({
+      method: "POST",
+      path: "/api/chat",
+      ok: false,
+      failure: "parse",
+      reason: classifyApiError(error)?.reason,
+      at: Date.now(),
+    });
+    throw error;
   }
 
   return data;

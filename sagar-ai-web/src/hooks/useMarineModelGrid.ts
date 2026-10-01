@@ -6,6 +6,7 @@ import {
   fetchMarineModelGrid,
   type MarineModelGridResponse,
 } from "../services/api/sagarApiClient";
+import { describeApiFailure, setFallback } from "../services/api/apiDiagnostics";
 
 type UseMarineModelGridOptions = {
   /** Only fetch while something on screen actually uses the grid
@@ -121,11 +122,13 @@ export function useMarineModelGrid({
       if (!mountedRef.current) return false;
 
       if (result.status === "success" && result.points.length > 0) {
+        setFallback("marine-model", null);
         setData(result);
         setError(null);
         return true;
       }
 
+      setFallback("marine-model", `GET /api/marine-model/grid: backend reported "${result.status}"`);
       setError(result.message ?? "Marine model unavailable.");
       return false;
     } catch (err) {
@@ -134,6 +137,7 @@ export function useMarineModelGrid({
       const message = describeFailure(err);
       if (message) {
         console.warn("Marine model grid request failed:", err);
+        setFallback("marine-model", `GET /api/marine-model/grid: ${describeApiFailure(err)}`);
         setError(message);
       }
       return false;

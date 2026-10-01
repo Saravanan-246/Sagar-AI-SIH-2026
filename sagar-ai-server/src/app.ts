@@ -1,10 +1,10 @@
 import cors from "cors";
 import express, { type Express } from "express";
 
-import { config } from "./config";
+import { config, isCorsOriginAllowed } from "./config";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
-import { getLlmProvider, supportsMultilingualNarration } from "./services/llm/llmProvider";
 
+import healthRoutes from "./api/health.routes";
 import chatRoutes from "./api/chat.routes";
 import marineRoutes from "./api/marine.routes";
 import marineModelRoutes from "./api/marineModel.routes";
@@ -18,31 +18,41 @@ import scenariosRoutes from "./api/scenarios.routes";
 import researchRoutes from "./api/research.routes";
 import decisionsRoutes from "./api/decisions.routes";
 
+/*
+ * A browser blocks a response whose origin CORS did not allow, and the
+ * page only ever sees a bare "Network Error" - indistinguishable from
+ * the server being down. Logging each rejected origin once makes that
+ * failure visible where it can be fixed.
+ */
+const reportedRejectedOrigins = new Set<string>();
+
 export function createApp(): Express {
   const app = express();
 
   app.use(
     cors({
-      origin: config.corsOrigins,
+      origin(origin, callback) {
+        // No Origin header: same-origin, curl, or the Vite dev proxy.
+        if (!origin || isCorsOriginAllowed(origin, config.corsOrigins)) {
+          callback(null, true);
+          return;
+        }
+
+        if (!reportedRejectedOrigins.has(origin)) {
+          reportedRejectedOrigins.add(origin);
+          console.warn(
+            `[cors] Rejected browser origin ${origin} - add it to CORS_ORIGIN in sagar-ai-server/.env to allow it.`
+          );
+        }
+
+        callback(null, false);
+      },
     })
   );
 
   app.use(express.json());
 
-  app.get("/api/health", (_req, res) => {
-    const llm = getLlmProvider();
-    const llmEnabled = llm.isEnabled();
-
-    res.json({
-      status: "ok",
-      service: "sagar-ai-server",
-      aiEnabled: llmEnabled,
-      aiModel: llmEnabled ? llm.model : null,
-      aiProvider: llmEnabled ? llm.name : null,
-      aiMultilingualNarration: supportsMultilingualNarration(),
-    });
-  });
-
+  app.use("/api/health", healthRoutes);
   app.use("/api/chat", chatRoutes);
   app.use("/api/marine", marineRoutes);
   app.use("/api/marine-model", marineModelRoutes);

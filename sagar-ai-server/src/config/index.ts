@@ -40,6 +40,16 @@ function resolveCorsOrigins(
   return nodeEnv === "production" ? explicit : [...explicit, ...DEV_ORIGIN_PATTERNS];
 }
 
+/** Same matching the cors package applies to an origin list. */
+export function isCorsOriginAllowed(
+  origin: string,
+  allowed: ReadonlyArray<string | RegExp>
+): boolean {
+  return allowed.some((entry) =>
+    typeof entry === "string" ? entry === origin : entry.test(origin)
+  );
+}
+
 function isConfiguredKey(value: string | undefined): value is string {
   if (!value) return false;
   const trimmed = value.trim();

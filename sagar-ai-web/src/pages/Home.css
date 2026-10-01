@@ -380,6 +380,24 @@
   color: #ffffff;
 }
 
+/* Voice can't run here; still tappable so it can say why. */
+.home-sagar-icon-button.is-unavailable {
+  opacity: 0.45;
+}
+
+/* Touch screens: ~44px targets in a slightly taller composer. */
+@media (pointer: coarse) {
+  .home-sagar-composer {
+    min-height: 52px;
+  }
+
+  .home-sagar-icon-button {
+    flex-basis: 42px;
+    width: 42px;
+    height: 42px;
+  }
+}
+
 .home-sagar-send:not(:disabled) {
   background: #123b5d;
   color: #ffffff;

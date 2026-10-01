@@ -1,0 +1,145 @@
+/* Development-only diagnostics - deliberately plain, above everything. */
+
+.dev-diag-tab {
+  position: fixed;
+  right: 0;
+  top: 42%;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  padding: 0 8px 0 9px;
+  border: 1px solid #cbd5e1;
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #334155;
+  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+}
+
+.dev-diag-tab i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.dev-diag-tab i.is-ok { background: #16a34a; }
+.dev-diag-tab i.is-warn { background: #d97706; }
+.dev-diag-tab i.is-bad { background: #dc2626; }
+
+.dev-diag-panel {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  right: 10px;
+  z-index: 5000;
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 20px));
+  max-height: calc(100dvh - 20px);
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.22);
+  font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-sizing: border-box;
+}
+
+.dev-diag-panel header,
+.dev-diag-panel footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+}
+
+.dev-diag-panel header {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dev-diag-panel header span {
+  flex: 1;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.dev-diag-panel header button {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #475569;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dev-diag-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 12px;
+}
+
+.dev-diag-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px dashed #eef2f6;
+}
+
+.dev-diag-label {
+  color: #64748b;
+}
+
+.dev-diag-value {
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.dev-diag-value small {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: pre-line;
+}
+
+.dev-diag-value.is-ok { color: #15803d; }
+.dev-diag-value.is-warn { color: #b45309; }
+.dev-diag-value.is-bad { color: #b91c1c; }
+.dev-diag-value.is-muted { color: #334155; }
+
+.dev-diag-panel footer {
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.dev-diag-panel footer button,
+.dev-diag-panel footer a {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #123b5d;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}

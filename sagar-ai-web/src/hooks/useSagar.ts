@@ -6,6 +6,11 @@ import {
   type RankedFishingZone,
   type SagarChatResponse,
 } from "../services/api/sagarApiClient";
+import {
+  describeApiFailure,
+  setFallback,
+  summarizeApiFailure,
+} from "../services/api/apiDiagnostics";
 import type { Alert } from "../types/alert";
 import { askSagar as askSagarLocal } from "../services/ai/localSagar";
 import { getOfflineSnapshot } from "../services/offline/offlineSnapshot";
@@ -464,6 +469,7 @@ export default function useSagar(
         });
 
         handlersRef.current.onConnectivityChange?.(true);
+        setFallback("chat", null);
 
         // Only the resolved supported area is kept - never the raw
         // coordinates that produced it.
@@ -499,6 +505,13 @@ export default function useSagar(
       } catch (backendError) {
         handlersRef.current.onConnectivityChange?.(false);
 
+        // The failure itself is recorded (endpoint, reason) by the API
+        // client; this records that chat is now answering offline, and
+        // the reply below says so - an offline answer is never
+        // presented as a live one.
+        setFallback("chat", `offline responder - POST /api/chat: ${describeApiFailure(backendError)}`);
+        const failureReason = summarizeApiFailure(backendError);
+
         console.warn(
           "Sagar backend is unavailable, using the offline responder:",
           backendError
@@ -521,6 +534,12 @@ export default function useSagar(
           return {
             text: reply.answer,
             route: null,
+            structured: {
+              offlineStatus: {
+                reason: failureReason,
+                explanation: "Answered on this device by Sagar's offline responder.",
+              },
+            },
             language: languageContext.language,
             languageContext,
             requestedLanguage: reply.requestedLanguage,
@@ -591,6 +610,7 @@ export default function useSagar(
             lastSyncedAge,
             confidence: offlineConfidence,
             explanation: offlineExplanation,
+            reason: failureReason,
           },
         };
 

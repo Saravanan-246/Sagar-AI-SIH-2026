@@ -75,8 +75,12 @@ export type ChatStructuredData = {
    * generic "offline mode" label. */
   offlineStatus?: {
     lastSyncedAge?: string;
-    confidence: "HIGH" | "MEDIUM" | "LOW";
+    /** Absent for replies that use no marine data (e.g. a greeting). */
+    confidence?: "HIGH" | "MEDIUM" | "LOW";
     explanation: string;
+    /** Why the backend wasn't used, e.g. "no response from the Sagar
+     * server" - the real failure, never hidden behind the fallback. */
+    reason?: string;
   };
 };
 
@@ -309,12 +313,17 @@ export default function ChatStructuredPanel({
           <WifiOff size={13} strokeWidth={2.2} />
           <div>
             <strong>Offline</strong>
-            <span>
-              {data.offlineStatus!.lastSyncedAge
-                ? `Last synced ${data.offlineStatus!.lastSyncedAge} · `
-                : "No synced data yet · "}
-              Confidence: {data.offlineStatus!.confidence}
-            </span>
+            {data.offlineStatus!.confidence && (
+              <span>
+                {data.offlineStatus!.lastSyncedAge
+                  ? `Last synced ${data.offlineStatus!.lastSyncedAge} · `
+                  : "No synced data yet · "}
+                Confidence: {data.offlineStatus!.confidence}
+              </span>
+            )}
+            {data.offlineStatus!.reason && (
+              <p>Not live: {data.offlineStatus!.reason}.</p>
+            )}
             <p>{data.offlineStatus!.explanation}</p>
           </div>
         </div>

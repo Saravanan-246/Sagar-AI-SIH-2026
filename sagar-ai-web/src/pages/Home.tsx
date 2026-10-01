@@ -560,18 +560,19 @@ export default function Home() {
                 enterKeyHint="send"
                 autoComplete="off"
               />
-              {voiceInput.isSupported && (
-                <button
-                  type="button"
-                  className={`home-sagar-icon-button ${isListening ? "is-listening" : ""}`}
-                  onClick={handleMicPress}
-                  aria-label={isListening ? micLabels.stop : micLabels.idle}
-                  aria-pressed={isListening}
-                  title={`${isListening ? micLabels.stop : micLabels.idle} (${voiceLanguage.toUpperCase()})`}
-                >
-                  {isListening ? <Square size={14} /> : <Mic size={16} />}
-                </button>
-              )}
+              {/* Always shown: where voice can't work (http page, no
+                  SpeechRecognition) the tap explains why below instead
+                  of the mic silently disappearing. */}
+              <button
+                type="button"
+                className={`home-sagar-icon-button ${isListening ? "is-listening" : ""} ${voiceInput.isSupported ? "" : "is-unavailable"}`}
+                onClick={handleMicPress}
+                aria-label={isListening ? micLabels.stop : micLabels.idle}
+                aria-pressed={isListening}
+                title={`${isListening ? micLabels.stop : micLabels.idle} (${voiceLanguage.toUpperCase()})`}
+              >
+                {isListening ? <Square size={14} /> : <Mic size={16} />}
+              </button>
               <button
                 type="submit"
                 className="home-sagar-icon-button home-sagar-send"

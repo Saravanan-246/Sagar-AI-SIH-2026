@@ -894,6 +894,27 @@
     padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
   }
 
+  /* The composer column above already pads for the screen edge and the
+     home indicator; padding the input area again wasted ~20px of width
+     and double-counted the safe area on notched phones. */
+  .chat-main-composer .sagar-input-area {
+    padding: 0;
+  }
+
+  /* ~44px tap targets for the header and drawer controls. */
+  .chat-header-menu,
+  .chat-header-new-chat,
+  .chat-sidebar-close {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+
+  .chat-voice-toast-dismiss {
+    width: 32px;
+    height: 32px;
+  }
+
   .chat-voice-toast {
     left: 12px;
     max-width: calc(100% - 24px);

@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  getSpeechRecognitionCtor,
+  getVoiceCapabilities,
+  queryMicrophonePermission,
+  watchMicrophonePermission,
+  type MicPermissionState,
+  type VoiceCapabilities,
+} from "../utils/voiceCapabilities";
+
 /**
  * idle -> listening -> processing -> ready -> idle, driven only by the
  * browser recognizer's own events (onstart / onspeechend / final
@@ -14,13 +23,32 @@ export type VoiceInputStatus =
   | "ready"
   | "error";
 
+/**
+ * Why voice input can't run - each maps to its own message, so a user is
+ * never told to grant a permission when that isn't the problem.
+ *
+ * - insecure: page isn't https/localhost; the browser won't expose the mic
+ * - unsupported: no SpeechRecognition in this browser
+ * - mic-unsupported: the browser exposes no microphone API at all
+ * - denied: the permission prompt was refused or dismissed
+ * - blocked: microphone permanently blocked for this site (site settings)
+ * - audio-capture: no working microphone (missing, or in use elsewhere)
+ * - service: the speech recognition service refused or is disabled
+ * - network: the recognition service could not be reached
+ * - language: the recognizer doesn't support the selected language
+ * - no-speech / unknown: temporary - just try again
+ */
 export type VoiceInputErrorReason =
-  | "denied"
-  | "no-speech"
-  | "unsupported"
   | "insecure"
+  | "unsupported"
+  | "mic-unsupported"
+  | "denied"
+  | "blocked"
   | "audio-capture"
+  | "service"
   | "network"
+  | "language"
+  | "no-speech"
   | "unknown";
 
 /** Coarse, UI-facing classification of a voice failure. */
@@ -37,12 +65,62 @@ export function voiceErrorCode(
       return null;
     case "unsupported":
     case "insecure":
+    case "mic-unsupported":
+    case "service":
+    case "language":
       return "VOICE_UNAVAILABLE";
     case "denied":
-    case "audio-capture":
+    case "blocked":
       return "MICROPHONE_PERMISSION_REQUIRED";
     default:
       return "VOICE_INPUT_FAILED";
+  }
+}
+
+/** Whether tapping Retry can succeed without changing browser, URL or
+ * voice language - false for the capability gaps. */
+export function isRetryableVoiceError(reason: VoiceInputErrorReason | null): boolean {
+  switch (reason) {
+    case "insecure":
+    case "unsupported":
+    case "mic-unsupported":
+    case "service":
+    case "language":
+      return false;
+    default:
+      return true;
+  }
+}
+
+/**
+ * Maps a SpeechRecognition error code to the real cause. "not-allowed"
+ * alone can mean an insecure page, a refused prompt, a mic blocked in
+ * site settings, or a recognizer refusing despite a granted mic - the
+ * capabilities and permission state tell them apart.
+ */
+export function classifyRecognitionError(
+  code: string | undefined,
+  capabilities: VoiceCapabilities,
+  permission: MicPermissionState,
+): VoiceInputErrorReason {
+  switch (code) {
+    case "not-allowed":
+      if (!capabilities.secureContext) return "insecure";
+      if (permission === "denied") return "blocked";
+      if (permission === "granted") return "service";
+      return capabilities.microphoneApi ? "denied" : "mic-unsupported";
+    case "service-not-allowed":
+      return capabilities.secureContext ? "service" : "insecure";
+    case "audio-capture":
+      return capabilities.microphoneApi ? "audio-capture" : "mic-unsupported";
+    case "network":
+      return "network";
+    case "language-not-supported":
+      return "language";
+    case "no-speech":
+      return "no-speech";
+    default:
+      return "unknown";
   }
 }
 
@@ -88,32 +166,22 @@ export function shouldDeliverTranscript(
   );
 }
 
-function getSpeechRecognitionCtor(): (new () => any) | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const w = window as unknown as {
-    SpeechRecognition?: new () => any;
-    webkitSpeechRecognition?: new () => any;
-  };
-
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
-
 /**
- * Browsers only grant microphone access on a secure origin (https or
- * localhost). On plain http - e.g. testing the dev server from a phone
- * via a LAN IP - the recognizer still exists but every start() fails
- * with "not-allowed", which would otherwise be misreported as the user
- * having blocked the mic.
+ * Known before any attempt. A browser without SpeechRecognition can't
+ * be fixed by https, so that is checked first. Browsers only grant
+ * microphone access on a secure origin (https or localhost); on plain
+ * http - e.g. a phone opening the dev server by LAN IP - the recognizer
+ * may still exist but every start() fails with "not-allowed", which
+ * would otherwise be misreported as the user having blocked the mic.
  */
 function unavailableReason(): VoiceInputErrorReason | null {
-  if (!getSpeechRecognitionCtor()) {
+  const capabilities = getVoiceCapabilities();
+
+  if (!capabilities.speechRecognition) {
     return "unsupported";
   }
 
-  if (typeof window !== "undefined" && window.isSecureContext === false) {
+  if (!capabilities.secureContext) {
     return "insecure";
   }
 
@@ -148,10 +216,21 @@ export function useVoiceInput({
   const recognitionRef = useRef<any>(null);
   const onResultRef = useRef(onResult);
   const lastDeliveredRef = useRef<DeliveredTranscript | null>(null);
+  // Kept current (never prompts) so a "not-allowed" can be told apart:
+  // refused prompt vs blocked in site settings vs recognizer refusal.
+  const micPermissionRef = useRef<MicPermissionState>("unknown");
 
   useEffect(() => {
     onResultRef.current = onResult;
   }, [onResult]);
+
+  useEffect(
+    () =>
+      watchMicrophonePermission((state) => {
+        micPermissionRef.current = state;
+      }),
+    [],
+  );
 
   const blockedReason = unavailableReason();
   const isSupported = blockedReason === null;
@@ -262,18 +341,16 @@ export function useVoiceInput({
         return;
       }
 
-      let reason: VoiceInputErrorReason = "unknown";
+      const reason = classifyRecognitionError(
+        code,
+        getVoiceCapabilities(),
+        micPermissionRef.current,
+      );
 
-      if (code === "not-allowed" || code === "service-not-allowed") {
-        reason = window.isSecureContext === false ? "insecure" : "denied";
-      } else if (code === "no-speech") {
-        reason = "no-speech";
-      } else if (code === "audio-capture") {
-        reason = "audio-capture";
-      } else if (code === "network") {
-        reason = "network";
-      } else if (code === "language-not-supported") {
-        reason = "unsupported";
+      if (import.meta.env.DEV) {
+        console.warn(
+          `[sagar-voice] Recognition error "${code}" -> ${reason} (mic permission: ${micPermissionRef.current})`,
+        );
       }
 
       setInterimTranscript("");
@@ -295,11 +372,16 @@ export function useVoiceInput({
 
     try {
       recognition.start();
-    } catch {
+    } catch (error) {
       detach(recognition);
       recognitionRef.current = null;
       setStatus("error");
-      setErrorReason("unknown");
+      // Some engines refuse synchronously instead of via onerror.
+      setErrorReason(
+        error instanceof Error && error.name === "NotAllowedError"
+          ? classifyRecognitionError("not-allowed", getVoiceCapabilities(), micPermissionRef.current)
+          : "unknown",
+      );
     }
   }, [language, discardCurrent]);
 
@@ -333,17 +415,28 @@ export function useVoiceInput({
     setErrorReason(null);
   }, [discardCurrent]);
 
+  /** Re-runs initialization from scratch: capabilities are re-detected
+   * by start(), and the permission is re-read in case the user just
+   * changed it in site settings. start() itself stays synchronous so
+   * the tap's user activation is still valid when it asks for the mic. */
   const retry = useCallback(() => {
     setErrorReason(null);
+    void queryMicrophonePermission().then((state) => {
+      micPermissionRef.current = state;
+    });
     start();
   }, [start]);
 
   useEffect(() => discardCurrent, [discardCurrent]);
 
+  const activeError = status === "error" ? errorReason : null;
+
   return {
     status,
     errorReason,
-    errorCode: voiceErrorCode(status === "error" ? errorReason : null),
+    errorCode: voiceErrorCode(activeError),
+    /** False when Retry can't help (wrong browser, http page, …). */
+    retryable: activeError !== null && isRetryableVoiceError(activeError),
     unavailableReason: blockedReason,
     interimTranscript,
     isSupported,

@@ -5,10 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --host 0.0.0.0",
+    "dev:https": "vite --host 0.0.0.0 --mode https",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:api-config": "node ../sagar-ai-server/node_modules/tsx/dist/cli.mjs scripts/api-config-test.ts",
+    "test:voice": "node ../sagar-ai-server/node_modules/tsx/dist/cli.mjs scripts/voice-test.ts"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.22",

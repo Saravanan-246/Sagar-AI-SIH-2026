@@ -5,6 +5,7 @@ import {
   calculateRouteRemote,
   fetchRoutes,
 } from "../services/api/sagarApiClient";
+import { describeApiFailure, setFallback } from "../services/api/apiDiagnostics";
 
 import {
   calculateRoute as calculateRouteLocal,
@@ -57,9 +58,11 @@ export default function useRoute() {
           err
         );
         usedFallback = true;
+        setFallback("routes", `GET /api/routes: ${describeApiFailure(err)}`);
         return getRoutesLocal();
       });
 
+      if (!usedFallback) setFallback("routes", null);
       setDataSource(usedFallback ? "offline" : "backend");
       setRoutes(availableRoutes);
 
@@ -100,6 +103,7 @@ export default function useRoute() {
               err
             );
             usedFallback = true;
+            setFallback("route-calculation", `GET /api/routes: ${describeApiFailure(err)}`);
             return calculateRouteLocal(origin, destination);
           }),
           calculateRouteOptionsRemote(
@@ -111,10 +115,12 @@ export default function useRoute() {
               err
             );
             usedFallback = true;
+            setFallback("route-calculation", `GET /api/routes (options): ${describeApiFailure(err)}`);
             return calculateRouteOptionsLocal(origin, destination);
           }),
         ]);
 
+        if (!usedFallback) setFallback("route-calculation", null);
         setDataSource(usedFallback ? "offline" : "backend");
         setResult(calculated);
         setRouteOptions(options);

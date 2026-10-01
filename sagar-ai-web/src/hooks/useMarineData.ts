@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { fetchMarineAreas } from "../services/api/sagarApiClient";
+import { describeApiFailure, setFallback } from "../services/api/apiDiagnostics";
 
 import {
   getMarineAreas as getLocalMarineAreas,
@@ -37,9 +38,11 @@ async function resolveMarineAreas(): Promise<{
     const areas = await fetchMarineAreas();
 
     if (areas.length > 0) {
+      setFallback("marine-areas", null);
       return { areas, origin: "backend" };
     }
 
+    setFallback("marine-areas", "GET /api/marine returned no areas");
     return { areas: getLocalMarineAreas(), origin: localOrigin() };
   } catch (err) {
     console.warn(
@@ -47,6 +50,7 @@ async function resolveMarineAreas(): Promise<{
       err
     );
 
+    setFallback("marine-areas", `GET /api/marine: ${describeApiFailure(err)}`);
     return { areas: getLocalMarineAreas(), origin: localOrigin() };
   }
 }

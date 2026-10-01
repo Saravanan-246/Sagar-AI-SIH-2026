@@ -54,6 +54,11 @@
   cursor: not-allowed;
 }
 
+/* Voice can't run here; still tappable so it can say why. */
+.sagar-composer-action.is-unavailable {
+  opacity: 0.45;
+}
+
 .sagar-composer-action svg,
 .sagar-send-button svg {
   width: 20px;
@@ -103,6 +108,18 @@
 
 .sagar-textarea::placeholder {
   color: #8a96a3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* An empty composer keeps its placeholder on one (ellipsised) line; a
+   wrapped placeholder showed half of its second line in a one-line box
+   on phones. Typed text still wraps normally. */
+.sagar-textarea:placeholder-shown {
+  white-space: nowrap;
+  overflow-x: hidden;
+  text-overflow: ellipsis;
 }
 
 .sagar-textarea:disabled {
@@ -345,5 +362,44 @@
   .sagar-actions-menu {
     left: 0;
     width: 100%;
+  }
+}
+
+/* Touch screens: ~44px tap targets for composer, mic, send and the
+   voice Retry/Dismiss button. */
+@media (pointer: coarse) {
+  .sagar-composer {
+    gap: 4px;
+  }
+
+  .sagar-composer-right {
+    gap: 2px;
+  }
+
+  .sagar-composer-action,
+  .sagar-send-button {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
+  }
+
+  /* 11px + 22px line + 11px = 44px - centred against the buttons. */
+  .sagar-textarea {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
+  .sagar-voice-status {
+    padding: 4px 4px 4px 10px;
+  }
+
+  .sagar-voice-status button {
+    min-height: 40px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+
+  .sagar-actions-menu button {
+    min-height: 44px;
   }
 }
